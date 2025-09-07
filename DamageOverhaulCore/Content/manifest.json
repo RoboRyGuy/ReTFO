@@ -1,0 +1,9 @@
+﻿{
+  "name": "DamageOverhaulCore",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/RoboRyGuy/ReTFO-Private",
+  "description": "A mod that overhauls how damage is dealt",
+  "dependencies": [
+    "dakkhuza-MTFO-4.6.2"
+  ]
+}
