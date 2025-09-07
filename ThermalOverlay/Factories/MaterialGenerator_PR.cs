@@ -88,7 +88,12 @@ public class MaterialGenerator_PR : IMaterialGenerator
         };
 
         MaterialConfig clone = PRMaterialConfig.Clone();
-        if (bTransparent) clone.HeatTex = clone.HeatTex.Value.Replace(".png", "_Transparent.png");
+        if (bTransparent)
+        {
+            clone.HeatTex = clone.HeatTex.Value.Replace(".png", "_Transparent.png");
+            clone.AmbientTemp = .01f;
+            clone.BackgroundTemp = .01f;
+        }
         clone.Zoom = 0f;
         clone.OffAngleFade = 0f; // OffAngleFade rarely looks good, and often looks bad
         clone.ApplyAllWithDefaults(thermalMat, context);

@@ -2,7 +2,7 @@
   "ConfigEntries": [
     {
       "ConfigName": "A sample config",
-      "IDs": [ 504338160 ],
+      "IDs": [ 123456789 ],
       "Config": {
         "Handler": "Auto",
         "SightConverter": "Standard",
@@ -12,7 +12,7 @@
           "MeshOffset":   { "x": 0, "y": 0, "z": 0 },
           "MeshRotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
           "MeshScale":    { "x": 1, "y": 1, "z": 1 },
-          "TextureGenerator": "Bloom/Circle"
+          "TextureGenerator": "Bloom(Circle)"
         },
         "MaterialGenerator": "Auto",
         "MaterialConfig": {
@@ -56,6 +56,42 @@
           "ProjSize1": 1,
           "ProjSize2": 1,
           "ProjSize3": 1
+        }
+      }
+    },
+    {
+      "ConfigName": "Scoped Weapons Touch-Up",
+      "IDs": [ 
+        2239238113, 2032048212, 3784403034, 1545470151, 3033670255, 
+        681956452,  2558984298, 2803776542, 34568288,   1613586522, 
+        2017652782, 4030486016
+      ],
+      "Config": {
+        "MaterialConfig": {
+          "MainTex": "red",
+          "AlphaMult": 0.8
+        }
+      }
+    },
+    {
+      "ConfigName": "Slug Shotgun Touch-Up",
+      "Comment": "I've seen both these IDs be used. It's strange.",
+      "IDs": [ 12818085, 3503708704 ],
+      "Config": {
+        "Handler": "Auto(OverlayOnly)",
+        "OverlayConfig": {
+          "MeshGenerator": "Plane",
+          "MeshScale": { "x": 0.50, "y": 0.50, "z": 0.50 },
+          "TextureGenerator": "Bloom(Circle)"
+        }
+      }
+    },
+    {
+      "ConfigName": "Combat Shotgun Touch-Up",
+      "IDs": [ 8319008 ],
+      "Config": {
+        "MaterialConfig": {
+          "AlphaMult": 5.0
         }
       }
     }

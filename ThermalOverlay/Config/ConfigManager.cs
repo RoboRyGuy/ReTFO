@@ -52,9 +52,10 @@ public class ConfigManager
         string configFilePath = Path.Combine(Path.GetDirectoryName(Paths.PluginPath) ?? "", "GameData", "ThermalOverlay", "ThermalOverlayConfig.json");
         if (!File.Exists(configFilePath))
         {
-            string defaultConfigPath = Path.Combine(Paths.PluginPath, "ThermalOverlay", "ThermalOverlayConfig.json");
+            string defaultConfigPath = Path.Combine(Paths.PluginPath, "ThermalOverlay", "DoNotEdit.json");
             if (File.Exists(defaultConfigPath))
             {
+                Directory.CreateDirectory(Path.GetDirectoryName(configFilePath) ?? ".");
                 File.WriteAllBytes(configFilePath, File.ReadAllBytes(defaultConfigPath));
                 LoadConfigFile(configFilePath);
             }
@@ -125,10 +126,11 @@ public class ConfigManager
         {
             AllowTrailingCommas = true,
             PropertyNameCaseInsensitive = true,
-            IgnoreReadOnlyFields = true,
-            IgnoreReadOnlyProperties = true
         };
         options.Converters.Add(new JsonStringEnumConverter());
+        options.Converters.Add(new Vector4_JsonConverter());
+        options.Converters.Add(new Vector3_JsonConverter());
+        options.Converters.Add(new Vector2_JsonConverter());
         file = JsonSerializer.Deserialize<ConfigFile>(fileText, options);
 
         if (file == null || (file.ConfigEntries?.Count ?? 0) == 0)

@@ -5,6 +5,7 @@ using ReTFO.ThermalOverlay.Config;
 using ReTFO.ThermalOverlay.Factories;
 using System.Diagnostics.CodeAnalysis;
 using UnityEngine;
+using UnityEngine.Playables;
 
 namespace ReTFO.ThermalOverlay;
 
@@ -98,7 +99,7 @@ public class Plugin : BasePlugin
 
         ThermalConfig? config = ConfigManager.GetConfig(id);
         ConversionContext context = new(this, item, config);
-        FactoryManager.RunThermalConverter(config?.MainConverter, context);
+        FactoryManager.RunThermalConverter(config?.Handler, context);
 
         if (ConfigManager.UserConfigs.MakeGunsCold && isLocal)
         {

@@ -55,14 +55,17 @@ public class OverlayGenerator_Standard : IOverlayGenerator
         // Applying transforms
         overlay.transform.SetParent(sightAlign);
         overlay.transform.localPosition = (context.Config?.OverlayConfig.MeshOffset ?? Vector3.zero) + zOffset * Vector3.forward;
-        overlay.transform.localRotation =  context.Config?.OverlayConfig.MeshRotation ?? Quaternion.identity;
-        overlay.transform.localScale    =  context.Config?.OverlayConfig.MeshScale ?? Vector3.one;
+        if (context.Config?.OverlayConfig.MeshRotation != null)
+            overlay.transform.rotation = context.Config.OverlayConfig.MeshRotation * overlay.transform.rotation;
+        if (context.Config?.OverlayConfig.MeshScale != null)
+            overlay.transform.localScale = Vector3.Scale(overlay.transform.localScale, context.Config.OverlayConfig.MeshScale);
 
         // Simply creating the material with the provided properties
         context.Renderer = overlay.AddComponent<MeshRenderer>();
         context.Material = context.Factory.RunMaterialGenerator(context.Config?.MaterialGenerator, context);
         context.Material.mainTexture = context.Factory.RunTextureGenerator(context.Config?.OverlayConfig.TextureGenerator, context);
         context.Material.SetFloat(MaterialConfig.CenterWhenUnscoped_Name, 0f);
+        context.Material.SetFloat(MaterialConfig.OffAngleFade_Name, 0f);
         context.Renderer.sharedMaterial = context.Material;
 
         context.Log.LogDebug($"OverlayGenerator_Standard successfully added overlay to item \"{context.Item.name}\"");

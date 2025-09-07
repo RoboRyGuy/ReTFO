@@ -5,7 +5,7 @@ namespace ReTFO.ThermalOverlay.Config;
 public class ThermalConfig
 {
     // Which thermal converter to use to apply this configuration
-    public string? MainConverter { get; set; } = null;
+    public string? Handler { get; set; } = null;
 
     // Which sight converter to use, if needed
     public string? SightConverter { get; set; } = null;

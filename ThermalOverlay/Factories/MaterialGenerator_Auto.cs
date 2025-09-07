@@ -67,22 +67,17 @@ public class MaterialGenerator_Auto : IMaterialGenerator
         if (bPDW) clone = MaterialGenerator_PDW.PDWMaterialConfig.Clone();
         else      clone = MaterialGenerator_PR.PRMaterialConfig.Clone();
 
-        foreach (var offlineGear in GameData.PlayerOfflineGearDataBlock.GetAllBlocks())
-        {
-            GearIDRange range = new(offlineGear.GearJSON);
-            int hash;
-            if (range.GetCompBool(eGearComponent.SightPart))
-                hash = range.GetCompID(eGearComponent.SightPart).GetHashCode();
-            else
-                hash = range.GetChecksum().GetHashCode();
-            context.Log.LogMessage($"Gear {offlineGear.name} uses mode {Mathf.Abs(hash % ThermalTextures.Count)}");
-        }
-
         int index = context.Item.GearPartHolder.SightData?.persistentID.GetHashCode() 
             ?? context.Item.GearIDRange.GetChecksum().GetHashCode();
         index = Mathf.Abs(index % ThermalTextures.Count);
         clone.HeatTex = $"Load(ThermalOverlay, {ThermalTextures[index]})";
-        if (bTransparent) clone.HeatTex = clone.HeatTex.Value.Replace(".png", "_Transparent.png");
+
+        if (bTransparent)
+        {
+            clone.HeatTex = clone.HeatTex.Value.Replace(".png", "_Transparent.png");
+            clone.AmbientTemp = .01f;
+            clone.BackgroundTemp = .01f;
+        }
 
         clone.Zoom = 0f;
         clone.OffAngleFade = 0f; // OffAngleFade rarely looks good, and often looks bad

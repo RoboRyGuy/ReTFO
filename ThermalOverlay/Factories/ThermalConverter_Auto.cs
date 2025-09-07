@@ -49,7 +49,7 @@ public class ThermalConverter_Auto : IThermalConverter
 
         // Attempt sight conversion
         bool isConverted = false;
-        if (sight != null && allowSightConversion)
+        if ((sight != null) && allowSightConversion)
         {
             context.Renderer = sight;
             Shader? thermalShader = context.Plugin.AssetBundle.ThermalOverlayShader;
@@ -70,7 +70,7 @@ public class ThermalConverter_Auto : IThermalConverter
         }
 
         // Attempt overlay generation
-        if (!isConverted && allowOverlayGeneration)
+        if ((!isConverted) && allowOverlayGeneration)
         {
             GameObject? existingOverlay = context.Item.transform.Find(Plugin.OverlayGameObjectName)?.gameObject;
             if (existingOverlay != null)

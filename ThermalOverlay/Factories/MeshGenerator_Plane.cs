@@ -36,8 +36,8 @@ public class MeshGenerator_Plane : IMeshGenerator
             vertices = new[] { new Vector3(-size, size, 0), new Vector3(size, size, 0), new Vector3(-size, -size, 0), new Vector3(size, -size, 0) },
             uv = new[] { new Vector2(0, 1), new Vector2(1, 1), new Vector2(0, 0), new Vector2(1, 0) },
             triangles = new[] { 0, 1, 2,  1, 3, 2,  0, 2, 1,  1, 2, 3 },
+            normals = new[] { new Vector3(0, 0, -1f), new Vector3(0, 0, -1f), new Vector3(0, 0, -1f), new Vector3(0, 0, -1f) }
         };
-        mesh.RecalculateNormals();
         mesh.RecalculateTangents();
 
         return mesh;
