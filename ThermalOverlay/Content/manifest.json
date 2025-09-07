@@ -1,0 +1,7 @@
+﻿{
+  "name": "ThermalOverlay",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/RoboRyGuy/ReTFO",
+  "description": "Gives guns thermal vision.",
+  "dependencies": [ ]
+}

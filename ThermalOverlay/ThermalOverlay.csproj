@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Profile>ReTFO</Profile>
+    <!-- R2ModMan profile name to build to -->
+    <ProjectName>$(MSBuildProjectName.Replace(" ", "_"))</ProjectName>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>embedded</DebugType>
+    <BepInEx>$(AppData)\r2modmanPlus-local\GTFO\profiles\$(Profile)\BepInEx</BepInEx>
+    <BuildDirectory>$(BepInEx)\plugins\$(ProjectName)\</BuildDirectory>
+    <OutputPath>$(BuildDirectory)</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <RunPostBuildEvent>Always</RunPostBuildEvent>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+    <RootNamespace>ReTFO.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <WarningLevel>7</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <WarningLevel>7</WarningLevel>
+  </PropertyGroup>
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <ItemGroup>
+      <ContentDestFiles Include="$(OutputPath)\**" />
+      <AssetDestFiles Include="$(BepInEx)\Assets\$(ProjectName)\**" />
+    </ItemGroup>
+    <Delete Files="@(ContentDestFiles)" />
+    <Delete Files="@(AssetDestFiles)" />
+  </Target>
+  <Target Name="PostBuild" BeforeTargets="PostBuildEvent">
+    <ItemGroup>
+      <ContentFiles Include="Content\**" />
+      <AssetFiles Include="Assets\**" />
+    </ItemGroup>
+    <Delete Files="$(OutputPath)$(AssemblyName).deps.json" />
+    <Copy SourceFiles="@(ContentFiles)" DestinationFolder="$(OutputPath)\" />
+    <Copy SourceFiles="@(AssetFiles)" DestinationFolder="$(BepInEx)\Assets\$(ProjectName)\" />
+  </Target>
+  <ItemGroup>
+    <Reference Include="$(BepInEx)\core\0Harmony.dll" Private="false" />
+    <Reference Include="$(BepInEx)\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(BepInEx)\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(BepInEx)\core\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(BepInEx)\core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(BepInEx)\interop\*.dll" Private="false" />
+    <Reference Remove="$(BepInEx)\interop\netstandard.dll" />
+  </ItemGroup>
+</Project>

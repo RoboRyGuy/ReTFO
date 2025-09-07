@@ -1,0 +1,63 @@
+﻿{
+  "ConfigEntries": [
+    {
+      "ConfigName": "My test config",
+      "IDs": [ 504338160 ],
+      "Config": {
+        "Handler": "Auto",
+        "SightConverter": "Standard",
+        "OverlayGenerator": "Load(11)",
+        "OverlayConfig": {
+          "MeshGenerator": "Diamond",
+          "MeshOffset":   { "x": 0, "y": 0, "z": 0 },
+          "MeshRotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "MeshScale":    { "x": 1, "y": 1, "z": 1 },
+          "TextureGenerator": "Bloom/Circle"
+        },
+        "MaterialGenerator": "Standard",
+        "MaterialConfig": {
+          "Zoom": 0,
+          "RatioAdjust": 1,
+          "ScreenIntensity": 0.2,
+          "OffAngleFade": 0.95,
+          "HeatTex": "Load(ThermalOverlay, Thremal_Gradient_FLIR_Transparent.png)",
+          "HeatFalloff": 0.01,
+          "FogFalloff": 0.1,
+          "AlphaMult": 1,
+          "BackgroundTemp": 0.05,
+          "AmbientColorFactor": 5,
+          "AlbedoColorFactor": 0.5,
+          "AmbientTemp": 0.15,
+          "OcclusionHeat": 0.5,
+          "BodyOcclusionHeat": 2.5,
+          "DistortionTex": "Load(ThermalOverlay, Scanline.png)",
+          "DistortionScale": 1,
+          "DistortionSpeed": 1,
+          "DistortionSignal": "Load(ThermalOverlay, ThermalDistortionSignal.png)",
+          "DistortionSignalSpeed": 1,
+          "DistortionMin": 0.1,
+          "DistortionMax": 0.4,
+          "DistortionMinShadowEnemies": 0.2,
+          "DistortionMaxShadowEnemies": 1,
+          "DistortionSignalSpeedShadowEnemies": 0.025,
+          "ShadowEnemyFresnel": 10,
+          "ShadowEnemyHeat": 0.1,
+          "ScopeCenter": { "x": 0, "y": 0, "z": 0, "w": 1 },
+          "CenterWhenUnscoped": 1,
+          "UncenterWhenScoped": 0,
+          "MainTex": "red",
+          "ReticuleA": "black",
+          "ReticuleB": "black",
+          "ReticuleC": "black",
+          "ReticuleColorA": { "r": 1, "g": 1, "b": 1, "a": 1 },
+          "ReticuleColorB": { "r": 1, "g": 1, "b": 1, "a": 1 },
+          "ReticuleColorC": { "r": 1, "g": 1, "b": 1, "a": 1 },
+          "SightDirt": 1,
+          "ProjSize1": 1,
+          "ProjSize2": 1,
+          "ProjSize3": 1
+        }
+      }
+    }
+  ]
+}
