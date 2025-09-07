@@ -1,12 +1,12 @@
 ﻿{
   "ConfigEntries": [
     {
-      "ConfigName": "My test config",
+      "ConfigName": "A sample config",
       "IDs": [ 504338160 ],
       "Config": {
         "Handler": "Auto",
         "SightConverter": "Standard",
-        "OverlayGenerator": "Load(11)",
+        "OverlayGenerator": "Standard",
         "OverlayConfig": {
           "MeshGenerator": "Diamond",
           "MeshOffset":   { "x": 0, "y": 0, "z": 0 },
@@ -14,7 +14,7 @@
           "MeshScale":    { "x": 1, "y": 1, "z": 1 },
           "TextureGenerator": "Bloom/Circle"
         },
-        "MaterialGenerator": "Standard",
+        "MaterialGenerator": "Auto",
         "MaterialConfig": {
           "Zoom": 0,
           "RatioAdjust": 1,

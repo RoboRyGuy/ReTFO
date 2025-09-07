@@ -21,9 +21,10 @@ public class FactoryManager
         AddOverlayGenerator(OverlayGenerator_Standard.Name, new OverlayGenerator_Standard(), true);
         AddOverlayGenerator(OverlayGenerator_Load.Name, new OverlayGenerator_Load());
         
-        AddMaterialGenerator(MaterialGenerator_PDW.Name, new MaterialGenerator_PDW(), true);
+        AddMaterialGenerator(MaterialGenerator_PDW.Name, new MaterialGenerator_PDW());
         AddMaterialGenerator(MaterialGenerator_PR.Name, new MaterialGenerator_PR());
         AddMaterialGenerator(MaterialGenerator_Load.Name, new MaterialGenerator_Load());
+        AddMaterialGenerator(MaterialGenerator_Auto.Name, new MaterialGenerator_Auto(), true);
 
         AddMeshGenerator(MeshGenerator_Plane.Name,   new MeshGenerator_Plane());
         AddMeshGenerator(MeshGenerator_Diamond.Name, new MeshGenerator_Diamond(), true);

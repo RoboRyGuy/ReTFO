@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "ThermalOverlay": {
+      "commandName": "Project"
+    },
+    "Attach to GTFO": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\GTFO\\GTFO.exe",
+      "commandLineArgs": "--doorstop-enabled true \r\n--doorstop-target-assembly \"C:\\Users\\rydan\\AppData\\Roaming\\r2modmanPlus-local\\GTFO\\profiles\\ReTFO\\BepInEx\\core\\BepInEx.Unity.IL2CPP.dll\""
+    }
+  }
+}
