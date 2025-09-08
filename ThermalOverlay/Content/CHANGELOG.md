@@ -20,3 +20,9 @@ Initial full release of ThermalOverlay
  - Added the ThermalOverlay shader's source to Github
  - Fixed an issue where Vector2, 3, and 4's weren't being serialized/deserialized
  - Corrected the placement logic in OverlayGenerator_Standard so that manual adjustments are more consistent
+
+# Version 1.2.0
+
+ - Added a default thermal config for spears
+ - Quaternions now serialize correctly
+ - Fixed version number on the Plugin class
