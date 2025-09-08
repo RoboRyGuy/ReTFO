@@ -94,6 +94,25 @@
           "AlphaMult": 5.0
         }
       }
+    },
+    {
+      "ConfigName": "Spear",
+      "IDs": [ 10813500, 15728805 ],
+      "Config": {
+        "OverlayConfig": {
+          "MeshGenerator": "Plane",
+          "MeshOffset": { "x": 0.04, "y": 1, "z": -0.1 },
+          "MeshRotation": {
+            "x": 0.0730194412768,
+            "y": 0.906905263344,
+            "z": -0.375652459865,
+            "w": 0.176284525447
+          },
+          "MeshScale": { "x": 2, "y": 4, "z": 1 },
+          "TextureGenerator": "Bloom(Circle)"
+        },
+        "MaterialGenerator": "Auto(Opaque)"
+      }
     }
   ]
 }

@@ -128,9 +128,10 @@ public class ConfigManager
             PropertyNameCaseInsensitive = true,
         };
         options.Converters.Add(new JsonStringEnumConverter());
-        options.Converters.Add(new Vector4_JsonConverter());
-        options.Converters.Add(new Vector3_JsonConverter());
         options.Converters.Add(new Vector2_JsonConverter());
+        options.Converters.Add(new Vector3_JsonConverter());
+        options.Converters.Add(new Vector4_JsonConverter());
+        options.Converters.Add(new Quaternion_JsonConverter());
         file = JsonSerializer.Deserialize<ConfigFile>(fileText, options);
 
         if (file == null || (file.ConfigEntries?.Count ?? 0) == 0)

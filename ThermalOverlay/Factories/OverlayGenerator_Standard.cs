@@ -42,23 +42,29 @@ public class OverlayGenerator_Standard : IOverlayGenerator
 
         // zOffset controls whether the overlay lands at the front or the back of the gun
         // Moving the overlay to the front can half the size (1/4 the area)
-        Transform sightAlign = context.Item.SightLookAlign;
-        int childCount = sightAlign.GetChildCount();
         float zOffset = 0f;
-        for (int i = 0; i < childCount; i++)
+        Transform sightAlign;
+        if (context.Item.GearPartHolder.MeleeHeadPart != null)
+            sightAlign = context.Item.GearPartHolder.MeleeHeadPart.transform;
+        else
         {
-            Transform child = sightAlign.GetChild(i);
-            if (attachRear) zOffset = Mathf.Min(zOffset, sightAlign.TransformDirection(child.localPosition).z);
-            else            zOffset = Mathf.Max(zOffset, sightAlign.TransformDirection(child.localPosition).z);
+            sightAlign = context.Item.SightLookAlign;
+            int childCount = sightAlign.GetChildCount();
+            for (int i = 0; i < childCount; i++)
+            {
+                Transform child = sightAlign.GetChild(i);
+                if (attachRear) zOffset = Mathf.Min(zOffset, sightAlign.TransformDirection(child.localPosition).z);
+                else zOffset = Mathf.Max(zOffset, sightAlign.TransformDirection(child.localPosition).z);
+            }
         }
 
         // Applying transforms
         overlay.transform.SetParent(sightAlign);
         overlay.transform.localPosition = (context.Config?.OverlayConfig.MeshOffset ?? Vector3.zero) + zOffset * Vector3.forward;
-        if (context.Config?.OverlayConfig.MeshRotation != null)
-            overlay.transform.rotation = context.Config.OverlayConfig.MeshRotation * overlay.transform.rotation;
         if (context.Config?.OverlayConfig.MeshScale != null)
             overlay.transform.localScale = Vector3.Scale(overlay.transform.localScale, context.Config.OverlayConfig.MeshScale);
+        if (context.Config?.OverlayConfig.MeshRotation != null)
+            overlay.transform.rotation = context.Config.OverlayConfig.MeshRotation * overlay.transform.rotation;
 
         // Simply creating the material with the provided properties
         context.Renderer = overlay.AddComponent<MeshRenderer>();
