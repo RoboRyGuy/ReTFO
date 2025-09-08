@@ -5,7 +5,6 @@ using ReTFO.ThermalOverlay.Config;
 using ReTFO.ThermalOverlay.Factories;
 using System.Diagnostics.CodeAnalysis;
 using UnityEngine;
-using UnityEngine.Playables;
 
 namespace ReTFO.ThermalOverlay;
 
