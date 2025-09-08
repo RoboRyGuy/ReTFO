@@ -1,12 +1,13 @@
-﻿
-## Version 0.1.0
+﻿# Changelog
+
+### Version 0.1.0
 
 Beta release of ThermalOverlay. 
  - Only automatic conversions
  - Very simple backend logic
  - Configurations don't work
 
-# Version 1.0.0
+## Version 1.0.0
 
 Initial full release of ThermalOverlay
  - FactoryManager is fully implemented
@@ -14,7 +15,7 @@ Initial full release of ThermalOverlay
  - How-to articles added for usability
  - Psuedo-random material generation added
 
-# Version 1.1.0
+## Version 1.1.0
 
  - Added in some default JSON configs to help make some vanilla weapons look better
  - Added the ThermalOverlay shader's source to Github
