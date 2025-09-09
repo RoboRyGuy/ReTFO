@@ -12,7 +12,7 @@ public struct ConfigFileEntry
     public string? ConfigName { get; set; } = null;
 
     // ID used to associate this config with gear. By default, the GearRangeID's checksum for the item
-    public List<uint>? IDs { get; set; } = null;
+    public List<string>? Items { get; set; } = null;
 
     // ThermalConfig to apply
     public ThermalConfig? Config { get; set; } = null;

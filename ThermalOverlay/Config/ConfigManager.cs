@@ -1,12 +1,9 @@
 ﻿
 using BepInEx;
-using Dissonance;
-using Gear;
-using PlayFab.AdminModels;
-using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace ReTFO.ThermalOverlay.Config;
 
@@ -15,25 +12,32 @@ namespace ReTFO.ThermalOverlay.Config;
 /// </summary>
 public class ConfigManager
 {
-    // If gear names are manually set by a different mod, this is where we store them
-    private IReadOnlyDictionary<uint, string>? _offlineGearNames = null;
+    // String comparer which ignores case
+    public class CaselessComparer : IEqualityComparer<string>
+    {
+        public virtual bool Equals(string? x, string? y)
+            => string.Compare(x, y, true) == 0;
 
-    // A list of gear items that can be set to thermal, including the IDs used to identify them
-    // By default, this system uses GearIDRange's Checksum attribute for identification
-    // If you're a mod writer consuming this mod, use Plugin's ChangeIDMode to modify this list
-    public IReadOnlyDictionary<uint, string> OfflineGearNames
+        public virtual int GetHashCode(string? x)
+            => x?.ToLower().GetHashCode() ?? 0;
+    }
+
+    // If item names are manually set by a different mod, this is where we store them
+    private ICollection<string>? _itemNames = null;
+
+    // A list of item names that can be set to thermal. See Plugin.SetItemNames
+    public ICollection<string> ItemNames
     {
         get 
-        {  
-            return _offlineGearNames ?? 
+        {
+            return _itemNames ??
                 GameData.PlayerOfflineGearDataBlock.GetAllBlocks()
-                .Select(b => new GearIDRange(b.GearJSON))
-                .ToDictionary(
-                    r => r.GetChecksum(), 
-                    r => $"{r.PublicGearName}" // I'm not sure how to get the category type
-                );
+                .Select(b => Regex.Match(b.GearJSON, "\"Name\":\"([^\"]*)\""))
+                .Where(m => m.Success)
+                .Select(m => m.Captures.First().Value)
+                .ToList();
         }
-        internal set { _offlineGearNames = new SortedList<uint, string>(value.ToImmutableSortedDictionary()); }
+        internal set { _itemNames = value; }
     }
 
     // User configs aren't loaded until they're needed
@@ -75,35 +79,35 @@ public class ConfigManager
     }
 
     // IDs that are enabled programmatically
-    private HashSet<uint> _requestedIDs = new HashSet<uint>();
+    private HashSet<string> _requestedItems = new(new CaselessComparer());
 
     // Request an ID be enabled for thermal conversion
-    public void EnableThermalIDs(uint id)
-        => _requestedIDs.Append(id);
+    public void EnableThermalItem(string item)
+        => _requestedItems.Add(item);
 
     // Request IDs be enabled for thermal conversion
-    public void EnableThermalIDs(IEnumerable<uint> ids)
-        => _requestedIDs.UnionWith(ids);
+    public void EnableThermalItems(IEnumerable<string> items)
+        => _requestedItems.UnionWith(items);
 
     // Returns true if an ID is enabled, false otherwise
-    public bool IsIDEnabled(uint id)
+    public bool IsIDEnabled(string itemName)
     {
         if (UserConfigs.EnableEverything) return true;
-        else if (UserConfigs.EnabledGear.Contains(id)) return true;
-        else if (_requestedIDs.Contains(id))
+        else if (UserConfigs.EnabledGear.Contains(itemName)) return true;
+        else if (_requestedItems.Contains(itemName))
         {
             if (UserConfigs.AllowExternalConversions) return true;
-            else Plugin.Get().Log.LogWarning($"Extnernal conversion blocked due to config on ID {id}");
+            else Plugin.Get().Log.LogWarning($"Extnernal conversion blocked due to config on ID {itemName}");
         }
         return false;
     }
 
     // Data used to convert weapons to their thermal variants
-    private SortedList<uint, ThermalConfig> _itemConfigs = new();
+    private SortedList<string, ThermalConfig> _itemConfigs = new();
 
     // Get a thermal config
-    public ThermalConfig? GetConfig(uint id)
-        => _itemConfigs.GetValueOrDefault(id);
+    public ThermalConfig? GetConfig(string itemName)
+        => _itemConfigs.GetValueOrDefault(itemName);
 
     // Loads configs from file. Filename is the full file path
     public void LoadConfigFile(string filename)
@@ -112,7 +116,7 @@ public class ConfigManager
             LoadConfigFile(file);
     }
 
-    public bool TryDeserializeConfigFile(string filename, [NotNullWhen(true)] out ConfigFile? file)
+    public static bool TryDeserializeConfigFile(string filename, [NotNullWhen(true)] out ConfigFile? file)
     {
         file = null;
         if (!File.Exists(filename))
@@ -163,17 +167,17 @@ public class ConfigManager
             return;
         }
 
-        if (entry.IDs == null || entry.IDs.Count == 0)
+        if (entry.Items == null || entry.Items.Count == 0)
         {
-            Plugin.Get().Log.LogWarning($"Skipping config entry \"{entry.ConfigName ?? "Unnamed Config"}\" because it has been provided with no IDs");
+            Plugin.Get().Log.LogWarning($"Skipping config entry \"{entry.ConfigName ?? "Unnamed Config"}\" because it has been provided with no Items");
             return;
         }
 
-        foreach (uint id in entry.IDs)
+        foreach (string item in entry.Items)
         {
-            if (_itemConfigs.ContainsKey(id))
-                Plugin.Get().Log.LogWarning($"Overwriting thermal config for item {id} with name \"{entry.ConfigName ?? "Unnamed Config"}\"");
-            _itemConfigs[id] = entry.Config;
+            if (_itemConfigs.ContainsKey(item))
+                Plugin.Get().Log.LogWarning($"Overwriting thermal config for item \"{item}\" with config named \"{entry.ConfigName ?? "Unnamed Config"}\"");
+            _itemConfigs[item] = entry.Config;
         }
     }
 

@@ -11,20 +11,20 @@ it as an example.
 
 The main purpose of using the plugin programmatically is to convert items (custom or otherwise) in your rundown.
 There are a few main things to do to make this work correctly:
- - [Optional] Use the ConfigManager (obtainable via the Plugin instance) to set the ID mode, if needed.
-   The default ID mode uses the item's checksum, which works in most (but not all) situations.
- - Use the ConfigManager to enable item IDs for conversion.
+ - [Optional] Set item names, if the plugin is not correctly identifying items that can be configured.
+   Setting the names changes the description in the config file, making it easier for users to config.
+ - Use the ConfigManager to enable items for conversion.
  - Load in configs. This can be done by creating instances of `ConfigEntry` and submitting them to the
    config manager or by creating a ConfigFile JSON file and requesting ConfigManager parse it by file name.
 
 ## Extensions using The Factory System
 
-The Factory system is a system which was implemented to allow other developers to extend and 
-improve ThermalOverlay without needing to go through or wait for me, the mod author. The 
-process of using it is hopefully simple:
+The Factory system is a system which was implemented to allow other developers to extend and improve 
+ThermalOverlay without needing to go through or wait for me, the mod author. It's also my solution 
+for allowing text-only configs to alter conversion logic. The process of extending it is hopefully simple:
 
  - Create a new class implementing a factory interface
- - Register that class with the plugin's FactoryManager
+ - Register that class with the plugin's FactoryManager by name
  - [Optional] Change the configs so that your factory class gets used
 
 There are six main interfaces you can implement, all of which live in the `ReTFO.ThermalOverlay.Interfaces` namespace:
@@ -39,17 +39,20 @@ This document will outline how each of these work and how to implement them.
 
 ## Interface Inputs
 
-When one of the above interfaces is called, it will be granted two inputs. The first is the name
-used to call it `string? thisName`, and the second it the conversion context `ConversionContext context`.
+When one of the above interfaces is called, it will be called with two inputs. The first is the name
+used to call it, `string? thisName`, and the second it the conversion context, `ConversionContext context`.
 
 ### thisName
 
-`thisName` is the name used to call the interface. Quick explanation, with more below:
+`thisName` is the name used to call the interface.
 
  - It is only ever null when the interface is called as the "default"
  - It is a string value which starts with the name you used to register it
+   - It can be called with a different name if called as the default because a name couldn't be found.
+     For example, if I try to run TextureGenerator "Foo", and no such generator is found, the default 
+     texture generator will instead be used, with `thisName` as "Foo".
  - It is optionally followed by parentheses and parameters, ie "(5, black)"
-   - A full name could be "MyName(5, black)" for the interface registered under "MyName"
+   - A `thisName` could be "MyName(5, black)" for the interface registered under "MyName"
 
 You can choose to make your interface the default for its type when you register it; only one
 interface can be the default at any given time; what it means to be the default varies by interface, and
@@ -77,13 +80,13 @@ ThermalConfig? Config = null;   // The config for the item, if one was found
 ## The Factory Manager
 
 The `ReTFO.ThermalOverlay.Plugin` instance contains a single `ReTFO.ThermalOverlay.Factories.FactoryManager` object.
-You can get the plugin using `Plugin.Get()`, and the `FactoryManager` is simply a public member of the plugin object.
+You can get the plugin using `Plugin.Get()`, and `FactoryManager` is simply a public property of the plugin object.
 The factory manager contains static helpers for working with parameters, and public methods for adding, getting, and 
 running converters.
 
 ## IThermalConverter
 
-`IThermalConverter` is the main interface responsible for converting an item. It will be the first and last item
+`IThermalConverter` is the main interface responsible for converting an item. It will be the first and last interface
 to touch the item during the conversion process. It implements the `ConvertItem` method, wich has no return value.
 
 `public abstract void ConvertItem(string? thisName, ConversionContext context);`
@@ -93,10 +96,10 @@ Its responsibilities are:
    - If running a sight converter, it must select the renderer to convert and assign it to the context object
  - Apply shared configs before and after the conversion
    - Specifically, set the scope center and apply the config's MaterialConfig at the very end
- - Validate success and log failures (not successes)
+ - Validate success, but only log failures (not successes)
    - Sight converters and overlay generators will log successes
 
-The default ThermalConvert is used when an item has no config.
+The default ThermalConverter is used when an item has no config, or that config does not specify a "Handler"
 
 ## ISightConverter
 
@@ -111,12 +114,13 @@ Its responsibilities are:
  - Assign a Material to the context object
  - Log success/failure as needed
 
-The default SightConverter is used when an item has no config and the ThermalConverter decides to use a SightConverter
+The default SightConverter is used when an item has no config (or when the config does not specify a SightConverter), 
+and the ThermalConverter decides to use a SightConverter
 
 ## IOverlayGenerator
 
 `IOverlayGenerator` is responsible for generating geometry which shows thermal vision and attaching it to the item. This 
-generally means using a MeshGenerator to create geometry and using MaterialGenerator to attach a thermal material to that 
+generally means using a MeshGenerator to create geometry and using a MaterialGenerator to attach a thermal material to that 
 geometry. `IOverlayGenerator` implements the `GenerateOverlay` method, which returns a bool (true if successful, false otherwise)
 
 `public abstract bool GenerateOverlay(string? thisName, ConversionContext context);`
@@ -128,7 +132,8 @@ Its responsibilities are:
  - Assign both a Renderer and a Material to the context object
  - Log success/failure as needed
 
-The default OverlayGenerator is used when the item has no config and the ThermalConverter decides to use an OverlayGenerator
+The default OverlayGenerator is used when the item has no config (or when the config does not specify an OverlayGenerator), 
+and the ThermalConverter decides to use an OverlayGenerator
 
 ## IMeshGenerator
 
@@ -144,7 +149,8 @@ Its responsibilities are:
    - It may reuse an existing mesh, including loading one from file or taking one from a loaded asset
  - Log failures
 
-The default MeshGenerator is used by the OverlayGenerator to generate geometry for an overlay.
+The default MeshGenerator is used by the OverlayGenerator to generate geometry for an overlay when the config does not specify
+a MeshGenerator.
 
 ## ITextureGenerator
 
@@ -159,7 +165,8 @@ Its responsibilities are:
    - It may reuse an existing texture, including loading one from file or taking one from a loaded asset
  - Log failures
 
-The default TextureGenerator is typically used as the MainTex on a generated overlay; it is typically an AlphaMask for the default Mesh.
+The default TextureGenerator is typically used as the MainTex on a generated overlay; in other words, it is typically an AlphaMask 
+for the default Mesh. Again, this is only when the config does not specify a TextureGenerator to use instead.
 
 ## IMaterialGenerator
 
@@ -177,7 +184,8 @@ Its responsibilities are:
   - Do *not* use the config's MaterialConfig
   - Log failures
 
-The default MaterialGenerator is used when the item has no config
+The default MaterialGenerator is used when the item has no config and a thermal material needs to be generated. Typically,
+this happens with every conversion exactly once.
 
 ## Processing Parameters
 
@@ -234,7 +242,7 @@ if (parameters.Length > 3)
     else context.Log.LogError($"TextureGenerator_Bloom expected a uint for its fourth parameter, but instead got \"{item}\"");
 }
 
-// If extra parameters made it through, log errors on those, too
+// If extra parameters made it through, log warnings on those, too
 if (parameters.Length > 4)
     context.Log.LogWarning($"TextureGenerator_Bloom ignoring extra parameters: {FactoryManager.FormatParams(parameters[4..])}");
 

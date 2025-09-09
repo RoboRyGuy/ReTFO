@@ -288,9 +288,8 @@ public struct MaterialConfig
     }
     public const string FogFalloff_Name = "_FogFalloff";
 
-    // "Alpha Mult", float, is multiplied against the resulting alpha value
-    //  before blending. Best used when reusing the scope's _MainTex for
-    //  masking, to compensate for excessive transparency.
+    // "Alpha Mult", float, is multiplied against the resulting alpha value before blending.
+    // Best used when reusing the scope's _MainTex for masking, to compensate for excessive transparency.
     public ShaderValue<float> AlphaMult
     {
         get { return Get(AlphaMult_Name, 1.0f); }

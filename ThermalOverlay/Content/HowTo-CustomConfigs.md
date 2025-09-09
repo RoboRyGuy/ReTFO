@@ -36,8 +36,8 @@ Each config entry looks like the below. Most lines can be omitted to use the def
 
 ```
 {
-  "ConfigName": "My test config",
-  "IDs": [ 504338160, 3524198550, 1767509775 ],
+  "ConfigName": "My config",
+  "Items": [ "Omneco exp1", "Van Auken CAB F4", "Accrat ND6" ],
   "Config": {
     "Handler": "Auto",
     "SightConverter": "Standard",
@@ -49,7 +49,7 @@ Each config entry looks like the below. Most lines can be omitted to use the def
       "MeshScale":    { "x": 1, "y": 1, "z": 1 },
       "TextureGenerator": "Bloom(Circle)"
     },
-    "MaterialGenerator": "PR",
+    "MaterialGenerator": "Auto(Opaque)",
     "MaterialConfig": {
       "Zoom": 0,
       "RatioAdjust": 1,
@@ -99,7 +99,7 @@ Each config entry looks like the below. Most lines can be omitted to use the def
 | Property Name                          | Type                          | Optional? | Explanation                                                                                   |
 | ----------------------------------     | ----------------------------- | ----------| --------------------------------------------------------------------------------------------- |
 | ConfigName                             | Any string                    | Yes       | Used when printing debug messages                                                             |
-| IDs                                    | A list of uints               | No        | A list of gear items the config applies to                                                    |
+| Items                                  | A list of strings             | No        | A list of gear names the config applies to. These are the item names (not categories) in-game |
 | Config                                 | A ThermalConfig object        | No        | Contains the config to apply to the gear items listed in IDs                                  |
 | Handler                                | A ThermalConverter name       | Yes       | The main handler used to give an item thermal vision.                                         |
 | SightConverter                         | A SightConverter name         | Yes       | The conerter used to give an existing scope thermal vision.                                   |
