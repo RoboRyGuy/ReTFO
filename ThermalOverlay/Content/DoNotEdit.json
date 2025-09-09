@@ -1,8 +1,8 @@
 ﻿{
   "ConfigEntries": [
     {
-      "ConfigName": "A sample config",
-      "IDs": [ 123456789 ],
+      "ConfigName": "A sample config, with all params",
+      "Items": [ "NotAGearItem" ],
       "Config": {
         "Handler": "Auto",
         "SightConverter": "Standard",
@@ -61,10 +61,11 @@
     },
     {
       "ConfigName": "Scoped Weapons Touch-Up",
-      "IDs": [ 
-        2239238113, 2032048212, 3784403034, 1545470151, 3033670255, 
-        681956452,  2558984298, 2803776542, 34568288,   1613586522, 
-        2017652782, 4030486016
+      "Items": [
+        "Omneco exp1", "Köning PR 11", "Van Auken CAB F4", "Hanaway PSB",
+        "Malatack LX", "TechMan Klust 6", "Drekker Pres MOD 556", "Omneco LRG",
+        "Drekker CLR", "Accrat Golok DA", "Buckland s870", "Accrat ND6",
+        "Bataldo J 300"
       ],
       "Config": {
         "MaterialConfig": {
@@ -75,8 +76,7 @@
     },
     {
       "ConfigName": "Slug Shotgun Touch-Up",
-      "Comment": "I've seen both these IDs be used. It's strange.",
-      "IDs": [ 12818085, 3503708704 ],
+      "Items": [ "Bataldo Custom K330" ],
       "Config": {
         "Handler": "Auto(OverlayOnly)",
         "OverlayConfig": {
@@ -88,16 +88,17 @@
     },
     {
       "ConfigName": "Combat Shotgun Touch-Up",
-      "IDs": [ 8319008 ],
+      "Items": [ "Buckland AF6" ],
       "Config": {
         "MaterialConfig": {
-          "AlphaMult": 5.0
+          "AlphaMult": 1.5,
+          "SightDirt": 0
         }
       }
     },
     {
       "ConfigName": "Spear",
-      "IDs": [ 10813500, 15728805 ],
+      "Items": [ "MACO Drillhead", "IsoCo Stinger" ],
       "Config": {
         "OverlayConfig": {
           "MeshGenerator": "Plane",

@@ -21,20 +21,20 @@ public class UserConfigs
     private readonly ConfigEntry<string> _enabledGear;
 
     // Stores processed enabledGear value
-    private HashSet<uint> _enabledGearSet = new();
+    private HashSet<string> _enabledGearSet = new(new ConfigManager.CaselessComparer());
 
     // Hash to ensure enabledGear hasn't changed
     private int _enabledGearHash = 0;
 
     // List of gear that users want converted to thermals
-    public HashSet<uint> EnabledGear
+    public HashSet<string> EnabledGear
     {
         get
         {
             if (_enabledGearHash != _enabledGear.Value.GetHashCode())
             {
                 _enabledGearSet.Clear();
-                _enabledGearSet = _enabledGear.Value.Split(',').Where(s => s.Length > 0).Select(s => uint.Parse(s.Trim())).ToHashSet();
+                _enabledGearSet = _enabledGear.Value.Split(',').Where(s => s.Length > 0).Select(s => s.Trim()).ToHashSet();
                 _enabledGearHash = _enabledGear.Value.GetHashCode();
             }
             return _enabledGearSet;
@@ -68,8 +68,8 @@ public class UserConfigs
             new ConfigDefinition("Conversion", "Enabled Gear"),
             string.Empty,
             new ConfigDescription(String.Join("\n", Enumerable.Concat(
-                Enumerable.Repeat("Which gear items to convert, by PlayerOfflineGear Persistent ID.\nMust be a comma-separated list of positive numbers.\nIDs for reference: ", 1),
-                manager.OfflineGearNames.Select(p => $" - {p.Key.ToString()} - {p.Value}")
+                Enumerable.Repeat("Which gear items to convert, by PlayerOfflineGear Persistent ID.\nMust be a comma-separated list of item names.\nName reference: ", 1),
+                manager.ItemNames.Select(p => $" - {p}")
             )))
         );
         if (!EnableEverything && EnabledGear.Count == 0)

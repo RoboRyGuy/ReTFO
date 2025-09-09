@@ -14,6 +14,15 @@ public class SightConverter_Standard : ISightConverter
 {
     public const string Name = "Standard";
 
+    // Vanilla thermal scopes don't have these properties, so we can add them with this
+    public static readonly MaterialConfig ThermalDefaults = new()
+    {
+        MainTex = "red",
+        AlphaMult = 1f,
+        CenterWhenUnscoped = 1f,
+        UncenterWhenScoped = 1f,
+    };
+
     public virtual bool ConvertSight(string? thisName, ConversionContext context)
     {
         // Ensure everything is loaded in
@@ -73,15 +82,15 @@ public class SightConverter_Standard : ISightConverter
         if (context.Renderer == null) // This should never trigger
             throw new NullReferenceException("context.Renderer should not be null here!");
 
-        context.Material = context.Renderer.sharedMaterial;
+        context.Material = context.Renderer.material;
         context.Material.shader = context.Plugin.AssetBundle.ThermalOverlayShader;
-        context.Material.mainTexture = Texture2D.redTexture;
-
-        // Zoom is calculated differently, this estimates the new value
-        context.Material.SetFloat(
-            MaterialConfig.Zoom_Name, 
+        context.Material.SetFloat(  // Zoom is calculated differently
+            MaterialConfig.Zoom_Name,
             Mathf.Clamp(context.Material.GetFloat(MaterialConfig.Zoom_Name) - .5f, 0f, 1f)
         );
+        ThermalDefaults.ApplyAll(context.Material, context);
+        context.Renderer.sharedMaterial = context.Material; // Just to be safe
+
         return true;
     }
 

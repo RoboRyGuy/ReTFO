@@ -4,6 +4,7 @@ using HarmonyLib;
 using ReTFO.ThermalOverlay.Config;
 using ReTFO.ThermalOverlay.Factories;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using UnityEngine;
 
 namespace ReTFO.ThermalOverlay;
@@ -15,7 +16,7 @@ public class Plugin : BasePlugin
     public const string Name = "ThermalOverlay";    // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "1.2.0";          // Plugin version, can be used by System.Version
+    public const string Version = "1.3.0";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;
@@ -65,16 +66,12 @@ public class Plugin : BasePlugin
     // Manges factories (converters, generators, etc)
     public FactoryManager FactoryManager { get; private set; } = new();
 
-    // Function used to get an ID from an item
-    protected Func<ItemEquippable, uint> ItemIDMapper = DefaultIDMapper;
-
-    // Allows mod developers to change the ID mode used by this mod, in the off-case that the checksum isn't unique enough
-    public void ChangeIDMode(Func<ItemEquippable, uint> newMapper, IReadOnlyDictionary<uint, string> IdNames)
+    // Allows mod developers to change the item names listed in the config file's description, for easier configuration
+    public void SetItemNames(ICollection<string> itemNames)
     {
         if (ConfigManager.TryGetUserConfigs(out var _))
-            Log.LogWarning($"Changing ID mode after config file is generated; the config description will be inaccurate!");
-        ItemIDMapper = newMapper;
-        ConfigManager.OfflineGearNames = IdNames;
+            Log.LogWarning($"Changing item names after config file is generated; the config description will be inaccurate!");
+        ConfigManager.ItemNames = itemNames;
     }
 
     // Callback for an item that was created, but isn't fully spawned in yet.
@@ -92,11 +89,11 @@ public class Plugin : BasePlugin
 
     // Apply a config immediately
     public void ApplyConfig(ItemEquippable item, bool isLocal) 
-    { 
-        uint id = ItemIDMapper(item);
-        if (!ConfigManager.IsIDEnabled(id)) return;
+    {
+        string itemName = item.GearIDRange.PublicGearName;
+        if (!ConfigManager.IsIDEnabled(itemName)) return;
 
-        ThermalConfig? config = ConfigManager.GetConfig(id);
+        ThermalConfig? config = ConfigManager.GetConfig(itemName);
         ConversionContext context = new(this, item, config);
         FactoryManager.RunThermalConverter(config?.Handler, context);
 
@@ -109,9 +106,6 @@ public class Plugin : BasePlugin
             }
         }
     }
-
-    public static uint DefaultIDMapper(ItemEquippable item)
-        => item.GearIDRange.GetChecksum();
 
     /*
     #region dumb
