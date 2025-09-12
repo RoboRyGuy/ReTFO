@@ -72,7 +72,7 @@ public class UserConfigs
                 manager.ItemNames.Select(p => $" - {p}")
             )))
         );
-        if (!EnableEverything && EnabledGear.Count == 0)
+        if ((!EnableEverything) && (EnabledGear.Count == 0) && ((!AllowExternalConversions) || (!manager.HasRequestedItems())))
             Plugin.TryGet()?.Log.LogWarning("No weapons have been configured to use thermal overlays; did you forget to configure the mod?");
 
         _makeGunsCold = config.Bind<bool>(
