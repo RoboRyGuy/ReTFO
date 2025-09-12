@@ -4,7 +4,6 @@ using HarmonyLib;
 using ReTFO.ThermalOverlay.Config;
 using ReTFO.ThermalOverlay.Factories;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using UnityEngine;
 
 namespace ReTFO.ThermalOverlay;
@@ -16,7 +15,7 @@ public class Plugin : BasePlugin
     public const string Name = "ThermalOverlay";    // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "1.3.0";          // Plugin version, can be used by System.Version
+    public const string Version = "1.3.1";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;

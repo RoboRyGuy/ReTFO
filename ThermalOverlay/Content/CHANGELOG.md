@@ -28,7 +28,9 @@ Initial full release of ThermalOverlay
  - Quaternions now serialize correctly
  - Fixed version number on the Plugin class
 
- ### Version 1.3.0
+## Version 1.3.0
+
+ **NOTICE:** I made a mistake submitting this version. Thunderstore will call it 1.2.1; it is actually version 1.3.0
 
  - Changed configs to use item names instead of using checksums. This is to improve consistency, but will 
    **likely cause issues** during updates. 
@@ -40,3 +42,7 @@ Initial full release of ThermalOverlay
  - If you have custom configs, change it to use *Items* instead of *IDs*, and replace the ID numbers with the item names.
    Item names can be found in the config file; they're the gun's actual name, ie "Omenco exp1".
 
+### Version 1.3.1
+
+ - Fixed default config file not being generated
+ - Added warning about version 1.3.0 being misnamed
