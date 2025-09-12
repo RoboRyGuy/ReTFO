@@ -55,11 +55,10 @@ public class TextureGenerator_Bloom : ITextureGenerator
 
         float halfSize = .5f * (size - 1f);
         float inverseSize = 1f / halfSize;
+        
         Texture2D texture = new(size, size, TextureFormat.RHalf, false);
-        if (circle)
-            texture.name = "Bloom - Circle";
-        else
-            texture.name = "Bloom - Square";
+        if (circle) texture.name = "Bloom - Circle";
+        else        texture.name = "Bloom - Square";
 
         for (int x = 0; x < size; x++)
         {

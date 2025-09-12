@@ -90,11 +90,12 @@ Shader "Unlit/HolographicSight_ThermalOverlay" {
 		_ZeroOffset ("Zeroing", Range(-1, 1)) = 0
 	}
 	SubShader {
-		Tags { "IGNOREPROJECTOR" = "true" "QUEUE" = "Transparent" "RenderType" = "Transparent" }
+		Tags { "IGNOREPROJECTOR"="True" "QUEUE"="Transparent" "RenderType"="Transparent" }
 		Pass {
-			Tags { "IGNOREPROJECTOR" = "true" "QUEUE" = "Transparent" "RenderType" = "Transparent" }
+			Tags { "IGNOREPROJECTOR"="True" "QUEUE"="Transparent" "RenderType"="Transparent" }
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
+            Cull Back
             
             CGPROGRAM
             #pragma multi_compile __ EDITOR_RENDERING_ENABLED
