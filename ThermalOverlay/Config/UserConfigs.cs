@@ -82,6 +82,7 @@ public class UserConfigs
                 "When thermal overlays are added to guns, they can highlight the gun they're attached to, since "
                 + "player weapons are considered warm. This often looks weird. This setting makes local guns cold, "
                 + "which prevents the issue while minimally impacting gameplay"
-            ));
+            )
+        );
     }
 }
