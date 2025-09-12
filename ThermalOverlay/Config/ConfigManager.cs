@@ -1,6 +1,7 @@
 ﻿
 using BepInEx;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -53,10 +54,11 @@ public class ConfigManager
     // Just-in-Time init, runs all configs at the last possible moment and only once absolutely necessary
     private UserConfigs JIT_Init()
     {
-        string configFilePath = Path.Combine(Path.GetDirectoryName(Paths.PluginPath) ?? "", "GameData", "ThermalOverlay", "ThermalOverlayConfig.json");
+        string configFilePath = Path.Combine(Path.GetDirectoryName(Paths.PluginPath) ?? ".", "GameData", "ThermalOverlay", "ThermalOverlayConfig.json");
         if (!File.Exists(configFilePath))
         {
-            string defaultConfigPath = Path.Combine(Paths.PluginPath, "ThermalOverlay", "DoNotEdit.json");
+            string thisDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".";
+            string defaultConfigPath = Path.Combine(thisDirectory, "DoNotEdit.json");
             if (File.Exists(defaultConfigPath))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(configFilePath) ?? ".");
