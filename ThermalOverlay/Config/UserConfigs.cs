@@ -72,7 +72,7 @@ public class UserConfigs
                 manager.ItemNames.Select(p => $" - {p}")
             )))
         );
-        if (!EnableEverything && EnabledGear.Count == 0)
+        if ((!EnableEverything) && (EnabledGear.Count == 0) && ((!AllowExternalConversions) || (!manager.HasRequestedItems())))
             Plugin.TryGet()?.Log.LogWarning("No weapons have been configured to use thermal overlays; did you forget to configure the mod?");
 
         _makeGunsCold = config.Bind<bool>(
@@ -82,6 +82,7 @@ public class UserConfigs
                 "When thermal overlays are added to guns, they can highlight the gun they're attached to, since "
                 + "player weapons are considered warm. This often looks weird. This setting makes local guns cold, "
                 + "which prevents the issue while minimally impacting gameplay"
-            ));
+            )
+        );
     }
 }

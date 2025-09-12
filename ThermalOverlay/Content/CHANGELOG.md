@@ -46,3 +46,5 @@ Initial full release of ThermalOverlay
 
  - Fixed default config file not being generated
  - Added warning about version 1.3.0 being misnamed
+ - Changed shape of diamond mesh to remove bugged halo effect
+ - Fixed a minor bug where FactoryManager.BaseName could incorrectly return the parameter list if only passed params and not a name

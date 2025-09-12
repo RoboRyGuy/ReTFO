@@ -83,15 +83,19 @@ public class ConfigManager
     // IDs that are enabled programmatically
     private HashSet<string> _requestedItems = new(new CaselessComparer());
 
-    // Request an ID be enabled for thermal conversion
+    // Request an item be enabled for thermal conversion
     public void EnableThermalItem(string item)
         => _requestedItems.Add(item);
 
-    // Request IDs be enabled for thermal conversion
+    // Request items be enabled for thermal conversion
     public void EnableThermalItems(IEnumerable<string> items)
         => _requestedItems.UnionWith(items);
 
-    // Returns true if an ID is enabled, false otherwise
+    // Returns true if any items are registered in the requested items
+    public bool HasRequestedItems()
+        =>  _requestedItems.Any();
+
+    // Returns true if an item is enabled, false otherwise
     public bool IsIDEnabled(string itemName)
     {
         if (UserConfigs.EnableEverything) return true;

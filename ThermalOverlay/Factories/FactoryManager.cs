@@ -41,12 +41,12 @@ public class FactoryManager
     }
 
     // A small helper which identifies generator/converter names
-    [return: NotNullIfNotNullAttribute(nameof(name))]
     public static string? BaseName(string? name)
     {
         int index = name?.IndexOf('(') ?? -1;
-        if (index > 0) return name!.Substring(0, index);
-        else return name;
+        if (index == -1) return name;
+        else if (index == 0) return null;
+        else return name!.Substring(0, index);
     }
 
     // A helper which identifies parameters in a name
