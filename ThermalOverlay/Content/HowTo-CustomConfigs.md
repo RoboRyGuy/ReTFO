@@ -186,7 +186,7 @@ Here is a quick reference of the converters and generators available by default.
 | MaterialGenerator | PR         | Creates a material copying the PR's thermal stats                                                                 | PR([Transparent/Opaque])                                                                    |
 | MaterialGenerator | Load       | Loads a material config from a json file and uses that. You can use the refence below to define one               | Load([SubDirectory1], [SubDirectory2], ..., FileName)                                       |
 | MeshGenerator     | Plane      | Creates a small plane in the XY axis                                                                              | Plane([scale: float])                                                                       |
-| MeshGenerator     | Diamond    | Creates a cube rotated so its corners lie in the axises                                                           | Diamond([scale: float])                                                                     |
+| MeshGenerator     | Diamond    | Creates diamond with its center pulled toward the camera (negative z axis)                                        | Diamond([scale: float], [zscale: float])                                                    |
 | TextureGenerator  | black      | Uses Unity's Texture2D.black texture                                                                              | black                                                                                       |
 | TextureGenerator  | gray       | Uses Unity's Texture2D.gray texture                                                                               | gray                                                                                        |
 | TextureGenerator  | linearGray | Uses Unity's Texture2D.linearGray texture                                                                         | linearGray                                                                                  |
@@ -233,8 +233,8 @@ inherited from the standard overlay is only slightly red, in which case you can 
 ## Overlays
 
 Generated overlays are the catchall which allows guns without scopes to act as thermal weapons. The default
-for this mod is to generate a small cube, orient it as a diamond (corners on the main axises) and put a "Bloom" 
-transparency mask on it (In this case, Bloom is a circle which is pure bright in the center and fades to black at the edges).
+for this mod is to use the diamond mesh generator and put a "Bloom" transparency mask on it (In this case, 
+Bloom is a circle which is pure bright in the center and fades to black at the edges).
 The ThermalOverlay shader is then put on this mesh, and the mesh is centered on the sights, resulting in a 
 small circle of thermal vision around the sights when aiming. 
 It works pretty well for vanilla weapons with iron sights, but isn't that great when your gun has an actual scope, as the
