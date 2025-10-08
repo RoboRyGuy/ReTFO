@@ -21,14 +21,13 @@ public struct MaterialConfig
     [JsonIgnore]
     public List<string> Keywords = new(1);
 
-    // Applies all property values, including default values, overriding all existing values
-    public void ApplyAllWithDefaults(Material mat, ConversionContext context)
+    // Applies all property values, including default values, overriding all existing values.
+    public void ApplyAllWithDefaults(Material mat, ConversionContext context, bool skipTextures=false)
     {
         mat.SetFloat(Zoom_Name, Zoom.Value);
         mat.SetFloat(RatioAdjust_Name, RatioAdjust.Value);
         mat.SetFloat(ScreenIntensity_Name, ScreenIntensity.Value);
         mat.SetFloat(OffAngleFade_Name, OffAngleFade.Value);
-        mat.SetTexture(HeatTex_Name, context.Factory.RunTextureGenerator(HeatTex.Value, context));
         mat.SetFloat(HeatFalloff_Name, HeatFalloff.Value);
         mat.SetFloat(FogFalloff_Name, FogFalloff.Value);
         mat.SetFloat(AlphaMult_Name, AlphaMult.Value);
@@ -38,10 +37,8 @@ public struct MaterialConfig
         mat.SetFloat(AmbientTemp_Name, AmbientTemp.Value);
         mat.SetFloat(OcclusionHeat_Name, OcclusionHeat.Value);
         mat.SetFloat(BodyOcclusionHeat_Name, BodyOcclusionHeat.Value);
-        mat.SetTexture(DistortionTex_Name, context.Factory.RunTextureGenerator(DistortionTex.Value, context));
         mat.SetFloat(DistortionScale_Name, DistortionScale.Value);
         mat.SetFloat(DistortionSpeed_Name, DistortionSpeed.Value);
-        mat.SetTexture(DistortionSignal_Name, context.Factory.RunTextureGenerator(DistortionSignal.Value, context));
         mat.SetFloat(DistortionSignalSpeed_Name, DistortionSignalSpeed.Value);
         mat.SetFloat(DistortionMin_Name, DistortionMin.Value);
         mat.SetFloat(DistortionMax_Name, DistortionMax.Value);
@@ -53,10 +50,6 @@ public struct MaterialConfig
         mat.SetVector(ScopeCenter_Name, ScopeCenter.Value);
         mat.SetFloat(CenterWhenUnscoped_Name, CenterWhenUnscoped.Value);
         mat.SetFloat(UncenterWhenScoped_Name, UncenterWhenScoped.Value);
-        mat.SetTexture(MainTex_Name, context.Factory.RunTextureGenerator(MainTex.Value, context));
-        mat.SetTexture(ReticuleA_Name, context.Factory.RunTextureGenerator(ReticuleA.Value, context));
-        mat.SetTexture(ReticuleB_Name, context.Factory.RunTextureGenerator(ReticuleB.Value, context));
-        mat.SetTexture(ReticuleC_Name, context.Factory.RunTextureGenerator(ReticuleC.Value, context));
         mat.SetColor(ReticuleColorA_Name, ReticuleColorA.Value);
         mat.SetColor(ReticuleColorB_Name, ReticuleColorB.Value);
         mat.SetColor(ReticuleColorC_Name, ReticuleColorC.Value);
@@ -65,12 +58,24 @@ public struct MaterialConfig
         mat.SetFloat(ProjSize2_Name, ProjSize2.Value);
         mat.SetFloat(ProjSize3_Name, ProjSize3.Value);
 
+        if (!skipTextures)
+        {
+            mat.SetTexture(HeatTex_Name, context.Factory.RunTextureGenerator(HeatTex.Value, context));
+            mat.SetTexture(DistortionTex_Name, context.Factory.RunTextureGenerator(DistortionTex.Value, context));
+            mat.SetTexture(DistortionSignal_Name, context.Factory.RunTextureGenerator(DistortionSignal.Value, context));
+            mat.SetTexture(MainTex_Name, context.Factory.RunTextureGenerator(MainTex.Value, context));
+            mat.SetTexture(ReticuleA_Name, context.Factory.RunTextureGenerator(ReticuleA.Value, context));
+            mat.SetTexture(ReticuleB_Name, context.Factory.RunTextureGenerator(ReticuleB.Value, context));
+            mat.SetTexture(ReticuleC_Name, context.Factory.RunTextureGenerator(ReticuleC.Value, context));
+        }
+
         foreach (string key in Keywords)
             mat.SetKeywordEnabled(key, true);
     }
 
     // Applies all properties and keywords held in this config to the provided material
-    public void ApplyAll(Material mat, ConversionContext context)
+    //  checkTex -> Only apply texture properties if they're not defined. Only textures can be checked due outside limitations
+    public void ApplyAll(Material mat, ConversionContext context, bool checkTex=false)
     {
         foreach (var pair in Properties)
         {
@@ -105,6 +110,7 @@ public struct MaterialConfig
                     continue;
 
                 case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                    if (checkTex && mat.GetTexture(pair.Key) != null) continue;
                     expectedType = typeof(string);
                     string? texture = pair.Value as string;
                     if (texture == null)

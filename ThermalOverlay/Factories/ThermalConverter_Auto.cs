@@ -1,4 +1,5 @@
 ﻿
+using BepInEx.Unity.IL2CPP;
 using ReTFO.ThermalOverlay.Config;
 using ReTFO.ThermalOverlay.Factories;
 using ReTFO.ThermalOverlay.Interfaces;
@@ -90,9 +91,24 @@ public class ThermalConverter_Auto : IThermalConverter
             else
             {
                 FactoryManager.CalcScopeCenter(context);
+                ApplyCleanScope(context);
                 context.Config?.MaterialConfig.ApplyAll(context.Material, context);
             }
         }
         else context.Log.LogWarning($"ThermalConverter_Auto: conversion ended in failure for item \"{context.Item.name}\"");
+    }
+
+    // Checks for the CleanScopes mod and, if it exists, cleans the scope
+    public static void ApplyCleanScope(ConversionContext context)
+    {
+        if (context.Material == null)
+        {
+            context.Log.LogError("Cannot ApplyCleanScope when the scope has no material");
+            return;
+        }
+
+        // This will hit more than just the CleanScopes mod, which is intended
+        if (IL2CPPChainloader.Instance.Plugins.Any(p => p.Key.Contains("CleanScopes")))
+            context.Material.SetFloat(MaterialConfig.SightDirt_Name, 0f);
     }
 }

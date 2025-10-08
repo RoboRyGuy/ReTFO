@@ -15,7 +15,7 @@ public class Plugin : BasePlugin
     public const string Name = "ThermalOverlay";    // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "1.3.1";          // Plugin version, can be used by System.Version
+    public const string Version = "1.3.2";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;
@@ -77,7 +77,7 @@ public class Plugin : BasePlugin
     // Adds a callback to apply configs once it's fully spawned in
     public void OnItemCreated(ItemEquippable item, SNetwork.SNet_Player owner)
     {
-        // This sometimes gets called a second time after the gear is spawned. It's incosistent, so we cut it out
+        // This sometimes gets called a second time after the gear is spawned. It's inconsistent, so we cut it out
         if (item.m_gearSpawnComplete) return;
 
         // Queue config application

@@ -48,3 +48,9 @@ Initial full release of ThermalOverlay
  - Added warning about version 1.3.0 being misnamed
  - Changed shape of diamond mesh to remove bugged halo effect
  - Fixed a minor bug where FactoryManager.BaseName could incorrectly return the parameter list if only passed params and not a name
+
+### Version 1.3.2
+
+ - Fixed inter-mod support by moving thermal shader to the end of the material list (as opposed to the start)
+ - Added CleanScopes support, so dirt defaults to zero when the mod is installed
+ - Improved SightConverter_Standard(Thermal), so that non-thermal scopes can see shadows when converted
