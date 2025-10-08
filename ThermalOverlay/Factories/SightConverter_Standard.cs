@@ -71,7 +71,7 @@ public class SightConverter_Standard : ISightConverter
                 context.Material.mainTexture = context.Factory.RunTextureGenerator("red", context);
             }
 
-            context.Log.LogDebug($"SightConverter_Standard successfully converted sight on item \"{context.Item.name}\"");
+            context.Log.LogDebug($"{thisName ?? "SightConverter_Standard"} successfully converted sight on item \"{context.Item.name}\"");
         }
 
         return isSuccessful;
@@ -81,16 +81,24 @@ public class SightConverter_Standard : ISightConverter
     {
         if (context.Renderer == null) // This should never trigger
             throw new NullReferenceException("context.Renderer should not be null here!");
-
         context.Material = context.Renderer.material;
-        context.Material.shader = context.Plugin.AssetBundle.ThermalOverlayShader;
-        context.Material.SetFloat(  // Zoom is calculated differently
-            MaterialConfig.Zoom_Name,
-            Mathf.Clamp(context.Material.GetFloat(MaterialConfig.Zoom_Name) - .5f, 0f, 1f)
-        );
-        ThermalDefaults.ApplyAll(context.Material, context);
-        context.Renderer.sharedMaterial = context.Material; // Just to be safe
+        bool isNonThermal = (context.Material.GetFloat(MaterialConfig.BodyOcclusionHeat_Name) == 0f)
+            && (context.Material.GetFloat(MaterialConfig.ShadowEnemyHeat_Name) == 0f)
+            && (context.Material.GetFloat(MaterialConfig.ShadowEnemyFresnel_Name) == 0f);
 
+        MaterialConfig conf = MaterialConfig.FromMaterial(context.Material, false);
+        context.Material.shader = context.Plugin.AssetBundle.ThermalOverlayShader;
+        conf.Zoom = Mathf.Clamp(conf.Zoom.Value - .5f, 0f, 1f);
+        conf.ApplyAllWithDefaults(context.Material, context, true);
+        ThermalDefaults.ApplyAll(context.Material, context);
+
+        // When doing conversions of non-PR and non-PDW weapons, lets them see shadows
+        if (isNonThermal)
+        {
+            context.Material.SetFloat(MaterialConfig.ShadowEnemyFresnel_Name, 50f);
+            context.Material.SetFloat(MaterialConfig.ShadowEnemyHeat_Name, .6f);
+            context.Material.SetFloat(MaterialConfig.BodyOcclusionHeat_Name, 1.0f);
+        }
         return true;
     }
 
@@ -106,7 +114,7 @@ public class SightConverter_Standard : ISightConverter
         foreach (string keyword in context.Renderer.sharedMaterial.GetShaderKeywords())
             context.Material.SetKeywordEnabled(keyword, true);
         
-        context.Renderer.sharedMaterials = Enumerable.Prepend(context.Renderer.sharedMaterials, context.Material).ToArray();
+        context.Renderer.sharedMaterials = Enumerable.Append(context.Renderer.sharedMaterials, context.Material).ToArray();
         return true;
     }
 
