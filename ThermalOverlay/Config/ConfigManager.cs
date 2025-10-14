@@ -35,7 +35,7 @@ public class ConfigManager
                 GameData.PlayerOfflineGearDataBlock.GetAllBlocks()
                 .Select(b => Regex.Match(b.GearJSON, "\"Name\":\"([^\"]*)\""))
                 .Where(m => m.Success)
-                .Select(m => m.Captures.First().Value)
+                .Select(m => m.Groups[1].Value)
                 .ToList();
         }
         internal set { _itemNames = value; }
