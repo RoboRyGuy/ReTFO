@@ -5,6 +5,8 @@ VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThermalOverlay", "ThermalOverlay\ThermalOverlay.csproj", "{166D1A95-CD37-75E6-7283-820B088772D9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ComponentInjector", "ComponentInjector\ComponentInjector.csproj", "{87C74794-2104-481D-AF12-12F6644F0D39}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,18 @@ Global
 		{166D1A95-CD37-75E6-7283-820B088772D9}.Release|x64.Build.0 = Release|Any CPU
 		{166D1A95-CD37-75E6-7283-820B088772D9}.Release|x86.ActiveCfg = Release|Any CPU
 		{166D1A95-CD37-75E6-7283-820B088772D9}.Release|x86.Build.0 = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|x64.Build.0 = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Debug|x86.Build.0 = Debug|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|x64.ActiveCfg = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|x64.Build.0 = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|x86.ActiveCfg = Release|Any CPU
+		{87C74794-2104-481D-AF12-12F6644F0D39}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
