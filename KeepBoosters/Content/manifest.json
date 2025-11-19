@@ -1,6 +1,6 @@
 ﻿{
   "name": "KeepBoosters",
-  "version_number": "1.0.0",
+  "version_number": "1.0.1",
   "website_url": "https://github.com/RoboRyGuy/ReTFO",
   "description": "You will no longer consume boosters. No other effects.",
   "dependencies": [ ]
