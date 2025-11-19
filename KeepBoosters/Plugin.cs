@@ -11,7 +11,7 @@ namespace ReTFO.KeepBoosters;
 [BepInProcess("GTFO.exe")]
 public class Plugin : BasePlugin
 {
-    public const string Name = "KeepBopsters";      // Plugin name
+    public const string Name = "KeepBoosters";      // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
     public const string Version = "1.0.0";          // Plugin version, can be used by System.Version
