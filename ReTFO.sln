@@ -12,6 +12,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoSpy", "GeoSpy\GeoSpy.csproj", "{58C73896-4DAC-4730-8E30-92070617FCF2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DamageOverhaulCore", "DamageOverhaulCore\DamageOverhaulCore.csproj", "{E424A2D8-FD40-126C-60AB-03707B14C93E}"
+	ProjectSection(ProjectDependencies) = postProject
+		{87C74794-2104-481D-AF12-12F6644F0D39} = {87C74794-2104-481D-AF12-12F6644F0D39}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

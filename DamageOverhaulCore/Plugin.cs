@@ -1,14 +1,23 @@
 ﻿using BepInEx;
+using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
+using Enemies;
+using GameData;
+using HarmonyLib;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.Injection;
+using Il2CppInterop.Runtime.InteropTypes;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using Il2CppInterop.Runtime.Runtime;
+using Il2CppInterop.Runtime.Runtime.VersionSpecific.MethodInfo;
 using ReTFO.DamageOverhaulCore.Config;
 using ReTFO.DamageOverhaulCore.Data;
-using ReTFO.DamageOverhaulCore.HarmonyPatches;
-using HarmonyLib;
+using SNetwork;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameData;
-using BepInEx.Logging;
+using UnityEngine;
 
 namespace ReTFO.DamageOverhaulCore;
 
@@ -21,6 +30,7 @@ namespace ReTFO.DamageOverhaulCore;
 [BepInPlugin(GUID, Name, Version)]
 [BepInProcess("GTFO.exe")]
 [BepInDependency("com.dak.MTFO")]
+[BepInDependency(ComponentInjector.Plugin.GUID)]
 public class Plugin : BasePlugin
 {
     public const string Name = "DamageOverhaulCore";    // Plugin name
@@ -51,9 +61,120 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         _plugin = this;
-        harmony.PatchAll(typeof(DamagePatch));
+
+        harmony.PatchAll(typeof(Plugin));
+        //harmony.PatchAll(typeof(DamagePatch));
         //harmony.PatchAll(typeof(DamageReporter));
+
+        ClassInjector.RegisterTypeInIl2Cpp<DamExt_EnemyDamageBase>();
+        ClassInjector.RegisterTypeInIl2Cpp<DamExt_AntiGCHelper>();
+        ClassInjector.RegisterTypeInIl2Cpp<DamExt_EnemyDamageLimb>();
+
+        ApplyNativeHook<SNet_ReplicationManager<pEnemySpawnData, EnemyReplicator>, TwoParamR>(
+            nameof(SNet_ReplicationManager<pEnemySpawnData, EnemyReplicator>.GetInstanceReplicator), typeof(EnemyReplicator).FullName!, new string[] { typeof(pEnemySpawnData).FullName!, typeof(GameObject).FullName! },
+            new_GetInstanceReplicator, out old_GetInstanceReplicator
+        );
+
+        MethodLogger.AddMethod<EnemyAgent>(nameof(EnemyAgent.Setup));
+        MethodLogger.AddMethod<EnemyAllocator>(nameof(EnemyAllocator.SpawnEnemy));
+        MethodLogger.AddMethod<EnemyAllocator>(nameof(EnemyAllocator.OnEnemySpawned));
+        MethodLogger.AddMethod<EnemyAllocator>(nameof(EnemyAllocator.GetEnemyPrefabs));
+        MethodLogger.AddMethod<EnemyAllocator.EnemyReplicationManager>(nameof(EnemyAllocator.EnemyReplicationManager.OnSpawn));
+        MethodLogger.AddMethod<EnemySync>(nameof(EnemySync.OnSpawn));
+        MethodLogger.AddMethod<Dam_EnemyDamageBase>(nameof(Dam_EnemyDamageBase.Setup));
+        MethodLogger.AddMethod<Dam_EnemyDamageLimb>(nameof(Dam_EnemyDamageLimb.Setup));
+        MethodLogger.AddMethod<EnemyPrefabManager>(nameof(EnemyPrefabManager.GenerateAllEnemyPrefabs));
+
+        EnemyPrefabManager.add_OnEnemiesGenerated(new ComponentInjector.Il2CppAction(CleanupPrefabs));
+
+        harmony.PatchAll(typeof(MethodLogger));
+
+        ComponentInjector.Plugin ciPlugin = ComponentInjector.Plugin.Get();
+        ciPlugin.InjectComponent<Dam_EnemyDamageBase, DamExt_EnemyDamageBase>();
+        //ciPlugin.InjectComponent<Dam_EnemyDamageLimb, DamExt_EnemyDamageLimb>();
+
         Log.LogInfo($"{GUID} is loaded!");
+    }
+
+    static Cache? cache = null;
+
+    // Remove references on prefabs; they'll get garbage-collected anyway...
+    internal static void CleanupPrefabs()
+    {
+        Get().Log.LogWarning($"{Indent}CleanupPrefabs");
+
+        foreach (var prefab in EnemyPrefabManager.Current.m_enemyPrefabs.Values)
+        {
+            Dam_EnemyDamageBase dam = prefab.GetComponent<Dam_EnemyDamageBase>();
+            DamExt_AntiGCHelper helper = prefab.AddComponent<DamExt_AntiGCHelper>();
+            helper.DamageLimbs = dam.DamageLimbs;
+            helper.DamageLimbsWithDestruction = dam.DamageLimbsWithDestruction;
+            helper.GlueTargetComps = dam.GlueTargetComps;
+        }
+
+        Get().Log.LogWarning($"{DeIndent}CleanupPrefabs");
+    }
+
+    [HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.Setup)), HarmonyPrefix]
+    internal static void PreDamageSetup(Dam_EnemyDamageBase __instance)
+    {
+        foreach (var limb in __instance.gameObject.GetComponentsInChildren<Dam_EnemyDamageLimb>())
+        {
+            if (__instance.ObjectClass == Il2CppClassPointerStore<DamExt_EnemyDamageBase>.NativeClassPtr)
+                limb.SetBaseDamagable(__instance);
+            else
+                Get().Log.LogWarning("Somehow added non-DamExt component!?");
+        }
+    }
+
+    [HarmonyPatch(typeof(Dam_EnemyDamageBase), nameof(Dam_EnemyDamageBase.Setup)), HarmonyPostfix]
+    internal static void PostDamageSetup(Dam_EnemyDamageBase __instance)
+    {
+        DamExt_AntiGCHelper helper        = __instance.gameObject.GetComponent<DamExt_AntiGCHelper>();
+        helper.DamageLimbs                = __instance.DamageLimbs                ;
+        helper.DamageLimbsWithDestruction = __instance.DamageLimbsWithDestruction ;
+        helper.GlueTargetComps            = __instance.GlueTargetComps            ;
+    }
+
+    internal static int indent = 0;
+    internal static string Indent => new string(' ', indent++) + "->";
+    internal static string DeIndent => new string(' ', --indent) + "--";
+    internal static string Tab => new string(' ', indent) + " - ";
+
+    public static unsafe BepInEx.Unity.IL2CPP.Hook.INativeDetour ApplyNativeHook<TClass, TDelegate>(string methodName, string returnType, string[] paramTypes, TDelegate to, out TDelegate original)
+       where TClass : Il2CppSystem.Object
+       where TDelegate : Delegate
+    {
+        IntPtr classPtr = Il2CppClassPointerStore<TClass>.NativeClassPtr;
+        if (classPtr == IntPtr.Zero) throw new ArgumentException($"{typeof(TClass).Name} does not exist in il2cpp domain");
+
+        IntPtr methodPtr = IL2CPP.GetIl2CppMethod(classPtr, false, methodName, returnType, paramTypes);
+        if (methodPtr == IntPtr.Zero) throw new ArgumentException($"\"{returnType} {typeof(TClass).Name}.{methodName}({string.Join(", ", paramTypes)})\" does not exist in the il2cpp domain");
+
+        Il2CppSystem.Reflection.MethodInfo methodInfo = new(IL2CPP.il2cpp_method_get_object(methodPtr, classPtr));
+        INativeMethodInfoStruct il2cppMethodInfo = UnityVersionHandler.Wrap((Il2CppMethodInfo*)IL2CPP.il2cpp_method_get_from_reflection(methodInfo.Pointer));
+
+        return BepInEx.Unity.IL2CPP.Hook.INativeDetour.CreateAndApply(il2cppMethodInfo.MethodPointer, to, out original);
+    }
+    public unsafe delegate IntPtr   TwoParamR(IntPtr self, IntPtr _1, IntPtr _2,            Il2CppMethodInfo* methodInfo);
+    private static       TwoParamR? old_GetInstanceReplicator = null;
+    private static unsafe TwoParamR new_GetInstanceReplicator = new_GetInstanceReplicator_Impl;
+    private static unsafe IntPtr new_GetInstanceReplicator_Impl(IntPtr self, IntPtr spawnData, IntPtr outGameObject, Il2CppMethodInfo* methodInfo)
+    {
+        Get().Log.LogWarning($"{Indent}GetInstanceReplicator");
+
+        EnemyAllocator.EnemyReplicationManager Manager = new(self);
+        pEnemySpawnData* SpawnData = (pEnemySpawnData*)spawnData;
+
+        GameObject prefab = Manager.m_prefabs[SpawnData->replicationData.PrefabID];
+        Dam_EnemyDamageBase dam = prefab.GetComponent<Dam_EnemyDamageBase>();
+        DamExt_AntiGCHelper helper = prefab.GetComponent<DamExt_AntiGCHelper>();
+
+        if (old_GetInstanceReplicator == null) throw new NullReferenceException();
+        IntPtr result = old_GetInstanceReplicator.Invoke(self, spawnData, outGameObject, methodInfo);
+
+        Get().Log.LogWarning($"{DeIndent}GetInstanceReplicator");
+        return result;
     }
 
     public override bool Unload()
@@ -433,4 +554,36 @@ public class Plugin : BasePlugin
         return result;
     }
 
+}
+
+public static class MethodLogger
+{
+    public static List<MethodBase> methods = new List<MethodBase>();
+    public static void AddMethod<T>(string name) where T : Il2CppSystem.Object => methods.AddRange(typeof(T).GetMethods().Where(m => m.Name == name).Where(m => !m.IsGenericMethod));
+    [HarmonyTargetMethods] public static IEnumerable<MethodBase> TargetMethods() => methods.AsEnumerable<MethodBase>();
+    
+    [HarmonyPrefix]
+    public static void Prefix(MethodBase __originalMethod)
+    {
+        Plugin.Get().Log.LogWarning($"{Plugin.Indent}{__originalMethod.DeclaringType}.{__originalMethod.Name}");
+    }
+
+    [HarmonyPostfix]
+    public static void Postfix(MethodBase __originalMethod)
+    {
+        Plugin.Get().Log.LogWarning($"{Plugin.DeIndent}{__originalMethod.DeclaringType}.{__originalMethod.Name}");
+    }
+}
+
+// For some reason, three references on Dam_EnemyDamageBase will be garbage collected no matter what I do
+// This MonoBehaviour gets added on setup to hold the references for it, so it doesn't get collected
+public class DamExt_AntiGCHelper : MonoBehaviour
+{
+    public DamExt_AntiGCHelper(IntPtr ptr) : base(ptr) { }
+    public DamExt_AntiGCHelper() : base(ClassInjector.DerivedConstructorPointer<DamExt_AntiGCHelper>())
+    { ClassInjector.DerivedConstructorBody(this); }
+
+    public Il2CppReferenceArray<Dam_EnemyDamageLimb>? DamageLimbs { get; set; } = null;
+    public Il2CppSystem.Collections.Generic.List<Dam_EnemyDamageLimb>? DamageLimbsWithDestruction { get; set; } = null;
+    public Il2CppSystem.Collections.Generic.List<MonoBehaviour>? GlueTargetComps { get; set; } = null;
 }

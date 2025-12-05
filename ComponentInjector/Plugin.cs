@@ -1,9 +1,12 @@
 ﻿using Agents;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using FluffyUnderware.DevTools.Extensions;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Injection;
+using Il2CppInterop.Runtime.Runtime;
+using Steamworks;
 using System.Diagnostics.CodeAnalysis;
 using UnityEngine;
 
@@ -40,8 +43,15 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         _plugin = this;
+        
+        ClassInjector.RegisterTypeInIl2Cpp<Il2CppAction>();
         harmony.PatchAll(GetType());
-        harmony.PatchAll(typeof(LoadPatches));
+        harmony.PatchAll(typeof(Patches));
+        
+        //AssetShards.AssetShardManager.add_OnEnemyAssetsLoaded(new Il2CppAction(PostAssetsLoaded));
+        //AssetShards.AssetShardManager.add_OnSharedAsssetLoaded(new Il2CppAction(PostAssetsLoaded));
+        //AssetShards.AssetShardManager.add_OnStartupAssetsLoaded(new Il2CppAction(PostAssetsLoaded));
+        
         Log.LogInfo($"{GUID} is loaded!");
     }
 
@@ -88,36 +98,278 @@ public class Plugin : BasePlugin
     // Gets all type mappings
     public IReadOnlyDictionary<IntPtr, Il2CppSystem.Type> InjectedComponents => _injectedComponents;
 
-    // Try to replace a component with the injected variant. Returns true if replaced, false otherwise
-    public bool ReplaceComponent(MonoBehaviour comp)
+    // Callback for when assets are loaded
+    private void PostAssetsLoaded()
+    {
+        foreach (var manifest in AssetShards.AssetShardManager.s_loadedManifests.Values)
+        {
+            foreach (var obj in manifest.Assets.Values)
+            {
+                GameObject? go = obj?.TryCast<GameObject>();
+                if (go == null) continue;
+
+                foreach (MonoBehaviour mo in go.GetComponentsInChildren<MonoBehaviour>())
+                    TryReplaceComponent(mo);
+            }
+        }
+    }
+
+    // Try to replace a component with its injected variant. Returns true if replaced, false otherwise
+    public bool TryReplaceComponent(MonoBehaviour comp)
     {
         if (!_injectedComponents.TryGetValue(comp.GetIl2CppType().Pointer, out Il2CppSystem.Type? targetType))
             return false;
+        else
+            Log.LogDebug($"Replacing instance of {comp.GetIl2CppType().Name} on {comp.name} with {targetType.Name}");
 
-        MonoBehaviour newComp = comp.gameObject.AddComponent(targetType).TryCast<MonoBehaviour>() 
+        GameObject go = comp.gameObject;
+        MonoBehaviour newComp = go.AddComponent(targetType).TryCast<MonoBehaviour>()
             ?? throw new NullReferenceException($"Failed to add object of type \"{targetType.Name}\" to GameObject");
+        //newComp.hideFlags = HideFlags.HideAndDontSave;
 
-        CopyFields(comp.GetIl2CppType(), comp, newComp);
+        //CopyProperties(comp, newComp);
+        CopyFields(comp, newComp);
+        ReplaceReferences(comp.gameObject, new Dictionary<IntPtr, Component>() { { comp.Pointer, newComp } });
+
         GameObject.Destroy(comp);
         return true;
     }
 
-    // Recursive field copy, stops just before copying MonoBehaviour fields
-    private static void CopyFields(Il2CppSystem.Type? type, MonoBehaviour source, MonoBehaviour dest)
+    // Takes a UnityObject and attempts all injections on it. If an injection is successful, a new replacement object is generated,
+    //  which is returned via out; this replacement must be used instead of the original object
+    public bool TryReplace(UnityEngine.Object? obj, [NotNullWhen(true)] out UnityEngine.Object? result)
     {
-        if (type == null || type.ObjectClass == Il2CppClassPointerStore<MonoBehaviour>.NativeClassPtr)
-            return;
+        result = null;
 
-        var bf = 0
-            | Il2CppSystem.Reflection.BindingFlags.Public
-            | Il2CppSystem.Reflection.BindingFlags.NonPublic
-            | Il2CppSystem.Reflection.BindingFlags.Instance
+        GameObject? go = obj?.TryCast<GameObject>();
+        if (go == null) return false;
+
+        bool needsReplacement = false;
+        foreach (var comp in go.GetComponentsInChildren<MonoBehaviour>())
+            needsReplacement= needsReplacement|| _injectedComponents.ContainsKey(comp.GetIl2CppType().Pointer);
+        if (!needsReplacement) return false;
+
+        Dictionary<IntPtr, Component> pairs = new();
+        GameObject resultGo = GetNewGameObject(go, ref pairs);
+        ReplaceReferences(resultGo, pairs);
+        result = resultGo;
+        return true;
+    }
+
+    // Recursive GameObject generation
+    private GameObject GetNewGameObject(GameObject go, ref Dictionary<IntPtr, Component> pairs)
+    {
+        GameObject resultGo = new(go.name + " <replacement>") { hideFlags = HideFlags.HideAndDontSave };
+        resultGo.active = go.active;
+        bool issue = false;
+        foreach (var oldComp in go.GetComponents<Component>())
+        {
+            if (oldComp.ObjectClass == Il2CppClassPointerStore<Transform>.NativeClassPtr)
+                continue;
+            Component newComp = resultGo.AddComponent(oldComp.GetIl2CppType()); // Note that this is patched
+            if (newComp == null)
+            {
+                issue = true;
+                break;
+            }
+            CopyProperties(oldComp, newComp); // Copy properties first; if we can access the backing field, we'll overwrite it in CopyFields
+            CopyFields(oldComp, newComp);
+            newComp.hideFlags = HideFlags.HideAndDontSave;
+            pairs.Add(oldComp.Pointer, newComp);
+        }
+
+        if (issue)
+        {
+            // Just duplicate it then. Skip replacements on children / self
+            Log.LogWarning("Failed to duplicate one or more components during component injection. Skipping subobjects as a result");
+            foreach (Component comp in go.GetComponents<Component>())
+                pairs.Remove(comp.Pointer);
+            GameObject.Destroy(resultGo);
+            resultGo = GameObject.Instantiate(go);
+            resultGo.active = go.active;
+            return resultGo;
+        }
+
+        foreach (var child in go.transform)
+        {
+            Transform trans = child.TryCast<Transform>() ?? throw new NullReferenceException("Unkown error while fetching GameObject children");
+            GameObject newChild = GetNewGameObject(trans.gameObject, ref pairs);
+            newChild.transform.CopyFrom(trans);
+            newChild.transform.SetParent(resultGo.transform, false);
+        }
+
+        return resultGo;
+    }
+
+    // Copy fields from oldComp to newComp
+    private void CopyFields(Component oldComp, Component newComp)
+    {
+        Dam_EnemyDamageBase? dam1 = oldComp.TryCast<Dam_EnemyDamageBase>();
+        Dam_EnemyDamageBase? dam2 = newComp.TryCast<Dam_EnemyDamageBase>();
+
+        Il2CppSystem.Type? 
+            type = oldComp.GetIl2CppType(),
+            excludeType = Il2CppType.From(typeof(MonoBehaviour));
+
+        Il2CppSystem.Reflection.BindingFlags bf = 0u
+            | Il2CppSystem.Reflection.BindingFlags.Instance 
+            | Il2CppSystem.Reflection.BindingFlags.Public 
+            | Il2CppSystem.Reflection.BindingFlags.NonPublic 
             | Il2CppSystem.Reflection.BindingFlags.DeclaredOnly
         ;
-        var fields = type.GetFields(bf);
-        foreach (var field in fields)
-            field.SetValue(dest, field.GetValue(source));
 
-        CopyFields(type.BaseType, source, dest);
+        while (type != null)
+        {
+            // Ignore nonpublic fields when copying Unity internal types
+            //if (type.IsAssignableFrom(excludeType))
+            //    bf &= ~Il2CppSystem.Reflection.BindingFlags.NonPublic;
+
+            var fields = type.GetFields(bf)
+                .Where(f => !f.IsStatic);
+
+            foreach (var field in fields)
+            {
+                try
+                {
+                    Il2CppSystem.Object value = field.GetValue(oldComp);
+                    field.SetValue(newComp, value);
+                    Log.LogDebug($" -> Copied field {type.FullName}.{field.Name}");
+                }
+                catch (System.Reflection.TargetInvocationException e)
+                {
+                    if (e.InnerException is NullReferenceException)
+                        continue;
+                    Log.LogWarning($"Failed to copy field {field.Name} from type {oldComp.GetIl2CppType().Name} to type {newComp.GetIl2CppType().Name}");
+                }
+                catch
+                {
+                    Log.LogWarning($"Failed to copy field {field.Name} from type {oldComp.GetIl2CppType().Name} to type {newComp.GetIl2CppType().Name}");
+                }
+            }
+
+            type = type.BaseType;
+        }
+    }
+
+    // Copy properties from oldComp to newComp
+    private void CopyProperties(Component oldComp, Component newComp)
+    {
+        Il2CppSystem.Type? 
+            type = oldComp.GetIl2CppType(),
+            excludeType = Il2CppType.From(typeof(MonoBehaviour));
+
+        Il2CppSystem.Reflection.BindingFlags bf = 0
+            | Il2CppSystem.Reflection.BindingFlags.Instance
+            | Il2CppSystem.Reflection.BindingFlags.Public
+            | Il2CppSystem.Reflection.BindingFlags.NonPublic
+            | Il2CppSystem.Reflection.BindingFlags.DeclaredOnly
+        ;
+
+        while (type != null)
+        {
+            // Ignore nonpublic fields when copying Unity internal types
+            //if (type.IsAssignableFrom(excludeType))
+            //    bf &= ~Il2CppSystem.Reflection.BindingFlags.NonPublic;
+
+            var properties = type.GetProperties(bf)
+                .Where(p => p.GetIndexParameters().Length <= 0)
+                .Where(p => !((p.GetGetMethod() ?? p.GetSetMethod())?.IsStatic ?? false))
+                .Where(p => p.CanRead && p.CanWrite);
+
+            foreach (var prop in properties)
+            {
+                try
+                {
+                    Il2CppSystem.Object value = prop.GetValue(oldComp);
+                    prop.SetValue(newComp, value);
+                    Log.LogDebug($" -> Copied property {type.FullName}.{prop.Name}");
+                }
+                catch (System.Reflection.TargetInvocationException e)
+                {
+                    if (e.InnerException is NullReferenceException)
+                        continue;
+                    Log.LogWarning($"Failed to copy property {prop.Name} from type {oldComp.GetIl2CppType().Name} to type {newComp.GetIl2CppType().Name}");
+                }
+                catch
+                {
+                    Log.LogWarning($"Failed to copy property {prop.Name} from type {oldComp.GetIl2CppType().Name} to type {newComp.GetIl2CppType().Name}");
+                }
+            }
+
+            type = type.BaseType;
+        }
+    }
+
+    // Replace direct and array references. Won't help with other containers, however
+    private void ReplaceReferences(GameObject go, Dictionary<IntPtr, Component> pairs)
+    {
+        Transform parent = go.transform;
+        while (parent.parent != null) parent = parent.parent;
+
+        var bf = 0u
+            | Il2CppSystem.Reflection.BindingFlags.Instance
+            | Il2CppSystem.Reflection.BindingFlags.Public
+            | Il2CppSystem.Reflection.BindingFlags.NonPublic
+            | Il2CppSystem.Reflection.BindingFlags.FlattenHierarchy
+        ;
+
+        foreach (Component mo in parent.GetComponentsInChildren<Component>())
+        {
+            var type = mo.GetIl2CppType();
+            var fields = type.GetFields(bf);
+            foreach (var field in fields)
+            {
+                IntPtr ptr = field.GetValue(mo)?.Pointer ?? IntPtr.Zero;
+                if (pairs.TryGetValue(ptr, out var newComp))
+                {
+                    field.SetValue(mo, newComp);
+                    Log.LogMessage($"Replaced field {type.FullName}.{field.Name} with new comp");
+                }
+                else if (field.FieldType.IsArray)
+                {
+                    Il2CppSystem.Array? arr = field.GetValue(mo)?.TryCast<Il2CppSystem.Array>();
+                    if (arr == null) continue;
+            
+                    for (int i = 0; i < arr.Length; i++)
+                    {
+                        ptr = arr.GetValue(i)?.Pointer ?? IntPtr.Zero;
+                        if (pairs.TryGetValue(ptr, out newComp))
+                        {
+                            arr.SetValue(newComp, i);
+                            Log.LogMessage($"Replaced arr item {i} in field {type.FullName}.{field.Name} with new comp");
+                        }
+                    }
+                }
+            }
+
+            var properties = type.GetProperties(bf);
+            foreach (var property in properties)
+            {
+                if (!property.CanRead || !property.CanWrite)
+                    continue;
+
+                IntPtr ptr = property.GetValue(mo)?.Pointer ?? IntPtr.Zero;
+                if (pairs.TryGetValue(ptr, out var newComp))
+                {
+                    property.SetValue(mo, newComp);
+                    Log.LogMessage($"Replaced property {type.FullName}.{property.Name} with new comp");
+                }
+                else if (property.PropertyType.IsArray)
+                {
+                    Il2CppSystem.Array? arr = property.GetValue(mo)?.TryCast<Il2CppSystem.Array>();
+                    if (arr == null) continue;
+            
+                    for (int i = 0; i < arr.Length; i++)
+                    {
+                        ptr = arr.GetValue(i)?.Pointer ?? IntPtr.Zero;
+                        if (pairs.TryGetValue(ptr, out newComp))
+                        {
+                            arr.SetValue(newComp, i);
+                            Log.LogMessage($"Replaced arr item {i} in property {type.FullName}.{property.Name} with new comp");
+                        }
+                    }
+                }
+            }
+        }
     }
 }
