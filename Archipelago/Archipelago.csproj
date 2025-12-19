@@ -50,5 +50,6 @@
     <Reference Include="$(BepInEx)\interop\*.dll" Private="false" />
     <Reference Remove="$(BepInEx)\interop\netstandard.dll" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 </Project>
