@@ -1,0 +1,72 @@
+﻿
+namespace ReTFO.Archipelago;
+
+// Simple extension class for Il2Cpp lists which gives makes them enumerable
+public static class Il2CppListIter
+{
+    // Convert an Il2CppList into an enumerable
+    public static IEnumerable<T> Iter<T>(this Il2CppSystem.Collections.Generic.List<T>? source)
+    {
+        if (source != null) foreach (T element in source) yield return element;
+    }
+
+    // Various other methods, for simplicity's sake
+
+    public static T First<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
+    {
+        return source.Iter().First(predicate);
+    }
+
+    public static T? FirstOrDefault<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
+    {
+        return source.Iter().FirstOrDefault(predicate);
+    }
+
+    public static IEnumerable<U> Select<T, U>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, U> func)
+    {
+        return source.Iter().Select(func);
+    }
+
+    public static IEnumerable<U> SelectMany<T, U>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, IEnumerable<U>> func)
+    {
+        return source.Iter().SelectMany(func);
+    }
+    public static T[] ToArray<T>(this Il2CppSystem.Collections.Generic.List<T> source)
+    {
+        return source.Iter().ToArray();
+    }
+
+    public static List<T> ToList<T>(this Il2CppSystem.Collections.Generic.List<T> source)
+    {
+        return source.Iter().ToList();
+    }
+
+    public static IEnumerable<T> Where<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
+    {
+        return source.Iter().Where(predicate);
+    }
+
+    // Custom extension.
+    // Split a list into sublists using a predicate to determine which value is used to split the list.
+    // Values matching the predicate are not returned in the result.
+    public static IEnumerable<IEnumerable<T>> Split<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
+    {
+        var iter = source.GetEnumerator();
+
+        IEnumerable<T> Split_Helper()
+        {
+            if (predicate(iter.Current)) yield break;
+            yield return iter.current;
+
+            while (iter.MoveNext())
+            {
+                if (predicate(iter.Current)) yield break;
+                else yield return iter.Current;
+            }
+        }
+        
+        while (iter.MoveNext())
+            yield return Split_Helper();
+    }
+
+}
