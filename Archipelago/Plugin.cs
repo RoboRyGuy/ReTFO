@@ -1,9 +1,7 @@
 ﻿
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using Gear;
 using HarmonyLib;
-using LevelGeneration;
 using System.Diagnostics.CodeAnalysis;
 
 namespace ReTFO.Archipelago;
@@ -49,13 +47,5 @@ public class Plugin : BasePlugin
     {
         harmony.UnpatchSelf();
         return true;
-    }
-
-    [HarmonyPatch(typeof(BulletWeapon), nameof(BulletWeapon.Fire)), HarmonyPostfix]
-    public static void TestPatch()
-    {
-        LG_WorldEventObject[] objects = UnityEngine.GameObject.FindObjectsOfType<LG_WorldEventObject>();
-        foreach (var obj in objects)
-            Plugin.Get().Log.LogWarning($"Found world event object: {obj.name}");
     }
 }
