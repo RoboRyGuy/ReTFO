@@ -2,7 +2,6 @@
 using GameData;
 using ReTFO.Archipelago;
 using System.Diagnostics.CodeAnalysis;
-using static ReTFO.Archipelago.ModdedInstanceData.WardenEvent;
 
 namespace ReTFO.Archipelago.ModdedInstanceData;
 
@@ -47,34 +46,34 @@ public class Manager
     // Generate expedition data from the provided expedition
     public static ExpeditionData GenerateExpeditionData(ExpeditionInTierData expedition, int indexInTier)
     {
-        ExpeditionData result = new();
-        result.name = expedition.GetShortName(indexInTier);
+        ExpeditionData exData = new();
+        exData.name = expedition.GetShortName(indexInTier);
 
         // Generate all level data
-        result.main_level = InitLevelData(expedition.LevelLayoutData);
-        if (result.main_level != null)
-            ProcessLayerData(result.main_level, expedition.MainLayerData);
+        exData.main_level = InitLevelData(expedition.LevelLayoutData, 0, $"{exData.name} (Main)");
+        if (exData.main_level != null)
+            ProcessLayerData(exData.main_level, expedition.MainLayerData);
 
         if (expedition.SecondaryLayerEnabled)
         {
-            result.secondary_build_from = new()
+            exData.secondary_build_from = new()
             {
                 layer_index = (int)expedition.BuildSecondaryFrom.LayerType,
                 zone_index  = (int)expedition.BuildSecondaryFrom.Zone,
             };
-            result.secondary_level = InitLevelData(expedition.SecondaryLayout)!;
-            ProcessLayerData(result.secondary_level, expedition.SecondaryLayerData);
+            exData.secondary_level = InitLevelData(expedition.SecondaryLayout, 0, $"{exData.name} (Secondary)")!;
+            ProcessLayerData(exData.secondary_level, expedition.SecondaryLayerData);
         }
 
         if (expedition.ThirdLayerEnabled)
         {
-            result.overload_build_from = new()
+            exData.overload_build_from = new()
             {
                 layer_index = (int)expedition.BuildThirdFrom.LayerType,
                 zone_index  = (int)expedition.BuildThirdFrom.Zone,
             };
-            result.overload_level = InitLevelData(expedition.ThirdLayout)!;
-            ProcessLayerData(result.overload_level, expedition.ThirdLayerData);
+            exData.overload_level = InitLevelData(expedition.ThirdLayout, 0, $"{exData.name} (Overload)")!;
+            ProcessLayerData(exData.overload_level, expedition.ThirdLayerData);
         }
 
         // Generate dimension data as level data
@@ -82,332 +81,384 @@ public class Manager
         foreach (var dim in expedition.DimensionDatas.Iter())
         {
             DimensionDataBlock db = DimensionDataBlock.GetBlock(dim.DimensionData);
-            dimension_data[(int)dim.DimensionIndex] = GenerateDimensionData(db, (int)dim.DimensionIndex);
+            dimension_data[(int)dim.DimensionIndex] = GenerateDimensionData(db, (int)dim.DimensionIndex, $"{exData.name} (Dimension #{(int)dim.DimensionIndex})");
         }
 
         // Apply locks to sector entrances
         if (expedition.SecondaryLayerEnabled)
         {
-            if (result.secondary_level == null) throw new NullReferenceException();
-            IEnumerable<BulkheadDoorPlacementData> dcLocs = result.secondary_build_from.layer_index switch
+            if (exData.secondary_level == null) throw new NullReferenceException();
+            IEnumerable<BulkheadDoorPlacementData> dcLocs = exData.secondary_build_from.layer_index switch
             {
                 0 => expedition.MainLayerData.BulkheadDoorControllerPlacements.Iter(),
                 2 => expedition.ThirdLayerData.BulkheadDoorControllerPlacements.Iter(),
                 _ => throw new InvalidDataException()
             };
 
-            if (dcLocs.Any(p => (int)p.ZoneIndex == result.secondary_build_from.zone_index))
-                result.secondary_level.zones[result.secondary_level.start_zone].lock_type = ZoneData.eLockType.BulkheadKey;
+            if (dcLocs.Any(p => (int)p.ZoneIndex == exData.secondary_build_from.zone_index))
+                exData.secondary_level.zones[exData.secondary_level.start_zone].lock_type = ZoneData.eLockType.BulkheadKey;
             else
-                result.secondary_level.zones[result.secondary_level.start_zone].lock_type = ZoneData.eLockType.Locked;
+                exData.secondary_level.zones[exData.secondary_level.start_zone].lock_type = ZoneData.eLockType.Locked;
         }
 
         if (expedition.ThirdLayerEnabled)
         {
-            if (result.overload_level == null) throw new NullReferenceException();
-            IEnumerable<BulkheadDoorPlacementData> dcLocs = result.overload_build_from.layer_index switch
+            if (exData.overload_level == null) throw new NullReferenceException();
+            IEnumerable<BulkheadDoorPlacementData> dcLocs = exData.overload_build_from.layer_index switch
             {
                 0 => expedition.MainLayerData.BulkheadDoorControllerPlacements.Iter(),
                 1 => expedition.SecondaryLayerData.BulkheadDoorControllerPlacements.Iter(),
                 _ => throw new InvalidDataException()
             };
 
-            if (dcLocs.Any(p => (int)p.ZoneIndex == result.secondary_build_from.zone_index))
-                result.overload_level.zones[result.overload_level.start_zone].lock_type = ZoneData.eLockType.BulkheadKey;
+            if (dcLocs.Any(p => (int)p.ZoneIndex == exData.secondary_build_from.zone_index))
+                exData.overload_level.zones[exData.overload_level.start_zone].lock_type = ZoneData.eLockType.BulkheadKey;
             else
-                result.overload_level.zones[result.overload_level.start_zone].lock_type = ZoneData.eLockType.Locked;
+                exData.overload_level.zones[exData.overload_level.start_zone].lock_type = ZoneData.eLockType.Locked;
         }
 
-        return result;
+        // Add elevator drop and exit scan events
+        WardenObjectiveDataBlock firstObjective = WardenObjectiveDataBlock.GetBlock(expedition.MainLayerData.ObjectiveData.DataBlockId);
+        ProcessEvents(exData.events_on_elevator_land, firstObjective.EventsOnElevatorLand.Iter());
+
+        if (expedition.MainLayerData.ChainedObjectiveData.Count == 0)
+        {
+            if (firstObjective.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.WhenExitScanMakesProgress)
+                ProcessEvents(exData.events_on_progress_exit_scan, firstObjective.EventsOnGotoWin.Iter());
+        }
+        else
+        {
+            WardenObjectiveDataBlock lastObjective = WardenObjectiveDataBlock.GetBlock(
+                expedition.MainLayerData.ChainedObjectiveData[expedition.MainLayerData.ChainedObjectiveData.Count - 1].DataBlockId
+            );
+            if (lastObjective.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.WhenExitScanMakesProgress)
+                ProcessEvents(exData.events_on_progress_exit_scan, lastObjective.EventsOnGotoWin.Iter());
+        }
+
+        return exData;
     }
 
     // Generate level data for the given level layout
-    public static LevelData? InitLevelData(uint layoutId)
+    public static LevelData? InitLevelData(uint layoutId, int dimensionIndex, string debugExpeditionName)
     {
         LevelLayoutDataBlock level = LevelLayoutDataBlock.GetBlock(layoutId);
         if (level == null) return null;
-        LevelData result = new();
+        LevelData lData = new();
 
         // Set up basics for all zones. Sort by local index, and mark entrance
         int zoneCount = level.Zones.Select(z => (int)z.LocalIndex).Max() + 1;
-        result.zones.EnsureCapacity(zoneCount);
-        result.zones.AddRange(Enumerable.Repeat<ZoneData>(null!, zoneCount));
+        lData.zones.EnsureCapacity(zoneCount);
+        lData.zones.AddRange(Enumerable.Repeat<ZoneData>(null!, zoneCount));
         for (int i = 0; i < level.Zones.Count; i++)
         {
             ExpeditionZoneData zone = level.Zones[i];
-            if ((int)zone.LocalIndex < 0 || (int)zone.LocalIndex >= result.zones.Count)
+            if ((int)zone.LocalIndex < 0 || (int)zone.LocalIndex >= lData.zones.Count)
                 throw new ArgumentOutOfRangeException($"Local index {(int)zone.LocalIndex} is outside of expected range!");
-            if (result.zones[(int)zone.LocalIndex] != null) 
+            if (lData.zones[(int)zone.LocalIndex] != null) 
                 throw new NullReferenceException("Duplicate local index in zone list!");
-            result.zones[(int)zone.LocalIndex] = new()
+
+            int terminalIndex = 0;
+            int alias = zone.AliasOverride != -1 ? zone.AliasOverride : level.ZoneAliasStart + (int)zone.LocalIndex;
+            lData.zones[(int)zone.LocalIndex] = new()
             {
                 originalZone = zone,
-                alias = zone.AliasOverride != -1 ? zone.AliasOverride : level.ZoneAliasStart + (int)zone.LocalIndex,
-                terminal_count = zone.TerminalPlacements?.Count ?? 0,
+                alias = alias,
                 lock_type = (ZoneData.eLockType)zone.ProgressionPuzzleToEnter.PuzzleType,
+                terminals = zone.TerminalPlacements.Select(t => GenerateTerminalData(t, lData, dimensionIndex, alias, terminalIndex++)).ToList(),
             };
         }
-        result.start_zone = (int)level.Zones[0].LocalIndex;
+        lData.start_zone = (int)level.Zones[0].LocalIndex;
 
         // Ensure there are no null zones
-        for (int i = 0; i < result.zones.Count; i++)
+        for (int i = 0; i < lData.zones.Count; i++)
         {
-            if (result.zones[i] == null) result.zones[i] = new()
+            if (lData.zones[i] == null) lData.zones[i] = new()
             {
                 originalZone = null,
                 alias = -1,
-                terminal_count = 0,
+                terminals = new(0),
                 lock_type = ZoneData.eLockType.Locked,
                 entrance_index = 0,
             };
         }
 
         // With our zones sorted and defined, now add keys, events, big pickups, and cross-zone data
-        foreach (var zone in result.zones)
+        foreach (var zData in lData.zones)
         {
             // Skip non-zones (which will have no info to process)
-            if (zone.originalZone == null) continue;
+            if (zData.originalZone == null) continue;
 
             // Entrance
-            ZoneData? entryZone;
-            if (result.start_zone != (int)zone.originalZone.LocalIndex)
+            ZoneData? entryZData;
+            if (lData.start_zone != (int)zData.originalZone.LocalIndex)
             {
-                entryZone = result.zones[(int)zone.originalZone.BuildFromLocalIndex];
-                zone.entrance_index = (int)entryZone.originalZone!.LocalIndex;
+                entryZData = lData.zones[(int)zData.originalZone.BuildFromLocalIndex];
+                zData.entrance_index = (int)entryZData.originalZone!.LocalIndex;
             }
             else
             {
-                entryZone = null;
-                zone.entrance_index = 0;
+                entryZData = null;
+                zData.entrance_index = 0;
             }
 
             // Lock handling
-            if (zone.lock_type == ZoneData.eLockType.SimpleKey)
+            if (zData.lock_type == ZoneData.eLockType.SimpleKey)
             {
-                if (zone.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Count <= 0)
+                if (zData.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Count <= 0)
                     throw new InvalidOperationException("Simple key zone has no positions for its key to spawn in!");
-                result.keys.Add(new()
+                lData.keys.Add(new()
                 {
-                    zone_alias = zone.alias,
-                    positions = zone.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Select(ZonePosition.Make).ToList()
+                    type = KeyData.eType.SimpleKey,
+                    zone_alias = zData.alias,
+                    positions = zData.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Select(ZonePosition.Make).ToList()
                 });
             }
-            else if (zone.lock_type == ZoneData.eLockType.GenAndCell && zone.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Count > 0)
+            else if (zData.lock_type == ZoneData.eLockType.GenAndCell && zData.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Count > 0)
             {
-                result.pickups.Add(new()
+                lData.keys.Add(new()
                 {
-                    item_type = -1,
-                    positions = zone.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Select(ZonePosition.Make).ToList()
+                    type = KeyData.eType.Cell,
+                    positions = zData.originalZone.ProgressionPuzzleToEnter.ZonePlacementData.Select(ZonePosition.Make).ToList()
                 });
             }
 
-            // Big pickup distributions in the zone. We only care about cells during this pass -> we'll figure out objective pickups during the objective pickups section
-            BigPickupDistributionDataBlock? dist = BigPickupDistributionDataBlock.GetBlock(zone.originalZone.BigPickupDistributionInZone);
+            // Terminals in the zone
+            for (int i = 0; i < (zData.originalZone.TerminalPlacements?.Count ?? 0); i++)
+            {
+                var terminal = zData.originalZone.TerminalPlacements![i];
+                TerminalData tData = new()
+                {
+                    logs = terminal.LocalLogFiles.Select(l => l.FileName).ToList(),
+                    commands = new(terminal.UniqueCommands.Count),
+                };
+                zData.terminals.Add(tData);
+                
+                // Password and password parts
+                if (terminal.StartingStateData.PasswordProtected)
+                {
+                    tData.password_count = terminal.StartingStateData.PasswordPartCount;
+                    lData.keys.AddRange(
+                        Enumerable.Range(0, terminal.StartingStateData.PasswordPartCount)
+                            .Select(j => j % terminal.StartingStateData.TerminalZoneSelectionDatas.Count)
+                            .Select(j => terminal.StartingStateData.TerminalZoneSelectionDatas[j])
+                            .Select(ps => new KeyData()
+                            {
+                                type = KeyData.eType.PasswordPart,
+                                zone_alias = zData.alias,
+                                terminal_index = i,
+                                positions = ps.Select(p => new ZonePosition(p.LocalIndex, (eDimensionIndex)dimensionIndex)).ToList()
+                            })
+                    );
+                }
+
+                foreach (var command in terminal.UniqueCommands)
+                {
+                    CommandData cData = new(command.Command);
+                    tData.commands.Add(cData);
+                    ProcessEvents(cData.events, command.CommandEvents.Iter());
+                }
+            }
+
+            // Big pickup distributions in the zone. Cells are separated out as keys
+            BigPickupDistributionDataBlock? dist = BigPickupDistributionDataBlock.GetBlock(zData.originalZone.BigPickupDistributionInZone);
             foreach (var item in dist?.SpawnData.Iter() ?? Enumerable.Empty<BigPickupSpawnData>())
             {
                 ItemDataBlock itemDB = ItemDataBlock.GetBlock(item.ItemID);
                 if (itemDB.terminalItemShortName.Contains("CELL", StringComparison.OrdinalIgnoreCase))
                 {
-                    result.pickups.Add(new()
+                    lData.keys.Add(new()
                     {
-                        item_type = -1,
-                        positions = new() { new ZonePosition(zone.originalZone.LocalIndex, 0) }
+                        type = KeyData.eType.Cell,
+                        positions = new(1) { new ZonePosition(zData.originalZone.LocalIndex, (eDimensionIndex)dimensionIndex) }
                     });
                 }
-            }
-
-            // Events that simply occur "in the zone", without any more specific source
-            ZonalEventSource zoneSource = new() { zone_local_index = (int)zone.originalZone.LocalIndex };
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.DoorUnlock,    zone.originalZone.EventsOnUnlockDoor.Iter());
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.DoorScanStart, zone.originalZone.EventsOnDoorScanStart.Iter());
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.DoorScanEnd,   zone.originalZone.EventsOnDoorScanDone.Iter());
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.DoorOpen,      zone.originalZone.EventsOnOpenDoor.Iter());
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.BossDeath,     zone.originalZone.EventsOnBossDeath.Iter());
-            ProcessEvents(result, zoneSource, WardenEvent.Source.eType.PortalWarp,    zone.originalZone.EventsOnPortalWarp.Iter());
-
-            // Terminal command events. LINQ refused to let me zip this prettily, so here is the simple version
-            for (int i = 0; i < (zone.originalZone.TerminalPlacements?.Count ?? 0); i++)
-            {
-                var terminal = zone.originalZone.TerminalPlacements![i];
-                foreach (var command in terminal.UniqueCommands.Iter())
+                else
                 {
-                    var commandSource = new TerminalCommandEventSource()
-                    {
-                        zone_local_index = (int)zone.originalZone.LocalIndex,
-                        terminal_local_index = i,
-                        command_name = command.Command,
-                    };
-                    ProcessEvents(result, commandSource, WardenEvent.Source.eType.TerminalCommand, command.CommandEvents.Iter());
+                    zData.big_pickups.Add(new() { item_type = item.ItemID, });
                 }
             }
 
-            // Trigger events - Since each trigger must be named, these much be processed individually
-            foreach (var ev in zone.originalZone.EventsOnTrigger.Iter())
+            // Zone events
+            ProcessEvents(zData.events_on_unlock_door,     zData.originalZone.EventsOnUnlockDoor.Iter());
+            ProcessEvents(zData.events_on_door_scan_start, zData.originalZone.EventsOnDoorScanStart.Iter());
+            ProcessEvents(zData.events_on_door_scan_done,  zData.originalZone.EventsOnDoorScanDone.Iter());
+            ProcessEvents(zData.events_on_open_door,       zData.originalZone.EventsOnOpenDoor.Iter());
+            ProcessEvents(zData.events_on_boss_death,      zData.originalZone.EventsOnBossDeath.Iter());
+            ProcessEvents(zData.events_on_portal_warp,     zData.originalZone.EventsOnPortalWarp.Iter());
+
+            // Trigger events
+            foreach (var ev in zData.originalZone.EventsOnTrigger.Iter())
             {
                 if (TryMakeEventAction(ev, out var type, out var action))
+                    zData.events_on_trigger.Add(new(type, action, ev.WorldEventTriggerObjectFilter));
+            }
+
+            // Scan events - we can wrap these the same as trigger events, AP will account for the scan needing to be started
+            foreach (var scan in zData.originalZone.WorldEventChainedPuzzleDatas.Iter())
+            {
+                foreach (var ev in scan.EventsOnScanDone)
                 {
-                    var triggerSource = new ZoneTriggerEventSource()
-                    {
-                        zone_local_index = (int)zone.originalZone.LocalIndex,
-                        trigger_name = ev.WorldEventTriggerObjectFilter,
-                    };
-                    result.events.Add(new()
-                    {
-                        source_type = WardenEvent.Source.eType.ZoneTrigger,
-                        source = triggerSource,
-                        action_type = type,
-                        action = action,
-                    });
+                    if (TryMakeEventAction(ev, out var type, out var action))
+                        zData.events_on_trigger.Add(new(type, action, scan.WorldEventObjectFilter));
                 }
             }
 
-            // Scan events
-            foreach (var scan in zone.originalZone.WorldEventChainedPuzzleDatas.Iter())
+            if (entryZData != null) // Event(s) occuring in the entry zone
             {
-                InZoneScanEventSource source = new()
+                foreach (var ev in zData.originalZone.EventsOnApproachDoor)
                 {
-                    zone_local_index = (int)zone.originalZone.LocalIndex,
-                    scan_name = scan.WorldEventObjectFilter,
-                };
-                ProcessEvents(result, source, WardenEvent.Source.eType.InZoneScan, scan.EventsOnScanDone.Iter());
+                    if (TryMakeEventAction(ev, out var type, out var data))
+                        entryZData.events_on_approach_zone.Add(new(type, data, zData.alias));
+                }
             }
-
-            // Event(s) occuring in the entry zone
-            if (entryZone != null)
+            else // Events occuring when approaching the level
             {
-                var approachSource = new ApproachDoorEventSource()
+                foreach (var ev in zData.originalZone.EventsOnApproachDoor)
                 {
-                    zone_local_index = (int)entryZone.originalZone!.LocalIndex,
-                    target_local_index = (int)zone.originalZone.LocalIndex,
-                };
-                ProcessEvents(result, approachSource, WardenEvent.Source.eType.DoorApproach, zone.originalZone.EventsOnApproachDoor.Iter());
-            }
-            else
-            {
-                var approachSource = new WardenEvent.Source();
-                ProcessEvents(result, approachSource, WardenEvent.Source.eType.LevelApproach, zone.originalZone.EventsOnApproachDoor.Iter());
-            }
-
-            // Event(s) occuring in the terminal deactivation zone
-            if (zone.originalZone.TurnOffAlarmOnTerminal)
-            {
-                var deactivateSource = new DeactivateAlarmEventSource()
-                {
-                    zone_local_index = (int)zone.originalZone.TerminalPuzzleZone.LocalIndex,
-                    terminal_local_index = zone.originalZone.TerminalPuzzleZone.TerminalIndex,
-                    command_name = "DEACTIVATE_ALARMS",
-                    alarm_zone_index = (int)zone.originalZone.LocalIndex,
-                };
-                ProcessEvents(result, deactivateSource, WardenEvent.Source.eType.TerminalDeactivateAlarm, zone.originalZone.EventsOnTerminalDeactivateAlarm.Iter());
+                    if (TryMakeEventAction(ev, out var type, out var data))
+                        lData.events_on_approach_level.Add(new(type, data, zData.alias));
+                }
             }
         }
 
-        return result;
+        // One extra loop because we need to touch existing terminal data
+        foreach (var zData in lData.zones)
+        {
+            if (zData.originalZone?.TurnOffAlarmOnTerminal ?? false)
+            {
+                ZoneData?     deactivateZoneData = lData.zones[(int)zData.originalZone.TerminalPuzzleZone.LocalIndex];
+                TerminalData? deactivateTerminal = deactivateZoneData?.terminals[zData.originalZone.TerminalPuzzleZone.TerminalIndex % deactivateZoneData.terminals.Count];
+                if (deactivateTerminal == null)
+                {
+                    Plugin.Get().Log.LogError($"ZONE_{zData.alias} in expedition \"{debugExpeditionName}\" has deactivate puzzle, but could not find a terminal for the puzzle");
+                    continue;
+                }
+                CommandData cData = new("DEACTIVATE_ALARM");
+                deactivateTerminal.commands.Add(cData);
+                ProcessEvents(cData.events, zData.originalZone.EventsOnTerminalDeactivateAlarm.Iter());
+            }
+        }
+
+        return lData;
     }
 
     // Similar to GenerateLevelData, but takes into account the special cases of dimension building
-    public static LevelData GenerateDimensionData(DimensionDataBlock db, int dimension = 0)
+    public static LevelData GenerateDimensionData(DimensionDataBlock db, int dimensionIndex, string debugExpeditionName)
     {
-        var result = InitLevelData(db.DimensionData.LevelLayoutData);
+        var result = InitLevelData(db.DimensionData.LevelLayoutData, dimensionIndex, debugExpeditionName);
         if (result != null) return result;
 
         // No level? Then it's just a single custom geomorph. We'll treat it like a single zone
-        LevelData level = new() { zones = new(1) };
-        level.zones.Add(new()
+        LevelData lData = new() { zones = new(1) };
+        int terminalIndex = 0;
+        lData.zones.Add(new()
         {
             alias = 0,
             entrance_index = 0,
-            terminal_count = db.DimensionData.StaticTerminalPlacements?.Count ?? 0,
+            terminals = db.DimensionData.StaticTerminalPlacements.Select(t => GenerateTerminalData(t, lData, dimensionIndex, 0, terminalIndex++)).ToList(),
             lock_type = 0,
         });
-        level.start_zone = 0;
+        lData.start_zone = 0;
 
-        for (int i = 0; i < (db.DimensionData.StaticTerminalPlacements?.Count ?? 0); i++)
+        return lData;
+    }
+
+    // Small helper to help consolidate terminal generation code
+    public static TerminalData GenerateTerminalData(TerminalPlacementData terminal, LevelData lData, int dimensionIndex, int alias, int terminalIndex)
+    {
+        TerminalData tData = new()
         {
-            var terminal = db.DimensionData.StaticTerminalPlacements![i];
-            foreach (var command in terminal.UniqueCommands)
-            {
-                TerminalCommandEventSource source = new()
-                {
-                    zone_local_index = 0,
-                    terminal_local_index = i,
-                    command_name = command.Command,
-                };
-                foreach (var ev in command.CommandEvents)
-                {
-                    if (TryMakeEventAction(ev, out var type, out var action))
+            logs = terminal.LocalLogFiles.Select(l => l.FileName).ToList(),
+            commands = new(terminal.UniqueCommands.Count),
+        };
+
+        // Password and password parts
+        if (terminal.StartingStateData.PasswordProtected)
+        {
+            tData.password_count = terminal.StartingStateData.PasswordPartCount;
+            lData.keys.AddRange(
+                Enumerable.Range(0, terminal.StartingStateData.PasswordPartCount)
+                    .Select(j => j % terminal.StartingStateData.TerminalZoneSelectionDatas.Count)
+                    .Select(j => terminal.StartingStateData.TerminalZoneSelectionDatas[j])
+                    .Select(ps => new KeyData()
                     {
-                        level.events.Add(new()
-                        {
-                            source_type = WardenEvent.Source.eType.TerminalCommand,
-                            source = source,
-                            action_type = type,
-                            action = action,
-                        });
-                    }
-                }
-            }
+                        type = KeyData.eType.PasswordPart,
+                        zone_alias = alias,
+                        terminal_index = terminalIndex,
+                        positions = ps.Select(p => new ZonePosition(p.LocalIndex, (eDimensionIndex)dimensionIndex)).ToList()
+                    })
+            );
         }
 
-        return level;
+        foreach (var command in terminal.UniqueCommands)
+        {
+            CommandData cData = new(command.Command);
+            tData.commands.Add(cData);
+            ProcessEvents(cData.events, command.CommandEvents.Iter());
+        }
+
+        return tData;
     }
 
     // Adds bulkheads, objectives, and other misc things to intialized level data
-    public static void ProcessLayerData(LevelData level, LayerData layerData) {
+    public static void ProcessLayerData(LevelData lData, LayerData layerData) {
 
         // Any bulkhead door with a bulkhead DC to access it is implicitly locked via bulkhead key
         foreach (var placement in layerData.BulkheadDoorControllerPlacements.Iter())
         {
             var DCindex = (int)placement.ZoneIndex;
-            foreach (var zoneIndex in layerData.ZonesWithBulkheadEntrance.Iter())
+            foreach (var zoneIndex in layerData.ZonesWithBulkheadEntrance.Select(i => (int)i))
             {
-                if (zoneIndex <= 0 || (int)zoneIndex >= level.zones.Count) continue; // Seems the actual level maker also just discards them?
-                ZoneData zone = level.zones[(int)zoneIndex];
-                if (zone.entrance_index == DCindex)
+                if (zoneIndex < 0 || zoneIndex >= lData.zones.Count) continue; // Seems the actual level maker also just discards them?
+                if (zoneIndex == lData.start_zone) continue; // We don't want to touch the entry zone
+
+                ZoneData zData = lData.zones[zoneIndex];
+                if (zData.entrance_index == DCindex)
                 {
-                    if (zone.lock_type != ZoneData.eLockType.None
-                        && zone.lock_type != ZoneData.eLockType.BulkheadKey
-                        && zone.lock_type != ZoneData.eLockType.Locked
+                    if (zData.lock_type != ZoneData.eLockType.None
+                        && zData.lock_type != ZoneData.eLockType.BulkheadKey
+                        && zData.lock_type != ZoneData.eLockType.Locked
                     ) throw new InvalidDataException("Expected bulkhead door to have None lock type prior to bulkhead door processing");
-                    level.zones[(int)zoneIndex].lock_type = ZoneData.eLockType.BulkheadKey;
+                    lData.zones[zoneIndex].lock_type = ZoneData.eLockType.BulkheadKey;
                 }
             }
         }
 
         // If there is no bulkhead DC then the door is simply "locked" expecting an event
-        foreach (var zoneIndex in layerData.ZonesWithBulkheadEntrance.Iter())
+        foreach (var zoneIndex in layerData.ZonesWithBulkheadEntrance.Select(i => (int)i))
         {
-            if (zoneIndex <= 0 || (int)zoneIndex >= level.zones.Count) continue; // Seems the actual level maker also just discards them?
-            ZoneData zone = level.zones[(int)zoneIndex];
-            if (zone.lock_type != ZoneData.eLockType.BulkheadKey)
+            if (zoneIndex <= 0 || zoneIndex >= lData.zones.Count) continue; // Seems the actual level maker also just discards them?
+            if (zoneIndex == lData.start_zone) continue; // We don't want to touch the entry zone
+
+            ZoneData zData = lData.zones[zoneIndex];
+            if (zData.lock_type != ZoneData.eLockType.BulkheadKey)
             {
-                if (zone.lock_type != ZoneData.eLockType.None
-                    && zone.lock_type != ZoneData.eLockType.Locked
+                if (zData.lock_type != ZoneData.eLockType.None
+                    && zData.lock_type != ZoneData.eLockType.Locked
                 ) throw new InvalidDataException("Expected bulkhead door to have None lock type prior to bulkhead door processing");
-                zone.lock_type = ZoneData.eLockType.Locked;
+                zData.lock_type = ZoneData.eLockType.Locked;
             }
         }
 
         // Simply add the bulkhead keys
         foreach (var placement in layerData.BulkheadKeyPlacements.Iter())
         {
-            level.keys.Add(new()
+            lData.keys.Add(new()
             {
-                zone_alias = -1,
+                type = KeyData.eType.Cell,
                 positions = placement.Select(ZonePosition.Make).ToList(),
             });
         }
 
         // Processing objectives
-        level.objectives.EnsureCapacity(1 + layerData.ChainedObjectiveData.Count);
+        lData.objectives.EnsureCapacity(1 + layerData.ChainedObjectiveData.Count);
         WardenObjectiveDataBlock? obj = null;
+        ObjectiveData oData; // Shared by multiple catch statements, so defined here for simplicity
 
-        var objectives = Enumerable.Repeat(layerData.ObjectiveData, 1).Concat(layerData.ChainedObjectiveData.Iter());
-        int objectiveCount = -1;
+        var objectives = Enumerable.Empty<WardenObjectiveLayerData>().Append(layerData.ObjectiveData).Concat(layerData.ChainedObjectiveData.Iter());
         foreach (var objective in objectives)
         {
             obj = WardenObjectiveDataBlock.GetBlock(objective.DataBlockId);
-            objectiveCount += 1;
             switch (obj.Type)
             {
                 /* Retrieve HSU DNA sample
@@ -417,27 +468,16 @@ public class Manager
                  */
                 case eWardenObjectiveType.HSU_FindTakeSample:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.CollectDNASample,
                         sub_objective_count = 1,
-                    });
+                        positions = new(1) { objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList() }
+                    };
+                    lData.objectives.Add(oData);
 
-                    level.pickups.Add(new()
-                    {
-                        item_type = objectiveCount,
-                        positions = objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList(),
-                    });
-
-                    if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        MultiZonalEventSource hsuSource = new()
-                        {
-                            zones = objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList()
-                        };
-                        ProcessEvents(level, hsuSource, WardenEvent.Source.eType.CompleteHSUScan, events.FirstOrDefault() ?? Enumerable.Empty<WardenObjectiveEventData>());
-                    }
+                    if (obj.OnActivateOnSolveItem) 
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -451,41 +491,26 @@ public class Manager
                  */
                 case eWardenObjectiveType.Reactor_Startup:
 
-                    level.objectives.Add(new ReactorStartupObjectiveData()
+                    ReactorStartupObjectiveData rsData = new()
                     {
                         objective_type = obj.DoNotSolveObjectiveOnReactorComplete ? ObjectiveData.eType.ReactorStartup_Empty : ObjectiveData.eType.ReactorStartup,
                         sub_objective_count = 1,
+                        positions = new(1) { objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList() }, // Flatten all placements into one list
                         wave_count = obj.ReactorWaves.Count,
-                    });
-
-                    // Place reactor itself as a pickup
-                    level.pickups.Add(new()
-                    {
-                        item_type = objectiveCount,
-                        positions = objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList(),
-                    });
+                        events_on_finish_wave = new(obj.ReactorWaves.Count)
+                    };
+                    lData.objectives.Add(oData = rsData);
 
                     // Reactor wave events
-                    for (int i = 0; i < obj.ReactorWaves.Count; i++)
+                    foreach (var wave in obj.ReactorWaves)
                     {
-                        ReactorWaveEventSource source = new()
-                        {
-                            objective_num = objectiveCount,
-                            subobjective_num = 0, // We assume only one reactor because that's all the game seems to be able to process
-                            wave_index = i,
-                        };
-                        ProcessEvents(level, source, WardenEvent.Source.eType.CompleteReactorWave, obj.ReactorWaves[i].Events.Iter());
+                        List<WardenEvent> list = new();
+                        ProcessEvents(list, wave.Events.Iter());
+                        rsData.events_on_finish_wave.Add(list);
                     }
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        MultiZonalEventSource reactorSource = new()
-                        {
-                            zones = objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList()
-                        };
-                        ProcessEvents(level, reactorSource, WardenEvent.Source.eType.CompleteReactorStartup, events.FirstOrDefault() ?? Enumerable.Empty<WardenObjectiveEventData>());
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, rsData);
 
                     break;
 
@@ -497,28 +522,17 @@ public class Manager
                  */
                 case eWardenObjectiveType.Reactor_Shutdown:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = obj.DoNotSolveObjectiveOnReactorComplete ? ObjectiveData.eType.ReactorShutdown_Empty : ObjectiveData.eType.ReactorShutdown,
                         sub_objective_count = 1,
-                    });
-
-                    // Place reactor itself as a pickup
-                    level.pickups.Add(new()
-                    {
-                        item_type = objectiveCount,
-                        positions = objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList(),
-                    });
+                        positions = new(1) { objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList() },
+                    };
+                    lData.objectives.Add(oData);
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        MultiZonalEventSource reactorSource = new()
-                        {
-                            zones = objective.ZonePlacementDatas.SelectMany(ps => ps.Select(ZonePosition.Make)).ToList()
-                        };
-                        ProcessEvents(level, reactorSource, WardenEvent.Source.eType.CompleteReactorShutdown, events.FirstOrDefault() ?? Enumerable.Empty<WardenObjectiveEventData>());
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
+
                     break;
 
                 /* Collect items (small pickups) from lockers and such
@@ -538,35 +552,18 @@ public class Manager
                     float missableCount = obj.Gather_SpawnCount - obj.Gather_RequiredCount;
                     int missableZoneCount = (int)MathF.Floor(missableCount / obj.Gather_MaxPerZone);
                     int reqZoneCount = objective.ZonePlacementDatas[0].Count - missableZoneCount;
-                    level.objectives.Add(new GatherItemsObjectiveData()
+
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.GatherSmallItems,
-                        sub_objective_count = obj.Gather_RequiredCount,
-                        req_count = Math.Clamp(reqZoneCount, 0, objective.ZonePlacementDatas[0].Count),
-                    });
+                        sub_objective_count = reqZoneCount,
 
-                    // Seems pickup zones can only be defined in the first placement list
-                    level.pickups.AddRange(objective.ZonePlacementDatas[0].Select<ZonePlacementData, PickupData>(p => new()
-                    {
-                        item_type = objectiveCount,
-                        positions = new(1) { ZonePosition.Make(p) },
-                    }));
+                        // It seems pickup zones can only be in the first list. We're breaking that list into multiple lists of 1 zone
+                        positions = objective.ZonePlacementDatas[0].Select(p => new List<ZonePosition>(1) { ZonePosition.Make(p) }).ToList()
+                    };
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than small pickups (required or otherwise)
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.PickupSmallItem, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -576,11 +573,13 @@ public class Manager
                  */
                 case eWardenObjectiveType.ClearAPath:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.ClearAPath,
-                        sub_objective_count = 1
-                    });
+                        sub_objective_count = 1,
+                        positions = new(0),
+                    };
+                    lData.objectives.Add(oData);
 
                     break;
 
@@ -593,25 +592,17 @@ public class Manager
                  */
                 case eWardenObjectiveType.SpecialTerminalCommand:
 
-                    level.objectives.Add(new()
-                    {
+                    oData = new()
+                    { 
                         objective_type = ObjectiveData.eType.SpecialTerminalCommand,
                         sub_objective_count = 1,
-                    });
 
-                    // Add terminal command as pickup
-                    List<ZonePosition> positions = objective.ZonePlacementDatas.Count == 0 ? new List<ZonePosition>() { new(0, 0) } : objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList();
-                    level.pickups.Add(new()
-                    {
-                        item_type = objectiveCount,
-                        positions = positions,
-                    });
-
-                    var specialTerminalCommandSource = new MultiZonalEventSource()
-                    {
-                        zones = positions
+                        // Sometimes no position is given, in which case it's in the first possible zone
+                        positions = new(1) { objective.ZonePlacementDatas.Count == 0 ? new List<ZonePosition>() { new(0, 0) } : objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList(), }
                     };
-                    ProcessEvents(level, specialTerminalCommandSource, WardenEvent.Source.eType.SpecialTerminalCommand, obj.EventsOnActivate.Iter());
+                    lData.objectives.Add(oData);
+
+                    ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -622,33 +613,16 @@ public class Manager
                  */
                 case eWardenObjectiveType.RetrieveBigItems:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.RetrieveBigItems,
                         sub_objective_count = obj.Retrieve_Items.Count,
-                    });
-
-                   level.pickups.AddRange(
-                        Enumerable.Range(0, obj.Retrieve_Items.Count)
-                            .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(ps => new PickupData { item_type = objectiveCount, positions = ps.Select(ZonePosition.Make).ToList() })
-                    );
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.Retrieve_Items.Count)
+                    };
+                    lData.objectives.Add(oData);
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than big pickups
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.RetrieveBigPickup, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -658,39 +632,21 @@ public class Manager
                  */
                 case eWardenObjectiveType.PowerCellDistribution:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.PowerCellDistribution,
                         sub_objective_count = obj.PowerCellsToDistribute,
-                    });
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.PowerCellsToDistribute),
+                    };
+                    lData.objectives.Add(oData);
 
                     // Add starting cells
-                    level.pickups.AddRange(
-                        Enumerable.Repeat(new PickupData() { item_type = -1, positions = new(1) { new ZonePosition(0, 0) } }, obj.PowerCellsToDistribute)
+                    lData.keys.AddRange(
+                        Enumerable.Repeat(new KeyData() { type = KeyData.eType.Cell, positions = new(1) { new ZonePosition(0, 0), } }, obj.PowerCellsToDistribute)
                     );
 
-                    // Add generators which will be powered
-                    level.pickups.AddRange(objective.ZonePlacementDatas.Select(ps => new PickupData()
-                    {
-                        item_type = objectiveCount,
-                        positions = ps.Select(ZonePosition.Make).ToList()
-                    }));
-
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than gens to power
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.PowerSoloGen, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -700,34 +656,16 @@ public class Manager
                  */
                 case eWardenObjectiveType.TerminalUplink:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.TerminalUplink,
                         sub_objective_count = obj.Uplink_NumberOfTerminals,
-                    });
-
-                    // Add uplink terminals as pickups
-                    level.pickups.AddRange(
-                        Enumerable.Range(0, obj.Uplink_NumberOfTerminals)
-                            .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(p => new PickupData() { item_type = objectiveCount, positions = p.Select(ZonePosition.Make).ToList() })
-                    );
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.Uplink_NumberOfTerminals),
+                    };
+                    lData.objectives.Add(oData);
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than gens to power
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.CompleteStandardUplink, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -738,45 +676,33 @@ public class Manager
                  */
                 case eWardenObjectiveType.CentralGeneratorCluster:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.CentralGeneratorCluster,
                         sub_objective_count = obj.CentralPowerGenClustser_NumberOfGenerators,
-                    });
+                        positions = new(1),
+                    };
+                    lData.objectives.Add(oData);
 
-                    // Add gen cluster as pickup
-                    // TODO: Technically, there could be multiple gen clusters, perhaps paired to multiple objectives? This does not happen in vanilla
-                    foreach (var zone in level.zones)
+                    // Find and add the gen cluster. We're assuming all gen clusters in the layer are tied to this objective
+                    // TODO: Technically, there could be multiple, distinct gen clusters, perhaps paired to multiple objectives? This does not happen in vanilla
+                    foreach (var zData in lData.zones)
                     {
-                        if ((zone.originalZone?.GeneratorClustersInZone ?? 0) > 0)
-                        {
-                            level.pickups.Add(new() { item_type = objectiveCount, positions = new List<ZonePosition>() { new(zone.originalZone!.LocalIndex, 0) } } );
-                            break;
-                        }
+                        List<ZonePosition> positions = new(1);
+                        if ((zData.originalZone?.GeneratorClustersInZone ?? 0) > 0)
+                            positions.Add(new(zData.originalZone!.LocalIndex, 0));
+                        oData.positions.Add(positions);
                     }
 
                     // Add objective-placed cells
-                    level.pickups.AddRange(
+                    lData.keys.AddRange(
                         Enumerable.Range(0, obj.CentralPowerGenClustser_NumberOfPowerCells)
                             .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(p => new PickupData() { item_type = -1, positions = p.Select(ZonePosition.Make).ToList() })
+                            .Select(p => new KeyData() { type = KeyData.eType.Cell, positions = p.Select(ZonePosition.Make).ToList() })
                     );
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than gens to power
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.PowerClusterGen, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -789,63 +715,23 @@ public class Manager
                  */
                 case eWardenObjectiveType.ActivateSmallHSU:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = obj.ActivateHSU_ObjectiveCompleteAfterInsertion ? ObjectiveData.eType.ProcessItem : ObjectiveData.eType.ProcessItem_Empty,
                         sub_objective_count = 1,
-                    });
+                        positions = new(1),
+                    };
+                    lData.objectives.Add(oData);
 
                     // Processing machine
-                    level.pickups.Add(new()
-                    {
-                        item_type = objectiveCount,
-                        positions = objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList()
-                    });
+                    oData.positions.Add(objective.ZonePlacementDatas[0].Select(ZonePosition.Make).ToList());
 
-                    // Big pickup (either in elevator or in level with us)
-                    if (obj.ActivateHSU_BringItemInElevator || obj.GenericItemFromStart == obj.ActivateHSU_ItemFromStart)
-                    {
-                        level.pickups.Add(new()
-                        {
-                            item_type = objectiveCount,
-                            positions = new(1) { new ZonePosition(0, 0) }
-                        });
-                    }
-                    else
-                    {
-                        // TODO: Search for big pickups in other levels / dimensions, just in case
-                        foreach (var zone in level.zones.Select(z => z.originalZone))
-                        {
-                            if (zone == null) continue;
-                            BigPickupDistributionDataBlock dist = BigPickupDistributionDataBlock.GetBlock(zone.BigPickupDistributionInZone);
-                            if (dist == null) continue;
-                            if (dist.SpawnData.Select(d => d.ItemID).Contains(obj.ActivateHSU_ItemFromStart))
-                            {
-                                level.pickups.Add(new()
-                                {
-                                    item_type = objectiveCount,
-                                    positions = new(1) { new ZonePosition(zone.LocalIndex, 0) }
-                                });
-                                break;
-                            }
-                        }
-                    }
+                    // If we start with the big pickup, add it to the first zone. Else, hope it's in the level somewhere
+                    if (obj.ActivateHSU_BringItemInElevator)
+                        lData.zones[lData.start_zone].big_pickups.Add(new() { item_type = obj.ActivateHSU_ItemFromStart });
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        // You should only ever be able to process 1 item. That said, might as well include the other events JIC
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.ProcessItem, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -856,18 +742,15 @@ public class Manager
                  */
                 case eWardenObjectiveType.Survival:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.SurviveWardenProtocol,
-                        sub_objective_count = 1
-                    });
-
-                    // OnActivate events
-                    ObjectiveEventSource survivalEventSource = new()
-                    {
-                        objective_num = 0,
+                        sub_objective_count = 1,
+                        positions = new(0)
                     };
-                    ProcessEvents(level, survivalEventSource, WardenEvent.Source.eType.StartSurvival, obj.EventsOnActivate.Iter());
+                    lData.objectives.Add(oData);
+
+                    ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -878,35 +761,17 @@ public class Manager
                  */
                 case eWardenObjectiveType.GatherTerminal:
 
-                    level.objectives.Add(new GatherItemsObjectiveData()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.GatherTerminals,
                         sub_objective_count = obj.GatherTerminal_RequiredCount,
-                        req_count = obj.GatherTerminal_RequiredCount,
-                    });
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.GatherTerminal_SpawnCount),
+                    };
+                    lData.objectives.Add(oData);
 
-                    // Add terminals as pickups
-                    level.pickups.AddRange(
-                        Enumerable.Range(0, obj.GatherTerminal_SpawnCount)
-                            .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(p => new PickupData() { item_type = -1, positions = p.Select(ZonePosition.Make).ToList() })
-                    );
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than terminals (required or otherwise)
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.SpecialTerminalCommand, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
 
@@ -916,34 +781,18 @@ public class Manager
                  */
                 case eWardenObjectiveType.CorruptedTerminalUplink:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.CorruptedTerminalUplink,
                         sub_objective_count = obj.Uplink_NumberOfTerminals,
-                    });
 
-                    // Corrupted uplinks are always both in the same zone (or so it seems)
-                    level.pickups.AddRange(
-                        Enumerable.Range(0, obj.Uplink_NumberOfTerminals)
-                            .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(p => new PickupData() { item_type = objectiveCount, positions = p.Select(ZonePosition.Make).ToList() })
-                    );
+                        // Corrupted uplinks always have both termianls in the same zone (or so it seems)
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.Uplink_NumberOfTerminals),
+                    };
+                    lData.objectives.Add(oData);
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        int count = 0;
-                        foreach (var subevents in events)
-                        {
-                            // Note that it's possible for there to be more subevent chains than uplinks (required or otherwise)
-                            SubObjectiveEventSource source = new()
-                            {
-                                objective_num = objectiveCount,
-                                subobjective_num = count++,
-                            };
-                            ProcessEvents(level, source, WardenEvent.Source.eType.CompleteCorruptedUplink, subevents);
-                        }
-                    }
+                        ProcessOnActivateEvents(obj.EventsOnActivate, oData);
 
                     break;
                 
@@ -953,11 +802,12 @@ public class Manager
                  */
                 case eWardenObjectiveType.Empty:
 
-                    level.objectives.Add(new()
+                    oData = new()
                     {
                         objective_type = ObjectiveData.eType.Empty,
                         sub_objective_count = 1,
-                    });
+                    };
+                    lData.objectives.Add(oData);
 
                     break;
 
@@ -968,104 +818,91 @@ public class Manager
                  */
                 case eWardenObjectiveType.TimedTerminalSequence:
 
-                    level.objectives.Add(new TimedSequenceObjectiveData()
+                    TimedSequenceObjectiveData tsData = new()
                     {
                         objective_type = ObjectiveData.eType.TimedTerminalSequence,
                         sub_objective_count = 1,
                         num_rounds = obj.TimedTerminalSequence_NumberOfRounds,
-                    });
+                        events_on_start_round   = new(Enumerable.Repeat(new List<WardenEvent>(0), obj.TimedTerminalSequence_NumberOfRounds)),
+                        events_on_succeed_round = new(Enumerable.Repeat(new List<WardenEvent>(0), obj.TimedTerminalSequence_NumberOfRounds)),
+                        events_on_fail_round    = new(Enumerable.Repeat(new List<WardenEvent>(0), obj.TimedTerminalSequence_NumberOfRounds)),
 
-                    // Zone placement data is weird here. I believe the first set is the main terminal, and the following are where each verify terminal is
-                    // Further, I believe the order of the verify terminals is randomized; it can choose any of the groups for each verify terminal,
-                    //  potentially with the ability to reuse placement groups
-                    // We'll process this with the assumption AP will simply require the first zone to start it and all zones from all lists to complete it
-                    level.pickups.AddRange(
-                        Enumerable.Range(0, obj.TimedTerminalSequence_NumberOfRounds + 1)
-                            .Select(i => objective.ZonePlacementDatas[i % objective.ZonePlacementDatas.Count])
-                            .Select(ps => new PickupData() { item_type = objectiveCount, positions = ps.Select(ZonePosition.Make).ToList() }
-                        )
-                    );
+                        // Zone placement data is weird here. I believe the first set is the main terminal, and the following are where each verify terminal is
+                        // Further, I believe the order of the verify terminals is randomized; it can choose any of the groups for each verify terminal,
+                        //  potentially with the ability to reuse placement groups
+                        // We'll process this with the assumption AP will simply require the first zone to start it and all zones from all lists to complete it
+                        positions = MakePositions(objective.ZonePlacementDatas, obj.TimedTerminalSequence_NumberOfRounds + 1)
+                    };
+                    lData.objectives.Add(oData = tsData);
 
                     for (int i = 0; i < obj.TimedTerminalSequence_NumberOfRounds; i++)
                     {
-                        var source = new SubObjectiveEventSource()
-                        {
-                            objective_num = objectiveCount,
-                            subobjective_num = i,
-                        };
                         if (obj.TimedTerminalSequence_EventsOnSequenceStart.Count > i)
-                            ProcessEvents(level, source, WardenEvent.Source.eType.StartTimedSequenceRound, obj.TimedTerminalSequence_EventsOnSequenceStart[i].Iter());
+                            ProcessEvents(tsData.events_on_start_round[i], obj.TimedTerminalSequence_EventsOnSequenceStart[i].Iter());
                         if (obj.TimedTerminalSequence_EventsOnSequenceDone.Count > i)
-                            ProcessEvents(level, source, WardenEvent.Source.eType.CompleteTimedSequenceRound, obj.TimedTerminalSequence_EventsOnSequenceDone[i].Iter());
+                            ProcessEvents(tsData.events_on_succeed_round[i], obj.TimedTerminalSequence_EventsOnSequenceDone[i].Iter());
                         if (obj.TimedTerminalSequence_EventsOnSequenceFail.Count > i)
-                            ProcessEvents(level, source, WardenEvent.Source.eType.FailTimdSequenceRound, obj.TimedTerminalSequence_EventsOnSequenceFail[i].Iter());
+                            ProcessEvents(tsData.events_on_fail_round[i], obj.TimedTerminalSequence_EventsOnSequenceFail[i].Iter());
                     }
 
                     if (obj.OnActivateOnSolveItem)
-                    {
-                        var events = obj.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
-                        SubObjectiveEventSource source = new()
-                        {
-                            objective_num = objectiveCount,
-                            subobjective_num = 1,
-                        };
-                        ProcessEvents(level, source, WardenEvent.Source.eType.CompleteFullTimedSequence, events.FirstOrDefault() ?? Enumerable.Empty<WardenObjectiveEventData>());
-                    }
-
+                        ProcessOnActivateEvents(obj.EventsOnActivate, tsData);
+                    
                     break;
+
+                default:
+                    Plugin.Get().Log.LogError($"Unrecognized objective type: {obj.Type}");
+                    continue;
             }
 
-            // If they're delayed until exit scan, we delay adding them with the intent they'll be overwritten by another event
+            // Only add events triggered immediately after completion; on scan events will be associated with the level instead
             if (obj.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.OnObjectiveCompleted)
-            {
-                var gotoWinSource = new ObjectiveEventSource() { objective_num = objectiveCount };
-                ProcessEvents(level, gotoWinSource, WardenEvent.Source.eType.ObjectiveComplete, obj.EventsOnGotoWin.Iter());
-            }
+                ProcessEvents(oData.events_on_goto_win, obj.EventsOnGotoWin.Iter());
         }
+    }
 
-        // Only the last objective's events are triggered if they're delayed until the exit scan
-        if (obj == null) throw new NullReferenceException("Did not expect objective to be null here");
-        if (obj.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.WhenExitScanMakesProgress)
-        {
-            var startExitScanSource = new ObjectiveEventSource() { objective_num = objectiveCount };
-            ProcessEvents(level, startExitScanSource, WardenEvent.Source.eType.StartExitScan, obj.EventsOnGotoWin.Iter());
-        }
-
-        // Only the first objective's events are triggered for OnElevatorLand
-        obj = WardenObjectiveDataBlock.GetBlock(layerData.ObjectiveData.DataBlockId) ?? throw new NullReferenceException();
-        var onElevatorLandSource = new WardenEvent.Source();
-        ProcessEvents(level, onElevatorLandSource, WardenEvent.Source.eType.OnElevatorLand, obj.EventsOnElevatorLand.Iter());
+    // Helper to make zone positions from placement lists and a number of needed position lists
+    public static List<List<ZonePosition>> MakePositions(Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.List<ZonePlacementData>> placements, int count)
+    {
+        return Enumerable.Range(0, count)                         // For each placement needed
+            .Select(i => placements[i % placements.Count])        // Limit to available placement lists
+            .Select(ps => ps.Select(ZonePosition.Make).ToList())  // And convert to a zone placment list
+            .ToList();
     }
 
     // Given an event source and list of events, populate event data
-    public static void ProcessEvents(LevelData level, WardenEvent.Source source, WardenEvent.Source.eType sourceType, IEnumerable<WardenObjectiveEventData> events)
+    public static void ProcessEvents(IList<WardenEvent> eventList, IEnumerable<WardenObjectiveEventData> events)
     {
         foreach (var ev in events)
         {
-            if (TryMakeEventAction(ev, out var type, out var action))
-            {
-                level.events.Add(new()
-                {
-                    source_type = sourceType,
-                    source = source,
-                    action_type = type,
-                    action = action,
-                });
-            }
+            if (TryMakeEventAction(ev, out var type, out var data))
+                eventList.Add(new(type, data));
+        }
+    }
+
+    // Helper which processes objective OnActivate events into lists for objective data
+    public static void ProcessOnActivateEvents(Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events, ObjectiveData oData)
+    {
+        var eventChains = events.Split(e => e.Type == eWardenObjectiveEventType.EventBreak);
+        foreach (var subEventList in eventChains)
+        {
+            List<WardenEvent> list = new();
+            ProcessEvents(list, subEventList);
+            oData.events_on_activate.Add(list);
         }
     }
 
     // Look at an event and add it to level data as needed. Returns false if there is no applicable action
-    public static bool TryMakeEventAction(WardenObjectiveEventData ev, out WardenEvent.Action.eType type, [NotNullWhen(true)] out WardenEvent.Action? action)
+    public static bool TryMakeEventAction(WardenObjectiveEventData ev, out WardenEvent.eType type, [NotNullWhen(true)] out WardenEvent.Action? data)
     {
         type = 0;
-        action = null;
+        data = null;
 
         switch (ev.Type)
         {
             case eWardenObjectiveEventType.UnlockSecurityDoor:
             case eWardenObjectiveEventType.OpenSecurityDoor:
-                action = new SpecificZoneEventAction()
+                data = new SpecificZoneEventAction()
                 {
                     target_zone_local_index = (int)ev.LocalIndex,
                     target_zone_layer = (int)ev.Layer,
@@ -1077,14 +914,14 @@ public class Manager
             case eWardenObjectiveEventType.ForceCompleteObjective:
             case eWardenObjectiveEventType.ForceInstantWin:
             case eWardenObjectiveEventType.WinOnDeath:
-                action = new ObjectiveEventAction()
+                data = new ObjectiveEventAction()
                 {
                     objective_layer = (int)ev.Layer
                 };
                 break;
 
             case eWardenObjectiveEventType.DimensionWarpTeam:
-                action = new WarpEventAction()
+                data = new WarpEventAction()
                 {
                     target_dimension_index = (int)ev.DimensionIndex,
                     target_zone_local_index = (int)ev.LocalIndex,
@@ -1092,7 +929,7 @@ public class Manager
                 break;
 
             case eWardenObjectiveEventType.ActivateChainedPuzzle:
-                action = new StartScanEventAction()
+                data = new StartScanEventAction()
                 {
                     target_zone_local_index = (int)ev.LocalIndex,
                     target_zone_layer = (int)ev.Layer,
@@ -1107,14 +944,14 @@ public class Manager
 
         type = ev.Type switch 
         {
-            eWardenObjectiveEventType.UnlockSecurityDoor       => WardenEvent.Action.eType.UnlockZoneDoor,
-            eWardenObjectiveEventType.OpenSecurityDoor         => WardenEvent.Action.eType.OpenZoneDoor,
-            eWardenObjectiveEventType.StepProgressionObjective => WardenEvent.Action.eType.StepObjectiveProgression,
-            eWardenObjectiveEventType.ForceCompleteObjective   => WardenEvent.Action.eType.ForceCompleteObjective,
-            eWardenObjectiveEventType.ForceInstantWin          => WardenEvent.Action.eType.ForceInstantWin,
-            eWardenObjectiveEventType.WinOnDeath               => WardenEvent.Action.eType.ActivateWinOnDeath,
-            eWardenObjectiveEventType.DimensionWarpTeam        => WardenEvent.Action.eType.DimensionWarp,
-            eWardenObjectiveEventType.ActivateChainedPuzzle    => WardenEvent.Action.eType.StartScan,
+            eWardenObjectiveEventType.UnlockSecurityDoor       => WardenEvent.eType.UnlockZoneDoor,
+            eWardenObjectiveEventType.OpenSecurityDoor         => WardenEvent.eType.OpenZoneDoor,
+            eWardenObjectiveEventType.StepProgressionObjective => WardenEvent.eType.StepObjectiveProgression,
+            eWardenObjectiveEventType.ForceCompleteObjective   => WardenEvent.eType.ForceCompleteObjective,
+            eWardenObjectiveEventType.ForceInstantWin          => WardenEvent.eType.ForceInstantWin,
+            eWardenObjectiveEventType.WinOnDeath               => WardenEvent.eType.ActivateWinOnDeath,
+            eWardenObjectiveEventType.DimensionWarpTeam        => WardenEvent.eType.DimensionWarp,
+            eWardenObjectiveEventType.ActivateChainedPuzzle    => WardenEvent.eType.StartScan,
 
             _ => throw new InvalidOperationException("Unexpected invalid event type in TryMakeEventAction!"), // Make the compiler happy
         };
