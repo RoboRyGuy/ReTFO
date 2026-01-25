@@ -31,6 +31,12 @@ public static class Il2CppListIter
     {
         return source.Iter().SelectMany(func);
     }
+
+    public static IEnumerable<T> Skip<T>(this Il2CppSystem.Collections.Generic.List<T> source, int count)
+    {
+        return source.Iter().Skip(count);
+    }
+
     public static T[] ToArray<T>(this Il2CppSystem.Collections.Generic.List<T> source)
     {
         return source.Iter().ToArray();
