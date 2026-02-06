@@ -1,4 +1,7 @@
-﻿
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace ReTFO.Archipelago;
 
 // Simple extension class for Il2Cpp lists which gives makes them enumerable
@@ -11,6 +14,11 @@ public static class Il2CppListIter
     }
 
     // Various other methods, for simplicity's sake
+
+    public static bool Any<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
+    {
+        return source.Iter().Any(predicate);
+    }
 
     public static T First<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
     {
