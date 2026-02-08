@@ -78,11 +78,10 @@ public class Manager
             return AddRegion(name);
     }
 
-    // Adds a location. Returns its index
-    public int AddLocation(Location location)
+    // Adds a location
+    public void AddLocation(Location location)
     {
         Locations.Add(location);
-        return Locations.Count - 1;
     }
 
     // Add a path object directly
@@ -178,10 +177,17 @@ public class Manager
                 regions = Regions,
                 locations = Locations,
                 paths = Paths,
-                start_region = GetOrCreateRegion(new ProcessLayer.Data(data, LG_LayerType.MainLayer).GetFirstZone().GetZoneName())
+                start_region = GetOrCreateRegion(new ProcessLayer.Data(data, LG_LayerType.MainLayer).GetFirstZone().GetZoneName()),
+                num_sectors = 1 + (data.Expedition.SecondaryLayerEnabled ? 1 : 0) + (data.Expedition.ThirdLayerEnabled ? 1 : 0),
             };
             result.expeditions.Add(exp);
         }
+        Cleanup();
+
+        // TODO:
+        //  optional_items
+        //  filler_items
+        //  trap_items
 
         return result;
     }

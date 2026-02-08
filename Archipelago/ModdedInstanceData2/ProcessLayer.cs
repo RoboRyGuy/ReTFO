@@ -100,8 +100,7 @@ public class ProcessLayer
         // Helper specifically for converting a list of placements into a list of terminal region ints
         public List<int> PlacementsToTerminalRegions(Manager manager, IEnumerable<ZonePlacementData> placements)
             => placements.Select(FindZoneByPlacement).SelectMany(
-                z => Enumerable.Range(1, z.Zone?.TerminalPlacements.Count ?? z.DimensionData?.StaticTerminalPlacements.Count ?? 0)
-                               .Select(i => new ProcessTerminal.Data(z, i).TerminalName)
+                   z => Enumerable.Range(1, z.TerminalCount).Select(i => new ProcessTerminal.Data(z, i).TerminalName)
                ).Select(n => manager.GetOrCreateRegion(n)).ToList();
 
         public string ObjectiveStartRegionName => $"{LayerName} Objective Start";

@@ -55,12 +55,12 @@ public static class ObjectiveHandlers
         path.required_item_count = 1;
 
         // Add HSU as pickup
-        manager.AddLocation(new()
-        {
-            name = $"{itemName} (Location)",
-            item = itemName,
-            regions = data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas[0]),
-        });
+        manager.AddLocation(new(
+            $"{itemName} (Location)",
+            itemName,
+            data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas[0]),
+            true
+        ));
 
         // If we're triggering events, we only need the first chain - it's impossible to activate any beyond that
         if (data.Objective.OnActivateOnSolveItem)
@@ -96,12 +96,12 @@ public static class ObjectiveHandlers
         int count = 0;
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(l => l.Iter()))
         {
-            manager.AddLocation(new()
-            {
-                name = $"{reactorName} (Location #{count++})",
-                item = reactorName,
-                regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement)) },
-            });
+            manager.AddLocation(new(
+                $"{reactorName} (Location #{count++})",
+                reactorName,
+                new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) },
+                true
+            ));
         }
 
 
@@ -125,12 +125,12 @@ public static class ObjectiveHandlers
                 path.required_item = codeName;
                 path.required_item_count = 1;
 
-                manager.AddLocation(new()
-                {
-                    name = $"{codeName} (Location)",
-                    item = codeName,
-                    regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByIndex(wave.ZoneForVerification)) }
-                });
+                manager.AddLocation(new(
+                    $"{codeName} (Location)",
+                    codeName,
+                    new(1) { manager.GetOrCreateRegion(data.FindZoneByIndex(wave.ZoneForVerification).ZoneName) },
+                    true
+                ));
             }
 
             lastRegion = inputCodeRegion;
@@ -169,12 +169,12 @@ public static class ObjectiveHandlers
         int count = 0;
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(l => l.Iter()))
         {
-            manager.AddLocation(new()
-            {
-                name = $"{reactorName} (Location #{count++})",
-                item = reactorName,
-                regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement)) },
-            });
+            manager.AddLocation(new(
+                $"{reactorName} (Location #{count++})",
+                reactorName,
+                new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) },
+                true
+            ));
         }
 
         // When the shutdown is complete, trigger events
@@ -208,6 +208,13 @@ public static class ObjectiveHandlers
         int numSpawnZones = data.ObjectiveData.ZonePlacementDatas[0].Count;
         int numSpawnSpots = numSpawnZones * data.Objective.Gather_MaxPerZone;
         int numMissing = numSpawnSpots - data.Objective.Gather_SpawnCount;
+
+        // Some simple assertions
+        void assert(bool val, string message) { if (!val) throw new NotImplementedException($"{objectiveName} -> {message}"); }
+        assert(numSpawnZones > 0, $"Expected positive number of spawn spots, got {numSpawnZones}");
+        assert(data.Objective.Gather_MaxPerZone > 0, $"Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
+        assert(numMissing >= 0, $"Expected at least as many spawn spots as spawns, instead got {-numMissing} more spawns");
+        assert(data.Objective.Gather_SpawnCount >= data.Objective.Gather_RequiredCount, "Expected at least as many spawns as required pickups");
 
         // We track progression not by how many pickups can be found, but instead by how many spawn spots can be found
         // The first numMissing spawn spots are assumed empty (because that is worst case), and therefore trigger no events
@@ -243,12 +250,12 @@ public static class ObjectiveHandlers
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
             {
                 ++count;
-                manager.AddLocation(new()
-                {
-                    name = $"{spawnSpotName} #{count}",
-                    item = spawnSpotName,
-                    regions = regions,
-                });
+                manager.AddLocation(new(
+                    $"{spawnSpotName} #{count}",
+                    spawnSpotName,
+                    regions,
+                    true
+                ));
             }
         }
 
@@ -294,17 +301,17 @@ public static class ObjectiveHandlers
         path.required_item = itemName;
         path.required_item_count = 1;
 
-        manager.AddLocation(new()
-        {
-            name = $"{itemName} (Location)",
-            item = itemName,
-            regions = data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas[0]),
-        });
+        manager.AddLocation(new(
+            $"{itemName} (Location)",
+            itemName,
+            data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas[0]),
+            true
+        ));
 
         // Events triggered upon running the command
         manager.ProcessEvent.Invoke(manager, new(
             data, data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).First(),
-            result.LastRegion, $"{objectiveName} Command Inputted"
+            result.LastRegion, $"{objectiveName} Command Inputed"
         ));
 
         return result;
@@ -351,12 +358,12 @@ public static class ObjectiveHandlers
 
             // Since this pickup is going to extraction, we don't allow its use in other logic and instead name it uniquely per this objective
             // IE if the pickup is a cell, this prevents the logic from using that cell to power a gen
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Big Pickup #{count} ({idName})",
-                item = itemName,
-                regions = regionSets[(count - 1) % regionSets.Count],
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Big Pickup #{count} ({idName})",
+                itemName,
+                regionSets[(count - 1) % regionSets.Count],
+                true
+            ));
 
             lastRegion = newRegion;
         }
@@ -396,12 +403,12 @@ public static class ObjectiveHandlers
             path.required_item = itemName;
             path.required_item_count = (uint)i;
 
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Gen #{i} (Location)",
-                item = itemName,
-                regions = regionSets[(i- 1) % regionSets.Count]
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Gen #{i} (Location)",
+                itemName,
+                regionSets[(i- 1) % regionSets.Count],
+                true
+            ));
 
             if (data.Objective.OnActivateOnSolveItem && (i<= eventSets.Count))
             {
@@ -420,12 +427,12 @@ public static class ObjectiveHandlers
             List<int> regions = new(1) { manager.GetOrCreateRegion(data.GetFirstZone().ZoneName) };
             for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
             {
-                manager.AddLocation(new()
-                {
-                    name = $"{objectiveName} Starting Cell #{i} (Location)",
-                    item = data.CellName,
-                    regions = regions
-                });
+                manager.AddLocation(new(
+                    $"{objectiveName} Starting Cell #{i} (Location)",
+                    data.CellName,
+                    regions,
+                    true
+                ));
             }
         }
 
@@ -465,12 +472,12 @@ public static class ObjectiveHandlers
                 ));
             }
 
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Terminal #{i}",
-                item = itemName,
-                regions = regionSets[(i - 1) % regionSets.Count],
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Terminal #{i}",
+                itemName,
+                regionSets[(i - 1) % regionSets.Count],
+                true
+            ));
 
             last = newRegion;
         }
@@ -495,12 +502,12 @@ public static class ObjectiveHandlers
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
         for (int i = 1; i < data.Objective.CentralPowerGenClustser_NumberOfPowerCells; i++)
         {
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Power Cell #{1} (Location)",
-                item = data.CellName,
-                regions = regionSets[(i - 1) % regionSets.Count],
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Power Cell #{1} (Location)",
+                data.CellName,
+                regionSets[(i - 1) % regionSets.Count],
+                true
+            ));
         }
 
         // b) Finding the central gen cluster
@@ -521,12 +528,12 @@ public static class ObjectiveHandlers
             genIndex = eLocalZoneIndex.Zone_0;
         }
         ProcessZone.Data genZone = data.FindZoneByIndex(genIndex.Value);
-        manager.AddLocation(new()
-        {
-            name = $"{itemName} (Location)",
-            item = itemName,
-            regions = new(1) { manager.GetOrCreateRegion(genZone.ZoneName) },
-        });
+        manager.AddLocation(new(
+            $"{itemName} (Location)",
+            itemName,
+            new(1) { manager.GetOrCreateRegion(genZone.ZoneName) },
+            true
+        ));
 
         // c) Regions and events based on available cell counts
         List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
@@ -579,22 +586,22 @@ public static class ObjectiveHandlers
         path.required_item_count = 1;
 
         // Add the processor to the world
-        manager.AddLocation(new()
-        {
-            name = $"{processorName} (Location)",
-            item = processorName,
-            regions = data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => data.PlacementsToZoneRegions(manager, ps)).ToList(),
-        });
+        manager.AddLocation(new(
+            $"{processorName} (Location)",
+            processorName,
+            data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => data.PlacementsToZoneRegions(manager, ps)).ToList(),
+            true
+        ));
 
         // Add the item to the elevator zone, if necessary
         if (data.Objective.ActivateHSU_BringItemInElevator)
         {
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} - Item in Elevator",
-                item = itemName,
-                regions = new(1) { manager.GetOrCreateRegion(new ProcessLayer.Data(data, LayerType.Main).GetFirstZone().ZoneName) },
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} - Item in Elevator",
+                itemName,
+                new(1) { manager.GetOrCreateRegion(new ProcessLayer.Data(data, LayerType.Main).GetFirstZone().ZoneName) },
+                true
+            ));
         }
 
         // Events triggered by initiating processing on the small HSU - always triggered
@@ -631,8 +638,12 @@ public static class ObjectiveHandlers
         ProcessObjective.Result result = new(
             manager.GetOrCreateRegion($"{objectiveName} Start"),
             manager.GetOrCreateRegion($"{objectiveName} Completed"),
-            data.Objective.GatherTerminal_RequiredCount <= data.Objective.GatherTerminal_SpawnCount
+            true
         );
+
+        // Simple assertion(s)
+        void assert(bool val, string msg) { if (!val) throw new NotImplementedException($"{objectiveName} -> {msg}"); }
+        assert(data.Objective.GatherTerminal_RequiredCount <= data.Objective.GatherTerminal_SpawnCount, "Expected at least as many terminal spawns as required terminals");
 
         string itemName = $"{objectiveName} Terminal";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
@@ -645,12 +656,12 @@ public static class ObjectiveHandlers
             path.required_item = itemName;
             path.required_item_count = (uint)i;
 
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Terminal #{i} Spawn Location",
-                item = itemName,
-                regions = regionSets[(i - 1) % regionSets.Count],
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Terminal #{i} Spawn Location",
+                itemName,
+                regionSets[(i - 1) % regionSets.Count],
+                true
+            ));
 
             if (data.Objective.OnActivateOnSolveItem && (i <= eventSets.Count))
             {
@@ -694,12 +705,12 @@ public static class ObjectiveHandlers
             path.required_item = itemName;
             path.required_item_count = (uint)i;
 
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Terminal Pair #{i} Spawn Location",
-                item = itemName,
-                regions = regionSets[(i - 1) % regionSets.Count],
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Terminal Pair #{i} Spawn Location",
+                itemName,
+                regionSets[(i - 1) % regionSets.Count],
+                true
+            ));
 
             if (data.Objective.OnActivateOnSolveItem && (i <= eventSets.Count))
             {
@@ -752,12 +763,12 @@ public static class ObjectiveHandlers
         path.required_item = $"{objectiveName} Main Terminal";
         path.required_item_count = 1;
 
-        manager.AddLocation(new()
-        {
-            name = $"{objectiveName} Main Terminal (Location)",
-            item = $"{objectiveName} Main Terminal",
-            regions = regionSets[0]
-        });
+        manager.AddLocation(new(
+            $"{objectiveName} Main Terminal (Location)",
+            $"{objectiveName} Main Terminal",
+            regionSets[0],
+            true
+        ));
 
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count > 0)
         {
@@ -778,12 +789,12 @@ public static class ObjectiveHandlers
         // Adding in the secondary terminals as pickups for the next step
         for (int i = 1; i < regionSets.Count; i++)
         {
-            manager.AddLocation(new()
-            {
-                name = $"{objectiveName} Verication Terminal #{i}",
-                item = $"{objectiveName} Verification Terminal",
-                regions = regionSets[i]
-            });
+            manager.AddLocation(new(
+                $"{objectiveName} Verication Terminal #{i}",
+                $"{objectiveName} Verification Terminal",
+                regionSets[i],
+                true
+            ));
         }
 
         // For each round of verification, we'll add success for the previous round and start/fail for the next

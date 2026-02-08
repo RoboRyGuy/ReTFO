@@ -127,7 +127,7 @@ public class ProcessObjective
     // Invoke handlers when processing a layer
     internal void OnProcessLayer(Manager manager, ProcessLayer.Data data)
     {
-        // No layer data = no objective for layer
+        // No layer data = no objectives for layer
         var layerData = data.LayerData;
         if (layerData == null) return;
 
@@ -138,7 +138,7 @@ public class ProcessObjective
             .Select((d, i) => new Data(data, d, i))
             .ToList();
 
-        // Helper which invokes processing on an objective
+        // Helper which will be used to invoke processing inline during the for loop
         Result? Process(Data data)
         {
             if (data.Objective == null)
@@ -150,28 +150,59 @@ public class ProcessObjective
             Delegate? handler = Handlers.ElementAtOrDefault((int)data.Objective.Type);
             if (handler == null)
             {
-                Plugin.Get().Log.LogWarning($"Failed to find objective handler for type {(int)data.Objective.Type} ({Enum.GetName(typeof(eWardenObjectiveType), data.Objective.Type)})");
+                Plugin.Get().Log.LogError($"Failed to find objective handler for type {(int)data.Objective.Type} ({Enum.GetName(typeof(eWardenObjectiveType), data.Objective.Type)})");
                 return null;
             }
 
             return handler.Invoke(manager, data);
         }
 
-        // Using the processed results, connect it all together
-        Path path;
-        int last = manager.GetOrCreateRegion(data.ObjectiveStartRegionName);
+        // Create the starting region and connect it to the first zone in the layer
+        int startRegion = manager.GetOrCreateRegion(data.ObjectiveStartRegionName);
+        Path path = manager.AddPath(data.GetFirstZone().ZoneName, startRegion);
+
+        if (data.LayerType.IsMainLayer)
+        {   // On elevator land events only trigger for first objective of the main layer
+            manager.ProcessEvent.Invoke(manager, new(
+                data, objectiveDatas[0].Objective.EventsOnElevatorLand.Iter(),
+                startRegion, $"{data.LayerName} On Elevator Land"
+            ));
+
+            if (objectiveDatas[0].Objective.GenericItemFromStart != 0)
+            {   // I believe GenericInElevator only works for the first objective of the main layer
+                manager.AddLocation(new(
+                    $"{data.LayerName} Generic Item in Elevator",
+                    data.BigPickupName(ItemDataBlock.GetBlock(objectiveDatas[0].Objective.GenericItemFromStart)),
+                    new(1) { manager.GetOrCreateRegion(data.GetFirstZone().ZoneName) },
+                    true
+                ));
+            }
+        }
+
+        // Process each objective and chain it all together
+        int last = startRegion;
         uint count = 0;
         foreach (var result in objectiveDatas.Select(Process).OfType<Result>())
-        {
-            // Connect the objectives together. Lock behind CompleteObjective items based on count
+        {   // Connect the objectives together. Lock each with CompleteObjective items based on count
             path = manager.AddPath(last, result.FirstRegion);
             path.required_item = data.CompleteObjectiveName;
             path.required_item_count = count++;
             path.alternate_item = data.InstantWinEventName;
             last = result.FirstRegion;
+
+            // If the objective can be completed, we add a CompleteObjective item the end of it (for now, might change this later)
+            if (result.CanCompleteObjective)
+            {
+                manager.AddLocation(new(
+                    $"{data.LayerName} Completed Objective #{count}",
+                    data.CompleteObjectiveName,
+                    new(1) { result.LastRegion },
+                    true
+                ));
+            }
         }
 
-        // Finally, we chain two more zones on. One for Goto win events, and another with the actual win reward
+        // One zone is added for the gotowin events
         int next = manager.GetOrCreateRegion(data.ObjeciveGotoWinRegionName);
         path = manager.AddPath(last, next);
         path.required_item = data.CompleteObjectiveName;
@@ -179,26 +210,27 @@ public class ProcessObjective
         path.alternate_item = data.InstantWinEventName;
         last = next;
 
+        // A final zone is added with the reward for reaching extraction with the objective complete
         next = manager.GetOrCreateRegion(data.ObjectiveRewardRegionName);
         path = manager.AddPath(last, next);
         path.required_item = data.ExtractionReachableName;
         path.required_item_count = 1;
 
-        manager.AddLocation(new()
-        {
-            name = $"{data.LayerName} Any Sector Clear",
-            item = manager.UnlockExpeditionName,
-            regions = new(1) { next }
-        });
+        manager.AddLocation(new(
+            $"{data.LayerName} Any Sector Clear",
+            manager.UnlockExpeditionName,
+            new(1) { next },
+            true
+        ));
 
         if (data.LayerType.IsMainLayer)
         {
-            manager.AddLocation(new()
-            {
-                name = $"{data.LayerName} Main Sector Clear",
-                item = manager.UnlockExpeditionMainOnlyName,
-                regions = new(1) { next }
-            });
+            manager.AddLocation(new(
+                $"{data.LayerName} Main Sector Clear",
+                manager.UnlockExpeditionMainOnlyName,
+                new(1) { next },
+                true
+            ));
         }
     }
 

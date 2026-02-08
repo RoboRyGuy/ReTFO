@@ -6,7 +6,7 @@ using System.Linq;
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
 // Trigger event processing for a few sources where processing require little extra context
-public static class TriggerEventProcessing
+public static class EventTriggerProcessors
 {
     [ProcessZone.Callback]
     public static void AddZoneEvents(Manager manager, ProcessZone.Data data)
@@ -71,5 +71,17 @@ public static class TriggerEventProcessing
         }
     }
 
+    // Triggers event processing for when unique commands are triggered
+    [ProcessTerminal.Callback]
+    public static void AddUniqueCommandEvents(Manager manager, ProcessTerminal.Data data)
+    {
+        foreach (var command in data.TerminalData.UniqueCommands)
+        {
+            manager.ProcessEvent.Invoke(manager, new(
+                data, command.CommandEvents.Iter(),
+                manager.GetOrCreateRegion(data.TerminalName), $"{data.TerminalName} Unique Command (\"{command.Command}\")"
+            ));
+        }
+    }
 
 }

@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
-public static class AddPickups
+public static class PickupsProcessors
 {
     // Add big pickups in zones which spawn them via big pickup distributions
     [ProcessZone.Callback]
@@ -23,12 +23,12 @@ public static class AddPickups
         while ((usedWeight + pickups.SpawnData[index].Weight) <= pickups.SpawnsPerZone)
         {
             ItemDataBlock item = ItemDataBlock.GetBlock(pickups.SpawnData[index].ItemID);
-            manager.AddLocation(new()
-            {
-                name = $"{data.ZoneName} Big Pickup {++count} ({item.terminalItemShortName})",
-                item = data.BigPickupName(item),
-                regions = regions
-            });
+            manager.AddLocation(new(
+                $"{data.ZoneName} Big Pickup {++count} ({item.terminalItemShortName})",
+                data.BigPickupName(item),
+                regions,
+                true
+            ));
             usedWeight += pickups.SpawnData[index].Weight;
             index = (index + 1) % pickups.SpawnData.Count;
         }
@@ -43,12 +43,12 @@ public static class AddPickups
 
         for (int i = 0; i < layerData.BulkheadKeyPlacements.Count; i++)
         {
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.BulkheadKeyName} (Spawn Location {i + 1})",
-                item = data.BulkheadKeyName,
-                regions = layerData.BulkheadKeyPlacements[i].Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList()
-            });
+            manager.AddLocation(new(
+                $"{data.BulkheadKeyName} (Spawn Location {i + 1})",
+                data.BulkheadKeyName,
+                layerData.BulkheadKeyPlacements[i].Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList(),
+                true
+            ));
         }
     }
 
@@ -65,12 +65,12 @@ public static class AddPickups
             count += 1;
 
             ProcessZone.Data targetZone = data.FindZoneByEvent(e);
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.SourceName} - Unlock Event {count} (for {targetZone.ZoneName})",
-                item = targetZone.UnlockZoneName,
-                regions = new(1) { eventData.SourceRegion }
-            });
+            manager.AddLocation(new(
+                $"{data.SourceName} - Unlock Event {count} (for {targetZone.ZoneName})",
+                targetZone.UnlockZoneName,
+                new(1) { data.SourceRegion },
+                true
+            ));
         }
     }
 
@@ -86,12 +86,12 @@ public static class AddPickups
                 continue;
             count += 1;
 
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.SourceName} - Start Scan {count} (for {e.WorldEventObjectFilter})",
-                item = data.CustomScanName(e.WorldEventObjectFilter),
-                regions = new(1) { eventData.SourceRegion }
-            });
+            manager.AddLocation(new(
+                $"{data.SourceName} - Start Scan {count} (for {e.WorldEventObjectFilter})",
+                data.CustomScanName(e.WorldEventObjectFilter),
+                new(1) { data.SourceRegion },
+                true
+            ));
         }
     }
 
@@ -108,12 +108,12 @@ public static class AddPickups
             count += 1;
 
             ProcessLayer.Data layer = new(data, e.Layer);
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.SourceName} - Force Complete Objective Event {count}",
-                item = data.CompleteObjectiveName,
-                regions = new(1) { eventData.SourceRegion }
-            });
+            manager.AddLocation(new(
+                $"{data.SourceName} - Force Complete Objective Event {count}",
+                data.CompleteObjectiveName,
+                new(1) { data.SourceRegion },
+                true
+            ));
         }
     }
 
@@ -130,12 +130,12 @@ public static class AddPickups
             count += 1;
 
             ProcessLayer.Data layer = new(data, e.Layer);
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.SourceName} - Instant Win Event {count}",
-                item = data.InstantWinEventName,
-                regions = new(1) { eventData.SourceRegion }
-            });
+            manager.AddLocation(new(
+                $"{data.SourceName} - Instant Win Event {count}",
+                data.InstantWinEventName,
+                new(1) { data.SourceRegion },
+                true
+            ));
         }
     }
 
@@ -145,12 +145,12 @@ public static class AddPickups
     {
         ProcessLayer.Data layerData = new(data, LayerType.Main);
         int extractionRegion = manager.GetOrCreateRegion(data.ExtractionRegionName);
-        manager.AddLocation(new Location()
-        {
-            name = $"{data.ExtractionReachableName} (Location)",
-            item = data.ExtractionReachableName,
-            regions = new(1) { extractionRegion },
-        });
+        manager.AddLocation(new(
+            $"{data.ExtractionReachableName} (Location)",
+            data.ExtractionReachableName,
+            new(1) { extractionRegion },
+            true
+        ));
 
         // Now, we calc where extraction is and connect it to the map
         if (data.Expedition.MainLayerData.ObjectiveData.WinCondition == eWardenObjectiveWinCondition.GoToExitGeo)

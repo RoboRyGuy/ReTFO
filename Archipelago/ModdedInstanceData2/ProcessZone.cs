@@ -31,6 +31,16 @@ public class ProcessZone
             else return WithOverride(CalcZoneAlias(Zone.LocalIndex), Zone.AliasOverride);
         }
 
+        public int TerminalCount => GetTerminalCount();
+        public int GetTerminalCount()
+        {
+            if (Zone != null) 
+                if (!Zone.ForbidTerminalsInZone) return Zone.TerminalPlacements.Count;
+            else if (DimensionData != null) 
+                    if (!DimensionData.ForbidTerminalsInDimension) return DimensionData.StaticTerminalPlacements.Count;
+            return 0;
+        }
+
         public string ZoneName => GetZoneName();
         public string GetZoneName() => $"{LayerName} ZONE_{ZoneAlias}";
         public string ColoredKeyName => $"{ZoneName} Colored Key";

@@ -22,6 +22,12 @@ public class ProcessTerminal
 
         public int TerminalIndex { get; init; }
 
+        public TerminalPlacementData TerminalData => GetTerminalData();
+        public TerminalPlacementData GetTerminalData()
+            => Zone?.TerminalPlacements[TerminalIndex]
+            ?? DimensionData?.StaticTerminalPlacements[TerminalIndex]
+            ?? throw new NullReferenceException($"\"{ZoneName}\" does not contain a terminal of index {TerminalIndex}");
+
         public string TerminalName => GetTerminalName();
         public string GetTerminalName() => $"{ZoneName} Terminal #{TerminalIndex + 1}";
     }
@@ -43,12 +49,8 @@ public class ProcessTerminal
     // Invoke the event when processing a zone
     internal void OnProcessZone(Manager manager, ProcessZone.Data data)
     {
-        Il2CppSystem.Collections.Generic.List<TerminalPlacementData>? list;
-        if (data.Zone == null) list = data.DimensionData?.StaticTerminalPlacements;
-        else list = data.Zone.TerminalPlacements;
-
-        if (list != null) 
-            for (int i = 0; i < list.Count; i++) Event?.Invoke(manager, new(data, i));
+        for (int i = 0; i < data.TerminalCount; i++) 
+            Event?.Invoke(manager, new(data, i));
     }
 
     public ProcessTerminal RegisteredTo(ProcessZone owner)

@@ -5,7 +5,7 @@ using GameData;
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
 // Adds paths between zones
-public static class AddEntrances
+public static class EntranceProcessors
 {
     // Add entrances between zones on the same layer - ie, the main entrance
     [ProcessZone.Callback]
@@ -33,25 +33,25 @@ public static class AddEntrances
         {   // Typical colored key
             path.required_item = data.ColoredKeyName;
             path.required_item_count = 1;
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.ColoredKeyName} (Spawn Location)",
-                item = data.ColoredKeyName,
-                regions = data.Zone.ProgressionPuzzleToEnter.ZonePlacementData
-                    .Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList()
-            });
+            manager.AddLocation(new Location(
+                $"{data.ColoredKeyName} (Spawn Location)",
+                data.ColoredKeyName,
+                data.Zone.ProgressionPuzzleToEnter.ZonePlacementData
+                    .Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList(),
+                true
+            ));
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
         {   // Must power a specific generator with a cell
             path.required_item = data.CellName;
             path.required_item_count = 1;
-            manager.AddLocation(new Location()
-            {
-                name = $"{data.CellName} (Spawn Location)",
-                item = data.CellName,
-                regions = data.Zone.ProgressionPuzzleToEnter.ZonePlacementData
-                    .Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList()
-            });
+            manager.AddLocation(new Location(
+                $"{data.CellName} (Spawn Location)",
+                data.CellName,
+                data.Zone.ProgressionPuzzleToEnter.ZonePlacementData
+                    .Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList(),
+                true
+            ));
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Locked_No_Key)
         {   // Can only be unlocked by an event force unlocking it

@@ -3,7 +3,9 @@ using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using ReTFO.Archipelago.ModdedInstanceData2;
+using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 
 namespace ReTFO.Archipelago;
 

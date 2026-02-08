@@ -1,5 +1,6 @@
 ﻿
 using GameData;
+using System.Collections.Generic;
 
 namespace ReTFO.Archipelago.ModdedInstanceData;
 

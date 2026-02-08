@@ -1,6 +1,9 @@
 ﻿
 using GameData;
 using HarmonyLib;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
 namespace ReTFO.Archipelago;
@@ -69,6 +72,7 @@ internal static class SingleRundownPatch
         string outputPath = "C:\\Users\\rydan\\Downloads\\moddedInstanceData.json";
         System.IO.File.WriteAllText(outputPath, json);
 
+        /*
         foreach (var exp in expeditions)
         {
             var objectives = Enumerable.Empty<Tuple<uint, IEnumerable<uint>, string>>()
@@ -140,6 +144,7 @@ internal static class SingleRundownPatch
                 }
             }
         }
+        /**/
     }   
 
 }

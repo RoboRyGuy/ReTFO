@@ -1,10 +1,6 @@
 ﻿
-using GameData;
-using LevelGeneration;
-using MS.Internal.Xml.XPath;
-using ReTFO.Archipelago.ModdedInstanceData;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
+using System;
+using System.Collections.Generic;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2;
 
@@ -32,6 +28,14 @@ public class Region
  */
 public class Location
 {
+    public Location(string name, string item, List<int> regions, bool auto_discover)
+    {
+        this.name = name;
+        this.item = item;
+        this.regions = regions;
+        this.auto_discover = auto_discover;
+    }
+
     // Unique name of the location, used to identify it
     public string name { get; set; }
 
@@ -40,6 +44,11 @@ public class Location
 
     // Regions this location can be in
     public List<int> regions { get; init; } = new(1);
+
+    // When the containing region(s) are discovered, is this location automatically discovered?
+    // If possible, make this false and add logic so players "find" the location correctly
+    // Also, leave a note of which patch(es) implement said logic
+    public bool auto_discover { get; set; }
 }
 
 /*
@@ -92,6 +101,7 @@ public class Expedition
     public List<Location> locations { get; init; } = new();
     public List<Path> paths { get; init; } = new();
     public int start_region { get; set; } = 0;
+    public int num_sectors { get; set; } = 1;
 }
 
 // Contains and formats modded instance data so it can be easily serialized / deserialized
