@@ -134,7 +134,7 @@ public class Manager
 
         var methods = AppDomain.CurrentDomain
             .GetAssemblies()
-            .SelectMany(a => a.GetTypes())
+            .SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException e) { return e.Types.OfType<Type>(); } })
             .SelectMany(t => t.GetMethods(bf))
             .Where(m => m.CustomAttributes.Any(a => a.AttributeType == typeof(TAttribute)));
 

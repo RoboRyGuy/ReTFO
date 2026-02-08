@@ -66,7 +66,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).First(), 
+                data, data.Objective.EventsOnActivate.Split().First(), 
                 result.LastRegion, $"{objectiveName} HSU Scan Completed"
             ));
         }
@@ -108,7 +108,7 @@ public static class ObjectiveHandlers
         // For each wave, there will be a "survive wave" and an "input code" region
         int lastRegion = inReactorRegion;
         count = 0;
-        foreach (var wave in data.Objective.ReactorWaves)
+        foreach (var wave in data.Objective.ReactorWaves.Iter())
         {
             ++count;
             int surviveRegion = manager.GetOrCreateRegion($"{objectiveName} Surive Wave {count}");
@@ -141,7 +141,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).First(),
+                data, data.Objective.EventsOnActivate.Split().First(),
                 result.LastRegion, $"{objectiveName} Startup Complete"
             ));
         }
@@ -181,7 +181,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).First(),
+                data, data.Objective.EventsOnActivate.Split().First(),
                 result.LastRegion, $"{objectiveName} Shutdown Complete"
             ));
         }
@@ -218,7 +218,7 @@ public static class ObjectiveHandlers
 
         // We track progression not by how many pickups can be found, but instead by how many spawn spots can be found
         // The first numMissing spawn spots are assumed empty (because that is worst case), and therefore trigger no events
-        var eventLists = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        var eventLists = data.Objective.EventsOnActivate.Split().ToList();
         int lastRegion = result.FirstRegion;
         Path path;
         for (int i = 1; i <= numSpawnSpots; i++)
@@ -244,7 +244,7 @@ public static class ObjectiveHandlers
 
         // Finally, we place the spawn spots into the world as pickups
         int count = 0;
-        foreach (var placement in data.ObjectiveData.ZonePlacementDatas[0])
+        foreach (var placement in data.ObjectiveData.ZonePlacementDatas[0].Iter())
         {
             List<int> regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) };
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
@@ -310,7 +310,7 @@ public static class ObjectiveHandlers
 
         // Events triggered upon running the command
         manager.ProcessEvent.Invoke(manager, new(
-            data, data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).First(),
+            data, data.Objective.EventsOnActivate.Split().First(),
             result.LastRegion, $"{objectiveName} Command Inputed"
         ));
 
@@ -334,11 +334,11 @@ public static class ObjectiveHandlers
          */
         string itemName = $"{objectiveName} Big Pickup";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
 
         int lastRegion = result.FirstRegion;
         int count = 0;
-        foreach (var id in data.Objective.Retrieve_Items)
+        foreach (var id in data.Objective.Retrieve_Items.Iter())
         {
             ++count;
             string idName = ItemDataBlock.GetBlock(id).publicName;
@@ -388,7 +388,7 @@ public static class ObjectiveHandlers
         // Foreach gen needed, create two regions: One checks for access to cells, the other to gens
         string itemName = $"{objectiveName} Gen Location";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
         int last = result.FirstRegion;
         Path path;
         for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
@@ -455,7 +455,7 @@ public static class ObjectiveHandlers
         // Very similar to big pickups. However, terminal pickups will be inside terminal regions. We will require all terminals in all possible zones
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
         string itemName = $"{objectiveName} Terminal";
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.Uplink_NumberOfTerminals; i++)
         {
@@ -514,7 +514,7 @@ public static class ObjectiveHandlers
         string itemName = $"{objectiveName} Gen Cluster";
         eLocalZoneIndex? genIndex = null;
         LevelLayoutDataBlock layout = data.Layout ?? throw new NotImplementedException("Empty layout on layer!");
-        foreach (var zone in layout.Zones)
+        foreach (var zone in layout.Zones.Iter())
         {
             if (zone.GeneratorClustersInZone > 0)
             {
@@ -536,7 +536,7 @@ public static class ObjectiveHandlers
         ));
 
         // c) Regions and events based on available cell counts
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
         int last = result.FirstRegion;
         for (int i = 1; i < data.Objective.CentralPowerGenClustser_NumberOfGenerators; i++)
         {
@@ -647,7 +647,7 @@ public static class ObjectiveHandlers
 
         string itemName = $"{objectiveName} Terminal";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
@@ -696,7 +696,7 @@ public static class ObjectiveHandlers
         // Both terminals in a pair are always in the same zone (unless spawning hijinks ensue, but we're ignoring those)
         string itemName = $"{objectiveName} Terminal Pair";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps).Distinct().ToList()).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
@@ -841,7 +841,7 @@ public static class ObjectiveHandlers
         path = manager.AddPath(last, result.LastRegion);
         if (data.Objective.OnActivateOnSolveItem)
         {
-            List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split(e => e.Type == eWardenObjectiveEventType.EventBreak).ToList();
+            List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
             if (eventSets.Count == 0) return result;
             manager.ProcessEvent.Invoke(manager, new(
                 data, eventSets[0],

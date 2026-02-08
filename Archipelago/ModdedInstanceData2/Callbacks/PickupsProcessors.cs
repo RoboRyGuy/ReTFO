@@ -158,7 +158,7 @@ public static class PickupsProcessors
             // Basically, if it's listed in the custom exits section of the complex data, it's probably the exit
             ComplexResourceSetDataBlock complex = ComplexResourceSetDataBlock.GetBlock(data.Expedition.Expedition.ComplexResourceData);
             ExpeditionZoneData? zone = null;
-            foreach (var z in layerData.Layout!.Zones)
+            foreach (var z in layerData.Layout!.Zones.Iter())
             {
                 if (z.CustomGeomorph.Length == 0 || z.CustomGeomorph == "")
                     continue;

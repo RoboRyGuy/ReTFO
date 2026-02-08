@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using GameData;
 
 namespace ReTFO.Archipelago;
 
@@ -65,8 +66,9 @@ public static class Il2CppListIter
     // Values matching the predicate are not returned in the result.
     public static IEnumerable<IEnumerable<T>> Split<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
     {
-        var iter = source.GetEnumerator();
+        if (source == null) yield break;
 
+        var iter = source.GetEnumerator();
         IEnumerable<T> Split_Helper()
         {
             if (predicate(iter.Current)) yield break;
@@ -81,6 +83,13 @@ public static class Il2CppListIter
         
         while (iter.MoveNext())
             yield return Split_Helper();
+    }
+
+    // Helper specifically for handling event breaks in WardenObjectiveEventData lists
+    public static IEnumerable<IEnumerable<WardenObjectiveEventData>> Split(this Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> source)
+    {
+        foreach (var sublist in source.Split()
+            yield return sublist.OfType<WardenObjectiveEventData>(); // Filter out null values
     }
 
 }

@@ -28,7 +28,7 @@ public static class EventTriggerProcessors
             foreach (var pair in pairs)
             {   // Basically, each event "could" occur infinite times. Events only occur up to an event break. We process accordingly
                 int count = 0;
-                foreach (var eventChain in pair.Item2.Split(e => e.Type == eWardenObjectiveEventType.EventBreak))
+                foreach (var eventChain in pair.Item2.Split())
                     manager.ProcessEvent.Invoke(manager, new ProcessEvent.Data(data, eventChain, region, $"{pair.Item1} ({++count})"));
             }
 
@@ -43,10 +43,10 @@ public static class EventTriggerProcessors
             }
 
             // In-zone scans, which are event-triggered scans
-            foreach (var scan in data.Zone.WorldEventChainedPuzzleDatas)
+            foreach (var scan in data.Zone.WorldEventChainedPuzzleDatas.Iter())
             {
                 uint count = 0;
-                foreach (var eventChain in scan.EventsOnScanDone.Split(e => e.Type == eWardenObjectiveEventType.EventBreak))
+                foreach (var eventChain in scan.EventsOnScanDone.Split())
                 {
                     ++count;
                     int scanRegion = manager.GetOrCreateRegion($"{data.ZoneName} Custom Scan ({scan.WorldEventObjectFilter}) (Completion #{count})");
@@ -66,7 +66,7 @@ public static class EventTriggerProcessors
         else if (data.DimensionData != null)
         {   // Only event of note in dimension data is OnBossDeath. In vanilla, at most one boss can be fought per expedition, but might as well be safe
             int count = 0;
-            foreach (var eventChain in data.DimensionData.EventsOnBossDeath.Split(e => e.Type == eWardenObjectiveEventType.EventBreak))
+            foreach (var eventChain in data.DimensionData.EventsOnBossDeath.Split())
                 manager.ProcessEvent.Invoke(manager, new(data, eventChain, region, $"{data.ZoneName} OnBossDeath ({++count})"));
         }
     }
@@ -75,7 +75,7 @@ public static class EventTriggerProcessors
     [ProcessTerminal.Callback]
     public static void AddUniqueCommandEvents(Manager manager, ProcessTerminal.Data data)
     {
-        foreach (var command in data.TerminalData.UniqueCommands)
+        foreach (var command in data.TerminalData.UniqueCommands.Iter())
         {
             manager.ProcessEvent.Invoke(manager, new(
                 data, command.CommandEvents.Iter(),
