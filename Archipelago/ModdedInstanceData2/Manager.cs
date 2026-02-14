@@ -165,9 +165,11 @@ public class Manager
 
         ModdedInstanceData result = new();
 
+        Cleanup();
         foreach (var data in RundownDataBlock.GetAllBlocks().SelectMany(UnpackExpeditions))
         {
-            Cleanup();
+            // Some rundowns (test rundowns, mainly) will cause issues if we try to process them. So we'll skip those
+            if ((LevelLayoutDataBlock.GetBlock(data.Expedition.LevelLayoutData)?.Zones?.Count ?? 0) == 0) continue;
 
             ProcessExpedition.Invoke(this, data);
 
@@ -181,8 +183,9 @@ public class Manager
                 num_sectors = 1 + (data.Expedition.SecondaryLayerEnabled ? 1 : 0) + (data.Expedition.ThirdLayerEnabled ? 1 : 0),
             };
             result.expeditions.Add(exp);
+            
+            Cleanup();
         }
-        Cleanup();
 
         // TODO:
         //  optional_items

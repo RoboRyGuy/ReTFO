@@ -88,7 +88,7 @@ public static class Il2CppListIter
     // Helper specifically for handling event breaks in WardenObjectiveEventData lists
     public static IEnumerable<IEnumerable<WardenObjectiveEventData>> Split(this Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> source)
     {
-        foreach (var sublist in source.Split()
+        foreach (var sublist in source.Split(e => (e?.Type ?? eWardenObjectiveEventType.EventBreak) == eWardenObjectiveEventType.EventBreak))
             yield return sublist.OfType<WardenObjectiveEventData>(); // Filter out null values
     }
 

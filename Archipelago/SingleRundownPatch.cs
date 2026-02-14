@@ -1,6 +1,7 @@
 ﻿
 using GameData;
 using HarmonyLib;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -61,11 +62,14 @@ internal static class SingleRundownPatch
             }
         }
 
-        var data = ModdedInstanceData.Manager.GenerateModdedInstanceData();
+        //var data = ModdedInstanceData.Manager.GenerateModdedInstanceData();
+        var data = Plugin.Get().GetModdedInstanceData();
 
-        Newtonsoft.Json.JsonSerializerSettings settings = new();
+        JsonSerializerSettings settings = new();
+        settings.Converters.Insert(0, new RegionConverter());
+        settings.Converters.Insert(0, new IntListConverer());
         settings.Converters.Insert(0, new Newtonsoft.Json.Converters.StringEnumConverter());
-        Newtonsoft.Json.JsonSerializer serializer = new();
+        JsonSerializer serializer = new();
 
         string json = Newtonsoft.Json.JsonConvert.SerializeObject(data, Newtonsoft.Json.Formatting.Indented, settings);
 
@@ -158,5 +162,51 @@ public static class PostShowIntel
         if ((text.UntranslatedText?.Length ?? 0) == 0) return;
         Plugin.Get().Log.LogWarning(text.UntranslatedText);
         PlayerChatManager.WantToSentTextMessage(Player.PlayerManager.GetLocalPlayerAgent(), text.UntranslatedText, Player.PlayerManager.GetLocalPlayerAgent());
+    }
+}
+
+// Custom formatting for regions to make them inline
+public sealed class RegionConverter : JsonConverter
+{
+    public override bool CanRead => false;
+    public override bool CanWrite => true;
+
+    public override bool CanConvert(Type objectType)
+    {
+        return objectType == typeof(ModdedInstanceData2.Region);
+    }
+
+    public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
+    {
+        if (value is not ModdedInstanceData2.Region region) throw new ArgumentException("Expected value to be of type Region.", nameof(value));
+        writer.WriteRawValue($"{{ \"name\": \"{region.name}\" }}");
+    }
+
+    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException("This converter cannot read.");
+    }
+}
+
+// Custom formatting for lists of ints to make them inline
+public sealed class IntListConverer : JsonConverter
+{
+    public override bool CanRead => false;
+    public override bool CanWrite => true;
+
+    public override bool CanConvert(Type objectType)
+    {
+        return objectType == typeof(List<int>);
+    }
+
+    public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
+    {
+        if (value is not List<int> ints) throw new ArgumentException("Expected value to be of type List<int>.", nameof(value));
+        writer.WriteRawValue($"[ {string.Join(", ", ints)} ]");
+    }
+
+    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException("This converter cannot read.");
     }
 }

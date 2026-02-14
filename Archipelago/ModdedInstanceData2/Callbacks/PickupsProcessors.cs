@@ -12,8 +12,8 @@ public static class PickupsProcessors
     public static void AddBigPickups(Manager manager, ProcessZone.Data data)
     {   
         uint id = data.Zone?.BigPickupDistributionInZone ?? data.DimensionData?.StaticBigPickupDistributionInZone ?? 0u;
-        if (id == 0) return;
         BigPickupDistributionDataBlock pickups = BigPickupDistributionDataBlock.GetBlock(id);
+        if (pickups == null) return;
         List<int> regions = new(1) { manager.GetOrCreateRegion(data.ZoneName) };
 
         // Big pickups are handled weirdly. Below is a guess as to how it's handled (including for non-1 weights)
@@ -160,7 +160,7 @@ public static class PickupsProcessors
             ExpeditionZoneData? zone = null;
             foreach (var z in layerData.Layout!.Zones.Iter())
             {
-                if (z.CustomGeomorph.Length == 0 || z.CustomGeomorph == "")
+                if (z.CustomGeomorph == null || z.CustomGeomorph == "")
                     continue;
 
                 if (complex.CustomGeomorphs_Exit_1x1.Any(c => c.Prefab == z.CustomGeomorph))

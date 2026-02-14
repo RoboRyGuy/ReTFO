@@ -35,9 +35,9 @@ public class ProcessZone
         public int GetTerminalCount()
         {
             if (Zone != null) 
-                if (!Zone.ForbidTerminalsInZone) return Zone.TerminalPlacements.Count;
+                if (!Zone.ForbidTerminalsInZone) return Zone.TerminalPlacements?.Count ?? 0;
             else if (DimensionData != null) 
-                    if (!DimensionData.ForbidTerminalsInDimension) return DimensionData.StaticTerminalPlacements.Count;
+                    if (!DimensionData.ForbidTerminalsInDimension) return DimensionData.StaticTerminalPlacements?.Count ?? 0;
             return 0;
         }
 
