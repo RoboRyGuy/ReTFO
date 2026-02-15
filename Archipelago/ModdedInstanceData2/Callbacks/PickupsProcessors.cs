@@ -1,6 +1,5 @@
 ﻿using GameData;
 using System.Collections.Generic;
-using System.Diagnostics.Metrics;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
@@ -46,7 +45,7 @@ public static class PickupsProcessors
             manager.AddLocation(new(
                 $"{data.BulkheadKeyName} (Spawn Location {i + 1})",
                 data.BulkheadKeyName,
-                layerData.BulkheadKeyPlacements[i].Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p).ZoneName)).ToList(),
+                layerData.BulkheadKeyPlacements[i].Select(p => manager.GetOrCreateRegion(data.FindZoneByPlacement(p)!.ZoneName)).ToList(),
                 true
             ));
         }
@@ -64,13 +63,16 @@ public static class PickupsProcessors
                 continue;
             count += 1;
 
-            ProcessZone.Data targetZone = data.FindZoneByEvent(e);
-            manager.AddLocation(new(
-                $"{data.SourceName} - Unlock Event {count} (for {targetZone.ZoneName})",
-                targetZone.UnlockZoneName,
-                new(1) { data.SourceRegion },
-                true
-            ));
+            ProcessZone.Data? targetZone = data.FindZoneByEvent(e);
+            if (targetZone != null)
+            {
+                manager.AddLocation(new(
+                    $"{data.SourceName} - Unlock Event {count} (for {targetZone.ZoneName})",
+                    targetZone.UnlockZoneName,
+                    new(1) { data.SourceRegion },
+                    true
+                ));
+            }
         }
     }
 
@@ -110,7 +112,7 @@ public static class PickupsProcessors
             ProcessLayer.Data layer = new(data, e.Layer);
             manager.AddLocation(new(
                 $"{data.SourceName} - Force Complete Objective Event {count}",
-                data.CompleteObjectiveName,
+                new ProcessLayer.Data(data, e.Layer).CompleteObjectiveName,
                 new(1) { data.SourceRegion },
                 true
             ));
@@ -132,7 +134,7 @@ public static class PickupsProcessors
             ProcessLayer.Data layer = new(data, e.Layer);
             manager.AddLocation(new(
                 $"{data.SourceName} - Instant Win Event {count}",
-                data.InstantWinEventName,
+                new ProcessLayer.Data(data, e.Layer).InstantWinEventName,
                 new(1) { data.SourceRegion },
                 true
             ));
@@ -171,7 +173,7 @@ public static class PickupsProcessors
             }
 
             if (zone == null) 
-                Plugin.Get().Log.LogError($"Could not find forward exit for expedition: {data.ExpeditionName}");
+                Plugin.Get().Log.LogWarning($"Could not find forward exit for expedition: {data.ExpeditionName}");
             else
             {
                 var zoneData = new ProcessZone.Data(layerData, zone);

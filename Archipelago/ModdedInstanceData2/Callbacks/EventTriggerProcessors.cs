@@ -1,7 +1,10 @@
 ﻿
 using GameData;
+using LevelGeneration;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
@@ -32,17 +35,6 @@ public static class EventTriggerProcessors
                     manager.ProcessEvent.Invoke(manager, new ProcessEvent.Data(data, eventChain, region, $"{pair.Item1} ({++count})"));
             }
 
-            // Trigger events need to be sorted to the object which triggers it
-            var triggers = data.Zone.EventsOnTrigger.Select(e => e.WorldEventTriggerObjectFilter).Distinct();
-            foreach (var trigger in triggers)
-            {   // We're not bothering with event breaks here. If they're needed, too bad!
-                ProcessZone.Data sourceZone = data.FindWorldEventObjectZone(trigger);
-                manager.ProcessEvent.Invoke(manager, new(
-                    data, data.Zone.EventsOnTrigger.Where(e => e.WorldEventTriggerObjectFilter == trigger).Cast<WardenObjectiveEventData>().ToList(), 
-                    manager.GetOrCreateRegion(sourceZone.ZoneName), $"{sourceZone.ZoneName} OnTrigger ({trigger})"
-                ));
-            }
-
             // In-zone scans, which are event-triggered scans
             foreach (var scan in data.Zone.WorldEventChainedPuzzleDatas.Iter())
             {
@@ -51,7 +43,7 @@ public static class EventTriggerProcessors
                 {
                     ++count;
                     int scanRegion = manager.GetOrCreateRegion($"{data.ZoneName} Custom Scan ({scan.WorldEventObjectFilter}) (Completion #{count})");
-                    ProcessZone.Data scanZone = data.FindWorldEventObjectZone(scan.WorldEventObjectFilter);
+                    ProcessZone.Data scanZone = data; // It may be worth searching for the scan, if I can find a good method
                     manager.AddPath(new Path()
                     {
                         starting_region = manager.GetOrCreateRegion(scanZone.ZoneName),
@@ -73,15 +65,34 @@ public static class EventTriggerProcessors
         }
     }
 
-    // Triggers event processing for when unique commands are triggered
-    [ProcessTerminal.Callback]
-    public static void AddUniqueCommandEvents(Manager manager, ProcessTerminal.Data data)
+    public static Dictionary<string, Tuple<LayerType, eLocalZoneIndex>> WorldEventObjectOverrides = new Dictionary<string, Tuple<LayerType, eLocalZoneIndex>>()
     {
-        foreach (var command in data.TerminalData.UniqueCommands.Iter())
+        { "Evt_Shuttlebox_Interact_R8A1", Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_4) },
+        { "WE_Hearsay_Interact_02",       Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_7) },
+    };
+
+    [ProcessZone.Callback]
+    public static void AddTriggerEvents(Manager manager, ProcessZone.Data data)
+    {
+        if (data.Zone == null) return;
+
+        // Trigger events need to be sorted to the object which triggers it
+        var triggers = data.Zone.EventsOnTrigger.Select(e => e.WorldEventTriggerObjectFilter).Distinct();
+
+        foreach (var trigger in triggers)
         {
+            // Skip null entries
+            if (trigger == null) continue;
+
+            // Try and identify the trigger's zone
+            ProcessZone.Data sourceZone = data;
+            if (WorldEventObjectOverrides.TryGetValue(trigger, out var overrideInfo))
+                sourceZone = data.FindZoneExact(overrideInfo.Item1, overrideInfo.Item2) ?? throw new NullReferenceException("Failed to find world event object source zone");
+
+            // Note: Skipping/ignoring event breaks
             manager.ProcessEvent.Invoke(manager, new(
-                data, command.CommandEvents.Iter().ToList(),
-                manager.GetOrCreateRegion(data.TerminalName), $"{data.TerminalName} Unique Command (\"{command.Command}\")"
+                data, data.Zone.EventsOnTrigger.Where(e => e.WorldEventTriggerObjectFilter == trigger).Cast<WardenObjectiveEventData>().ToList(),
+                manager.GetOrCreateRegion(sourceZone.ZoneName), $"{sourceZone.ZoneName} OnTrigger ({trigger})"
             ));
         }
     }

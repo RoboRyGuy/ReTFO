@@ -74,8 +74,13 @@ public class ProcessLayer
         public int CalcZoneAlias(eLocalZoneIndex index = eLocalZoneIndex.Zone_0) => LayerAliasStart + (int)index;
 
         public ProcessZone.Data GetFirstZone() => new(this, Layout?.Zones[0]);
-        public ProcessZone.Data FindZoneByIndex(eLocalZoneIndex index) => new(this, Layout?.Zones.FirstOrDefault(z => z.LocalIndex == index));
-        public ProcessZone.Data FindZoneByPlacement(ZonePlacementData placement)
+        public ProcessZone.Data? FindZoneByIndex(eLocalZoneIndex index)
+        {
+            if (LayerType.IsDimension && Layout == null) return new(this, null);
+            var zone = Layout?.Zones.FirstOrDefault(z => z.LocalIndex == index);
+            return zone != null ? new(this, zone) : null;
+        }
+        public ProcessZone.Data? FindZoneByPlacement(ZonePlacementData placement)
         {
             if (((LayerType)placement.DimensionIndex).IsReality != LayerType.IsReality)
             {
@@ -91,7 +96,7 @@ public class ProcessLayer
 
         // Helper specifically for converting a list of placements into a list of region ints
         public List<int> PlacementsToZoneRegions(Manager manager, IEnumerable<ZonePlacementData> placements)
-            => placements.Select(p => manager.GetOrCreateRegion(FindZoneByPlacement(p).ZoneName)).ToList();
+            => placements.Select(p => manager.GetOrCreateRegion(FindZoneByPlacement(p)!.ZoneName)).ToList();
 
         // Helper specifically for converting a list of placements into a list of terminal region ints
         public List<int> PlacementsToTerminalRegions(Manager manager, Il2CppSystem.Collections.Generic.List<ZonePlacementData> placements)
@@ -100,7 +105,7 @@ public class ProcessLayer
         // Helper specifically for converting a list of placements into a list of terminal region ints
         public List<int> PlacementsToTerminalRegions(Manager manager, IEnumerable<ZonePlacementData> placements)
             => placements.Select(FindZoneByPlacement).SelectMany(
-                   z => Enumerable.Range(0, z.TerminalCount).Select(i => new ProcessTerminal.Data(z, i).TerminalName)
+                   z => Enumerable.Range(0, z!.TerminalCount).Select(i => new ProcessTerminal.Data(z, i).TerminalName)
                ).Select(n => manager.GetOrCreateRegion(n)).ToList();
 
         public string ObjectiveStartRegionName => $"{LayerName} Objective Start";

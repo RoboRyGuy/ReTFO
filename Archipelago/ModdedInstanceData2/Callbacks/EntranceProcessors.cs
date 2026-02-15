@@ -1,6 +1,7 @@
 ﻿using System.Linq;
 
 using GameData;
+using LevelGeneration;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
@@ -17,7 +18,11 @@ public static class EntranceProcessors
         if (data.Zone.Pointer == layout.Zones[0].Pointer) return; // First zone in layer - handled by AddLayerEntrances
 
         // Create path
-        ProcessZone.Data entryZone = data.FindZoneByIndex(data.Zone.BuildFromLocalIndex);
+        ProcessZone.Data entryZone;
+        if (data.Zone.BuildFromLocalIndex == data.Zone.LocalIndex)
+            entryZone = data.GetFirstZone(); // Yes, this happens. Presumably an oversight in R8C1's secondary layout data
+        else
+            entryZone = data.FindZoneByIndex(data.Zone.BuildFromLocalIndex)!;
         int entryRegion = manager.GetOrCreateRegion(entryZone.ZoneName);
         Path path = manager.AddPath(
             entryRegion,
@@ -121,6 +126,26 @@ public static class EntranceProcessors
                 targetZone.ZoneName
             );
         }
+    }
+
+    // Warps between dimensions triggered by the portal room
+    [ProcessZone.Callback]
+    public static void AddZoneWarps(Manager manager, ProcessZone.Data data)
+    {
+        if (!(data.Zone?.CustomGeomorph?.Contains("_portal_", System.StringComparison.OrdinalIgnoreCase) ?? false)) return;
+
+        ProcessZone.Data targetZone = data.FindZoneExact(LayerType.Dimension_1, eLocalZoneIndex.Zone_0); // Target of all vanilla portals
+        ComplexResourceSetDataBlock? complex = ComplexResourceSetDataBlock.GetBlock(data.Expedition.Expedition.ComplexResourceData);
+        UnityEngine.GameObject? go = complex?.GetCustomGeomorph(data.Zone.CustomGeomorph);
+        LG_DimensionPortal? portal = go?.GetComponentInChildren<LG_DimensionPortal>();
+        if (portal != null) targetZone = data.FindZoneExact(portal.m_targetDimension, portal.m_targetZone);
+
+        Path path = manager.AddPath(
+            manager.GetOrCreateRegion(data.ZoneName),
+            targetZone.ZoneName
+        );
+        path.required_item = data.BigPickupName(ItemDataBlock.GetAllBlocks().First(i => i.terminalItemShortName == "MATTER_WAVE_PROJECTOR"));
+        path.required_item_count = 1; // Of note, this does consume the MWP, so we may need multiple in some modded levels
     }
 
 }

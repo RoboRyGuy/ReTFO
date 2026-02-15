@@ -34,10 +34,14 @@ public class ProcessZone
         public int TerminalCount => GetTerminalCount();
         public int GetTerminalCount()
         {
-            if (Zone != null) 
+            if (Zone != null)
+            {
                 if (!Zone.ForbidTerminalsInZone) return Zone.TerminalPlacements?.Count ?? 0;
-            else if (DimensionData != null) 
-                    if (!DimensionData.ForbidTerminalsInDimension) return DimensionData.StaticTerminalPlacements?.Count ?? 0;
+            }
+            else if (DimensionData != null)
+            {
+                if (!DimensionData.ForbidTerminalsInDimension) return DimensionData.StaticTerminalPlacements?.Count ?? 0;
+            }
             return 0;
         }
 

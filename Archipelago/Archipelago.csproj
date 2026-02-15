@@ -47,7 +47,8 @@
     <Reference Include="$(BepInEx)\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
     <Reference Include="$(BepInEx)\core\Il2CppInterop.Common.dll" Private="false" />
     <Reference Include="$(BepInEx)\core\Il2CppInterop.Runtime.dll" Private="false" />
-    <Reference Include="$(BepInEx)\*\*.dll" Private="false" />
+    <Reference Include="$(BepInEx)\interop\*.dll" Private="false" />
+    <Reference Include="$(BepInEx)\plugins\*.dll" Private="false" />
     <Reference Remove="$(BepInEx)\interop\netstandard.dll" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />

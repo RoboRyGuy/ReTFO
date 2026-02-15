@@ -220,6 +220,7 @@ public class ProcessObjective
         path = manager.AddPath(last, next);
         path.required_item = data.ExtractionReachableName;
         path.required_item_count = 1;
+        path.alternate_item = data.InstantWinEventName;
 
         manager.AddLocation(new(
             $"{data.LayerName} Any Sector Clear",

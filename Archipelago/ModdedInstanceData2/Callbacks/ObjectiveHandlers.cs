@@ -1,10 +1,8 @@
 ﻿
+using GameData;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using GameData;
-using Il2CppInterop.Runtime.Attributes;
-using ReTFO.Archipelago.ModdedInstanceData;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
@@ -39,13 +37,68 @@ public static class ObjectiveHandlers
             eWardenObjectiveType.Survival                => $"Survive {data.Objective.Survival_TimeToSurvive} Seconds and Reach Extract",
             eWardenObjectiveType.GatherTerminal          => $"Run Command \"{data.Objective.GatherTerminal_Command}\" {data.Objective.GatherTerminal_RequiredCount} Times",
             eWardenObjectiveType.CorruptedTerminalUplink => $"Complete {data.Objective.Uplink_NumberOfTerminals} Dual Uplinks",
-            eWardenObjectiveType.Empty                   => "Empty - Activate Completedata.Objective Event",
+            eWardenObjectiveType.Empty                   => "Empty",
             eWardenObjectiveType.TimedTerminalSequence   => $"Complete {data.Objective.TimedTerminalSequence_NumberOfRounds} Timed Sequences",
             _ => throw new NotImplementedException($"Objective name not recognized: {(int)data.Objective.Type} ({Enum.GetName(data.Objective.Type)})")
         };
         return $"{data.LayerName} Objective {data.ObjectiveIndex + 1} ({name})";
     }
 
+    class UnstuffListComparer : IEqualityComparer<List<int>>
+    {
+        public bool Equals(List<int>? x, List<int>? y)
+        {
+            if ((x == null) && (y == null)) return true;
+            if ((x == null) || (y == null)) return false;
+            if (x.Count != y.Count) return false;
+            for (int i = 0; i < x.Count; i++)
+                if (x[i] != y[i]) return false;
+            return true;
+        }
+
+        public int GetHashCode(List<int> obj)
+        {   // AI implementation. Seems to be a string hash method
+            int hash = 17;
+            foreach (int i in obj)
+                hash = hash * 31 + i.GetHashCode();
+            return hash;
+        }
+    }
+
+    // Generates placmenet info for a certain number of objectives. Unstuffs the placements if necessary for more consistent logic handling
+    // @doubleUp => If true, use each placmeent twice while expanding (instead of once). Specifically for corrupted uplink objective
+    public static List<List<int>> MakeRegionSets(Manager manager, ProcessObjective.Data data, int count, bool doubleUp=false)
+    {
+        // Raw sets pulled straight from placement data
+        List<List<int>> rawSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).Distinct().ToList();
+        for (int i = 0; i < rawSets.Count; i++) rawSets[i].Sort();
+
+        // Raw sets expanded out based on the requested objective count
+        List<List<int>> regionSets = new(count);
+        for (int i = 0; i < count; i++) regionSets.Add(rawSets[(doubleUp ? i / 2 : i) % rawSets.Count]);
+
+        // Count how many times each set of placmenets occurs
+        // Note: Sometimes the raw sets themsleves are duplicates, hence we only count after expanding for simplicity
+        var counts = regionSets.GroupBy(rs => rs, new UnstuffListComparer()).Select(g => (Regions: g.Key, Count: g.Count())).ToList();
+
+        // Now we map these into the output list
+        List<List<int>> unstuffedSets = new(count);
+        for (int i = 0; i < counts.Count; i++)
+        {
+            // This is the actual unstuffing part. I don't expect this to ever run more than once
+            while (counts[i].Count >= counts[i].Regions.Count)
+            {
+                unstuffedSets.AddRange(counts[i].Regions.Select(j => new List<int>(1) { j }));
+                counts[i] = (counts[i].Regions, counts[i].Count - counts[i].Regions.Count);
+            }
+
+            // For anything not unstuffed, simply put it back in the regions list
+            for (int j = 0; j < counts[i].Count; j++)
+                unstuffedSets.Add(counts[i].Regions);
+        }
+
+        return unstuffedSets;
+    }
 
     // Objective requiring collection of one HSU sample
     [ProcessObjective.Callback(eWardenObjectiveType.HSU_FindTakeSample)]
@@ -105,16 +158,32 @@ public static class ObjectiveHandlers
 
         // The startup can be initiated from any reachable reactor in the list (for some reason)
         int count = 0;
-        foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(l => l.Iter()))
+        foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => ps.Iter()))
         {
+            var targetZone = data.FindZoneByPlacement(placement);
+            if (targetZone == null) continue;
             manager.AddLocation(new(
-                $"{reactorName} (Location #{count++})",
+                $"{reactorName} (Location #{++count})",
                 reactorName,
-                new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) },
+                new(1) { manager.GetOrCreateRegion(targetZone.ZoneName) },
                 true
             ));
         }
-
+        if (count == 0)
+        {   // If we don't list any reactors, we can search all zones and hope to find a well-named geomorph
+            foreach (var zone in data.Layout!.Zones)
+            {
+                if (zone.CustomGeomorph?.Contains("_reactor_", StringComparison.OrdinalIgnoreCase) ?? false)
+                {
+                    manager.AddLocation(new(
+                        $"{reactorName} (Location #{++count})",
+                        reactorName,
+                        new(1) { manager.GetOrCreateRegion(new ProcessZone.Data(data, zone).ZoneName) },
+                        true
+                    ));
+                }
+            }
+        }
 
         // For each wave, there will be a "survive wave" and an "input code" region
         int lastRegion = inReactorRegion;
@@ -139,7 +208,7 @@ public static class ObjectiveHandlers
                 manager.AddLocation(new(
                     $"{codeName} (Location)",
                     codeName,
-                    new(1) { manager.GetOrCreateRegion(data.FindZoneByIndex(wave.ZoneForVerification).ZoneName) },
+                    new(1) { manager.GetOrCreateRegion(data.FindZoneByIndex(wave.ZoneForVerification)!.ZoneName) },
                     true
                 ));
             }
@@ -180,12 +249,29 @@ public static class ObjectiveHandlers
         int count = 0;
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(l => l.Iter()))
         {
+            var targetZone = data.FindZoneByPlacement(placement);
+            if (targetZone == null) continue;
             manager.AddLocation(new(
                 $"{reactorName} (Location #{count++})",
                 reactorName,
-                new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) },
+                new(1) { manager.GetOrCreateRegion(targetZone.ZoneName) },
                 true
             ));
+        }
+        if (count == 0)
+        {   // If we don't list any reactors, we can search all zones and hope to find a well-named geomorph
+            foreach (var zone in data.Layout!.Zones)
+            {
+                if (zone.CustomGeomorph?.Contains("_reactor_", StringComparison.OrdinalIgnoreCase) ?? false)
+                {
+                    manager.AddLocation(new(
+                        $"{reactorName} (Location #{++count})",
+                        reactorName,
+                        new(1) { manager.GetOrCreateRegion(new ProcessZone.Data(data, zone).ZoneName) },
+                        true
+                    ));
+                }
+            }
         }
 
         // When the shutdown is complete, trigger events
@@ -271,7 +357,7 @@ public static class ObjectiveHandlers
         int count = 0;
         foreach (var placement in placements)
         {
-            List<int> regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) };
+            List<int> regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement)!.ZoneName) };
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
             {
                 ++count;
@@ -358,7 +444,7 @@ public static class ObjectiveHandlers
          * Placements are looped, so if we only have one list of zones it's reused; if two, it alternates; etc
          */
         string itemName = $"{objectiveName} Big Pickup";
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.Retrieve_Items.Count);
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
 
         int lastRegion = result.FirstRegion;
@@ -386,7 +472,7 @@ public static class ObjectiveHandlers
             manager.AddLocation(new(
                 $"{objectiveName} Big Pickup #{count} ({idName})",
                 itemName,
-                regionSets[(count - 1) % regionSets.Count],
+                regionSets[count - 1],
                 true
             ));
 
@@ -412,7 +498,7 @@ public static class ObjectiveHandlers
         // TODO: This objective has somewhat complicated cell implications
         // Foreach gen needed, create two regions: One checks for access to cells, the other to gens
         string itemName = $"{objectiveName} Gen Location";
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.PowerCellsToDistribute);
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         Path path;
@@ -431,7 +517,7 @@ public static class ObjectiveHandlers
             manager.AddLocation(new(
                 $"{objectiveName} Gen #{i} (Location)",
                 itemName,
-                regionSets[(i- 1) % regionSets.Count],
+                regionSets[(i- 1)],
                 true
             ));
 
@@ -478,7 +564,7 @@ public static class ObjectiveHandlers
         );
 
         // Very similar to big pickups. However, terminal pickups will be inside terminal regions. We will require all terminals in all possible zones
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.Uplink_NumberOfTerminals);
         string itemName = $"{objectiveName} Terminal";
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
@@ -500,7 +586,7 @@ public static class ObjectiveHandlers
             manager.AddLocation(new(
                 $"{objectiveName} Terminal #{i}",
                 itemName,
-                regionSets[(i - 1) % regionSets.Count],
+                regionSets[i - 1],
                 true
             ));
 
@@ -524,13 +610,13 @@ public static class ObjectiveHandlers
 
         // Central gen requires a) us to place cells in the map, b) us to find the central gen, and c) events when each cell is inserted
         // a) Placing cells in the map
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
-        for (int i = 1; i < data.Objective.CentralPowerGenClustser_NumberOfPowerCells; i++)
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.CentralPowerGenClustser_NumberOfPowerCells);
+        for (int i = 1; i <= data.Objective.CentralPowerGenClustser_NumberOfPowerCells; i++)
         {
             manager.AddLocation(new(
-                $"{objectiveName} Power Cell #{1} (Location)",
+                $"{objectiveName} Power Cell #{i} (Location)",
                 data.CellName,
-                regionSets[(i - 1) % regionSets.Count],
+                regionSets[i - 1],
                 true
             ));
         }
@@ -552,7 +638,7 @@ public static class ObjectiveHandlers
             Plugin.Get().Log.LogWarning($"Failed to find gen cluster for objective {objectiveName} - Falling back to default of Zone_0");
             genIndex = eLocalZoneIndex.Zone_0;
         }
-        ProcessZone.Data genZone = data.FindZoneByIndex(genIndex.Value);
+        ProcessZone.Data genZone = data.FindZoneByIndex(genIndex.Value)!;
         manager.AddLocation(new(
             $"{itemName} (Location)",
             itemName,
@@ -563,7 +649,7 @@ public static class ObjectiveHandlers
         // c) Regions and events based on available cell counts
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
-        for (int i = 1; i < data.Objective.CentralPowerGenClustser_NumberOfGenerators; i++)
+        for (int i = 1; i <= data.Objective.CentralPowerGenClustser_NumberOfGenerators; i++)
         {
             int newRegion = manager.GetOrCreateRegion($"{objectiveName} Powered Gen #{i}");
             Path path = manager.AddPath(last, newRegion);
@@ -672,7 +758,7 @@ public static class ObjectiveHandlers
         assert(data.Objective.GatherTerminal_RequiredCount <= data.Objective.GatherTerminal_SpawnCount, "Expected at least as many terminal spawns as required terminals");
 
         string itemName = $"{objectiveName} Terminal";
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.GatherTerminal_SpawnCount);
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
@@ -685,7 +771,7 @@ public static class ObjectiveHandlers
             manager.AddLocation(new(
                 $"{objectiveName} Terminal #{i} Spawn Location",
                 itemName,
-                regionSets[(i - 1) % regionSets.Count],
+                regionSets[i - 1],
                 true
             ));
 
@@ -720,21 +806,28 @@ public static class ObjectiveHandlers
         );
 
         // Both terminals in a pair are always in the same zone (unless spawning hijinks ensue, but we're ignoring those)
-        string itemName = $"{objectiveName} Terminal Pair";
-        List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps).Distinct().ToList()).ToList();
+        string itemName = $"{objectiveName} Terminal";
+        List<List<int>> regionSets = MakeRegionSets(manager, data, data.Objective.Uplink_NumberOfTerminals * 2, true);
         List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
-        for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
+        for (int i = 1; i <= data.Objective.Uplink_NumberOfTerminals; i++)
         {
             int newRegion = manager.GetOrCreateRegion($"{objectiveName} Dual Uplink #{i} Completed");
             Path path = manager.AddPath(last, newRegion);
             path.required_item = itemName;
-            path.required_item_count = (uint)i;
+            path.required_item_count = 2u * (uint)i;
 
             manager.AddLocation(new(
-                $"{objectiveName} Terminal Pair #{i} Spawn Location",
+                $"{objectiveName} Terminal #{i}-1 Spawn Location",
                 itemName,
-                regionSets[(i - 1) % regionSets.Count],
+                regionSets[2 * i - 2],
+                true
+            ));
+
+            manager.AddLocation(new(
+                $"{objectiveName} Terminal #{i}-2 Spawn Location",
+                itemName,
+                regionSets[2 * i - 1],
                 true
             ));
 
@@ -783,6 +876,7 @@ public static class ObjectiveHandlers
         );
 
         // Technically, you could get lucky. However, I'm going to state you need access to all terminals to do more than just start the sequence
+        // For this reason, we're manually creating region sets instead of using MakeRegionSets
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
         int mainTermRegion = manager.GetOrCreateRegion($"{objectiveName} Reached Main Terminal");
         Path path = manager.AddPath(result.FirstRegion, mainTermRegion);

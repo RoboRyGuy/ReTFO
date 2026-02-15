@@ -4,13 +4,15 @@ using System.Collections.Generic;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2;
 
+#pragma warning disable IDE1006
+
 /* Represents a region in archipelago. We organize GTFO regions as such:
  * - Menu: Standard archipelago starting area, allows access to all unlocked expeditions
  * - Expedition: One expedition. Always connects to Main Menu, and always to one Zone (the elevator zone)
  * - Zone: One zone in an expedition
  * - Terminal: A terminal in a zone. This is a separate region because terminals can be password-locked, so it simplifies our logic.
  * - Objective: One per objective in a layer, chained together (for chained objectives). 
- */  
+ */
 public class Region
 {
     public Region(string name) { this.name = name; }
@@ -18,7 +20,10 @@ public class Region
     // Unique name of the region, used to identify it
     public string name { get; set; }
 
-    public override string ToString() => name;
+    // Whether this region is reachable, populated during the graph traversal check
+    public bool reachable { get; set; } = false;
+
+    public override string ToString() => $"{(reachable ? "    Reachable" : "Unreachable")} - {name}";
 }
 
 /*
@@ -30,7 +35,7 @@ public class Region
  */
 public class Location
 {
-    public Location(string name, string item, List<int> regions, bool auto_discover)
+    public Location(string name, string? item, List<int> regions, bool auto_discover)
     {
         this.name = name;
         this.item = item;
@@ -41,8 +46,8 @@ public class Location
     // Unique name of the location, used to identify it
     public string name { get; set; }
 
-    // Item typically located in this location
-    public string item { get; set; }
+    // Item typically located in this location. If null, this is simply a spare location archipelago can choose to fill
+    public string? item { get; set; }
 
     // Regions this location can be in
     public List<int> regions { get; init; } = new(1);
@@ -102,7 +107,7 @@ public struct WeightedItem
 // Bundles regions, paths, and items together for one expedition
 public class Expedition
 {
-    public string name { get; set; }
+    public string name { get; set; } = "";
     public List<Region> regions { get; init; } = new();
     public List<Location> locations { get; init; } = new();
     public List<Path> paths { get; init; } = new();
