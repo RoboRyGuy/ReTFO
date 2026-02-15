@@ -8,6 +8,7 @@ namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 // Trigger event processing for a few sources where processing require little extra context
 public static class EventTriggerProcessors
 {
+    // Triggers some important zone events that don't really have a home elsewhere
     [ProcessZone.Callback]
     public static void AddZoneEvents(Manager manager, ProcessZone.Data data)
     {
@@ -16,7 +17,6 @@ public static class EventTriggerProcessors
         {
             Tuple<string, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData>>[] pairs =
             {
-                Tuple.Create( $"{data.ZoneName} OnApproachZone",            data.Zone.EventsOnApproachDoor ),
                 Tuple.Create( $"{data.ZoneName} OnBossDeath",               data.Zone.EventsOnBossDeath ),
                 Tuple.Create( $"{data.ZoneName} OnDoorScanDone",            data.Zone.EventsOnDoorScanDone ),
                 Tuple.Create( $"{data.ZoneName} OnDoorScanStart",           data.Zone.EventsOnDoorScanStart ),
@@ -28,7 +28,7 @@ public static class EventTriggerProcessors
             foreach (var pair in pairs)
             {   // Basically, each event "could" occur infinite times. Events only occur up to an event break. We process accordingly
                 int count = 0;
-                foreach (var eventChain in pair.Item2.Split())
+                foreach (var eventChain in pair.Item2.EventSplit())
                     manager.ProcessEvent.Invoke(manager, new ProcessEvent.Data(data, eventChain, region, $"{pair.Item1} ({++count})"));
             }
 
@@ -37,7 +37,7 @@ public static class EventTriggerProcessors
             foreach (var trigger in triggers)
             {   // We're not bothering with event breaks here. If they're needed, too bad!
                 manager.ProcessEvent.Invoke(manager, new(
-                    data, data.Zone.EventsOnTrigger.Where(e => e.WorldEventTriggerObjectFilter == trigger), 
+                    data, data.Zone.EventsOnTrigger.Where(e => e.WorldEventTriggerObjectFilter == trigger).Cast<WardenObjectiveEventData>().ToList(), 
                     region, $"{data.ZoneName} OnTrigger ({trigger})"
                 ));
             }
@@ -46,7 +46,7 @@ public static class EventTriggerProcessors
             foreach (var scan in data.Zone.WorldEventChainedPuzzleDatas.Iter())
             {
                 uint count = 0;
-                foreach (var eventChain in scan.EventsOnScanDone.Split())
+                foreach (var eventChain in scan.EventsOnScanDone.EventSplit())
                 {
                     ++count;
                     int scanRegion = manager.GetOrCreateRegion($"{data.ZoneName} Custom Scan ({scan.WorldEventObjectFilter}) (Completion #{count})");
@@ -66,7 +66,7 @@ public static class EventTriggerProcessors
         else if (data.DimensionData != null)
         {   // Only event of note in dimension data is OnBossDeath. In vanilla, at most one boss can be fought per expedition, but might as well be safe
             int count = 0;
-            foreach (var eventChain in data.DimensionData.EventsOnBossDeath.Split())
+            foreach (var eventChain in data.DimensionData.EventsOnBossDeath.EventSplit())
                 manager.ProcessEvent.Invoke(manager, new(data, eventChain, region, $"{data.ZoneName} OnBossDeath ({++count})"));
         }
     }
@@ -78,7 +78,7 @@ public static class EventTriggerProcessors
         foreach (var command in data.TerminalData.UniqueCommands.Iter())
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, command.CommandEvents.Iter(),
+                data, command.CommandEvents.Iter().ToList(),
                 manager.GetOrCreateRegion(data.TerminalName), $"{data.TerminalName} Unique Command (\"{command.Command}\")"
             ));
         }

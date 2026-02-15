@@ -17,6 +17,8 @@ public class Region
 
     // Unique name of the region, used to identify it
     public string name { get; set; }
+
+    public override string ToString() => name;
 }
 
 /*
@@ -49,6 +51,8 @@ public class Location
     // If possible, make this false and add logic so players "find" the location correctly
     // Also, leave a note of which patch(es) implement said logic
     public bool auto_discover { get; set; }
+
+    public override string ToString() => $"{name} -> {item}";
 }
 
 /*
@@ -79,6 +83,8 @@ public class Path
     // - The alternate item is assumed to only require one count to traverse the path
     // - This is intended for door unlock events (since all zone doors can be force unlocked via an event)
     public string? alternate_item { get; set; } = null;
+
+    public override string ToString() => $"{starting_region} => {ending_region}";
 }
 
 // Associates an item with a weight for randomization purposes

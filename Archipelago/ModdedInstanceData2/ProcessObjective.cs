@@ -65,7 +65,7 @@ public class ProcessObjective
         BindingFlags bf = BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly;
         var methods = AppDomain.CurrentDomain
             .GetAssemblies()
-            .SelectMany(a => a.GetTypes())
+            .SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException e) { return e.Types.OfType<Type>(); } })
             .SelectMany(t => t.GetMethods(bf))
             .Where(m => m.CustomAttributes.Any(a => a.AttributeType == typeof(Callback)))
         ;
@@ -164,7 +164,7 @@ public class ProcessObjective
         if (data.LayerType.IsMainLayer)
         {   // On elevator land events only trigger for first objective of the main layer
             manager.ProcessEvent.Invoke(manager, new(
-                data, objectiveDatas[0].Objective.EventsOnElevatorLand.Iter(),
+                data, objectiveDatas[0].Objective.EventsOnElevatorLand.Iter().ToList(),
                 startRegion, $"{data.LayerName} On Elevator Land"
             ));
 
@@ -204,6 +204,11 @@ public class ProcessObjective
 
         // One zone is added for the gotowin events
         int next = manager.GetOrCreateRegion(data.ObjeciveGotoWinRegionName);
+        manager.ProcessEvent.Invoke(manager, new(
+            data, objectiveDatas.Last().Objective.EventsOnGotoWin.Iter().ToList(),
+            next, $"{data.LayerName} On Goto Win"
+        ));
+
         path = manager.AddPath(last, next);
         path.required_item = data.CompleteObjectiveName;
         path.required_item_count = count++;

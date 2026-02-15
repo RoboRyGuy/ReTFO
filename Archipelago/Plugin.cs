@@ -87,6 +87,14 @@ public class Plugin : BasePlugin
     }
     private ProcessTerminal? processTerminal = null;
 
+    // Hanlder for the ProcessObjective callbacks (for generating modded instance data)
+    public ProcessObjective ProcessObjective
+    {
+        get { return processObjective ??= new ProcessObjective().RegisteredTo(ProcessLayer); }
+        protected set { processObjective = value; }
+    }
+    private ProcessObjective? processObjective = null;
+
     public ModdedInstanceData2.ModdedInstanceData GetModdedInstanceData()
     {
         // Force init various events, in case they aren't initted
@@ -95,7 +103,8 @@ public class Plugin : BasePlugin
         obj = ProcessLayer;
         obj = ProcessZone;
         obj = ProcessTerminal;
-        
+        obj = ProcessObjective;
+
         // Create and return data
         return Manager.CreateData();
     }

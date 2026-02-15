@@ -10,7 +10,7 @@ public class ProcessEvent
     public class Data : ProcessLayer.Data
     {
         // Standard constructor
-        public Data(ProcessLayer.Data layer, IEnumerable<WardenObjectiveEventData> events, int sourceRegion, string sourceName) : base(layer)
+        public Data(ProcessLayer.Data layer, List<WardenObjectiveEventData> events, int sourceRegion, string sourceName) : base(layer)
         {
             Events = events;
             SourceRegion = sourceRegion;
@@ -26,7 +26,7 @@ public class ProcessEvent
         }
 
         // Actual event data to process, as a set of events triggered all at once
-        public IEnumerable<WardenObjectiveEventData> Events { get; init; }
+        public List<WardenObjectiveEventData> Events { get; init; }
         
         // Region this event is found in
         public int SourceRegion { get; init; }

@@ -17,8 +17,10 @@ public static class EntranceProcessors
         if (data.Zone.Pointer == layout.Zones[0].Pointer) return; // First zone in layer - handled by AddLayerEntrances
 
         // Create path
+        ProcessZone.Data entryZone = data.FindZoneByIndex(data.Zone.BuildFromLocalIndex);
+        int entryRegion = manager.GetOrCreateRegion(entryZone.ZoneName);
         Path path = manager.AddPath(
-            data.FindZoneByIndex(data.Zone.BuildFromLocalIndex).ZoneName,
+            entryRegion,
             data.ZoneName
         );
 
@@ -59,6 +61,11 @@ public static class EntranceProcessors
             path.required_item_count = 0xFF;
         }
         path.alternate_item = data.UnlockZoneName;
+
+        // Finally, handle on approach events, since they actually live in the entry zone
+        int count = 0;
+        foreach (var eventChain in data.Zone.EventsOnApproachDoor.EventSplit())
+            manager.ProcessEvent.Invoke(manager, new ProcessEvent.Data(data, eventChain, entryRegion, $"{data.ZoneName} OnApproachZone ({++count})"));
     }
 
     // Add entrances to the first zones in secondary and overload
@@ -66,12 +73,14 @@ public static class EntranceProcessors
     public static void AddLayerEntrances(Manager manager, ProcessLayer.Data data)
     {
         BuildLayerFromData? buildFromData = data.GetBuildFromData();
-        if (buildFromData == null) return;
+        if (buildFromData == null) return; // As a side effect, this limits processing to secondary and overload layers
 
         ProcessLayer.Data sourceLayer = new(data, buildFromData.LayerType);
         ProcessZone.Data targetZone = data.GetFirstZone();
+        ProcessZone.Data entryZone = sourceLayer.FindZoneByIndex(buildFromData.Zone);
+        int entryRegion = manager.GetOrCreateRegion(entryZone.ZoneName);
         Path path = manager.AddPath(
-            sourceLayer.FindZoneByIndex(buildFromData.Zone).ZoneName,
+            entryRegion,
             targetZone.ZoneName
         );
 
@@ -87,6 +96,11 @@ public static class EntranceProcessors
             path.required_item_count = 0xFF;
         }
         path.alternate_item = targetZone.UnlockZoneName;
+
+        // Finally, handle on approach events, since they actually live in the entry zone
+        int count = 0;
+        foreach (var eventChain in targetZone.Zone!.EventsOnApproachDoor.EventSplit())
+            manager.ProcessEvent.Invoke(manager, new ProcessEvent.Data(data, eventChain, entryRegion, $"{targetZone.ZoneName} OnApproachLayer ({++count})"));
     }
 
     // Warps between dimensions when triggered by an event

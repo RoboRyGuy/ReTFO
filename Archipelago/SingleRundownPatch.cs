@@ -149,7 +149,7 @@ internal static class SingleRundownPatch
             }
         }
         /**/
-    }   
+    }
 
 }
 
@@ -179,7 +179,7 @@ public sealed class RegionConverter : JsonConverter
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
     {
         if (value is not ModdedInstanceData2.Region region) throw new ArgumentException("Expected value to be of type Region.", nameof(value));
-        writer.WriteRawValue($"{{ \"name\": \"{region.name}\" }}");
+        writer.WriteRawValue($"{{ \"name\": \"{region.name.Replace("\"", "\\\"")}\" }}");
     }
 
     public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)

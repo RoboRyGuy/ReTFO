@@ -164,9 +164,15 @@ public class Manager
         }
 
         ModdedInstanceData result = new();
-
         Cleanup();
-        foreach (var data in RundownDataBlock.GetAllBlocks().SelectMany(UnpackExpeditions))
+        
+        var datas = RundownDataBlock.GetAllBlocks()
+            .Where(r => r.internalEnabled)
+            .SelectMany(UnpackExpeditions)
+            .Where(d => d.Expedition.Enabled)
+        ;
+
+        foreach (var data in datas)
         {
             // Some rundowns (test rundowns, mainly) will cause issues if we try to process them. So we'll skip those
             if ((LevelLayoutDataBlock.GetBlock(data.Expedition.LevelLayoutData)?.Zones?.Count ?? 0) == 0) continue;
@@ -183,7 +189,7 @@ public class Manager
                 num_sectors = 1 + (data.Expedition.SecondaryLayerEnabled ? 1 : 0) + (data.Expedition.ThirdLayerEnabled ? 1 : 0),
             };
             result.expeditions.Add(exp);
-            
+
             Cleanup();
         }
 
@@ -191,6 +197,71 @@ public class Manager
         //  optional_items
         //  filler_items
         //  trap_items
+
+        // DEBUG testing if beatable
+        foreach (var expedition in result.expeditions)
+        {
+            List<string> items = new();
+            List<bool> regionAccessible = Enumerable.Repeat(false, expedition.regions.Count).ToList();
+
+            // Starting state
+            regionAccessible[expedition.start_region] = true;
+            foreach (var loc in expedition.locations)
+            {
+                if (loc.regions.Count == 1 && loc.regions[0] == expedition.start_region)
+                    items.Add(loc.item);
+            }
+
+            int oldCount = 1;
+            while (!items.Contains(UnlockExpeditionMainOnlyName))
+            {
+                foreach (var path in expedition.paths)
+                {
+                    // Whether it's worth checking this path
+                    if (!regionAccessible[path.starting_region]) continue;
+                    if (regionAccessible[path.ending_region]) continue;
+
+                    // Checking if path is traversable
+                    bool isTraversable = path.required_item == null;
+                    if (!isTraversable)
+                        isTraversable = items.Count(i => i == path.required_item!) >= path.required_item_count;
+                    if (!isTraversable && path.alternate_item != null)
+                        isTraversable = items.Any(i => i == path.alternate_item!);
+
+                    // If a new region is accessible, collect all items inside it immediately
+                    if (isTraversable)
+                    {
+                        regionAccessible[path.ending_region] = true;
+                        foreach (var loc in expedition.locations)
+                        {
+                            if (!loc.regions.Contains(path.ending_region)) continue;
+                            if (loc.regions.Select(r => regionAccessible[r]).Contains(false)) continue;
+                            items.Add(loc.item);
+                        }
+                    }
+                }
+                int newCount = items.Count + regionAccessible.Count(b => b == true);
+                if (newCount == oldCount)
+                {
+                    string message = $"\nFailed to explore expedition: {expedition.name}";
+                    message += $"\n  Blocked paths: ";
+                    foreach (var path in expedition.paths)
+                    {
+                        if (!regionAccessible[path.starting_region]) continue;
+                        if (regionAccessible[path.ending_region]) continue;
+
+                        message += $"\n -> From: {expedition.regions[path.starting_region].name}";
+                        message += $"\n      To: {expedition.regions[path.ending_region].name}";
+                        message += $"\n   Needs: {path.required_item_count}x{path.required_item}";
+                        if (path.alternate_item != null) message += $"\n      Or: {path.alternate_item}";
+                    }
+                    Plugin.Get().Log.LogWarning(message);
+                        break;
+                }
+                oldCount = newCount;
+            }
+
+        }
 
         return result;
     }

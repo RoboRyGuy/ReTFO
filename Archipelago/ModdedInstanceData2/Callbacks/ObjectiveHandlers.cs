@@ -3,12 +3,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using GameData;
+using Il2CppInterop.Runtime.Attributes;
 using ReTFO.Archipelago.ModdedInstanceData;
 
 namespace ReTFO.Archipelago.ModdedInstanceData2.Callbacks;
 
 public static class ObjectiveHandlers
 {
+    class ZonePlacementEqualityComparer : IEqualityComparer<ZonePlacementData>
+    {
+        public bool Equals(ZonePlacementData? x, ZonePlacementData? y)
+            => x?.LocalIndex == y?.LocalIndex && x?.DimensionIndex == y?.DimensionIndex;
+
+        public int GetHashCode(ZonePlacementData obj)
+            => Tuple.Create(obj.LocalIndex, obj.DimensionIndex).GetHashCode();
+    }
+
+
     // Helper for getting descriptive, user-friendly names for each objective
     public static string FriendlyObjectiveName(ProcessObjective.Data data)
     {
@@ -17,14 +28,14 @@ public static class ObjectiveHandlers
             eWardenObjectiveType.HSU_FindTakeSample      => "Collect 1 HSU Sample",
             eWardenObjectiveType.Reactor_Startup         => "Startup 1 Reactor",
             eWardenObjectiveType.Reactor_Shutdown        => "Shutdown 1 Reactor",
-            eWardenObjectiveType.GatherSmallItems        => $"Collect {data.Objective.Gather_RequiredCount}x\"{ItemDataBlock.GetBlock(data.Objective.Gather_ItemId).publicName}\"",
+            eWardenObjectiveType.GatherSmallItems        => $"Gather {data.Objective.Gather_RequiredCount}x\"{ItemDataBlock.GetBlock(data.Objective.Gather_ItemId).publicName}\"",
             eWardenObjectiveType.ClearAPath              => "Clear a Path",
             eWardenObjectiveType.SpecialTerminalCommand  => $"Run Command \"{data.Objective.SpecialTerminalCommand}\" 1 Time",
             eWardenObjectiveType.RetrieveBigItems        => $"Retrieve {data.Objective.Retrieve_Items.Count} Big Items",
             eWardenObjectiveType.PowerCellDistribution   => $"Distribute {data.Objective.PowerCellsToDistribute} Power Cells",
             eWardenObjectiveType.TerminalUplink          => $"Complete {data.Objective.Uplink_NumberOfTerminals} Normal Uplinks",
             eWardenObjectiveType.CentralGeneratorCluster => $"Power {data.Objective.CentralPowerGenClustser_NumberOfGenerators} Gens in Generator Cluster",
-            eWardenObjectiveType.ActivateSmallHSU        => $"{(data.Objective.ActivateHSU_BringItemInElevator ? "" : "Find and ")}Process \"{ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemFromStart).publicName}\" into \"{ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemAfterActivation).publicName}\"",
+            eWardenObjectiveType.ActivateSmallHSU        => $"{(data.Objective.ActivateHSU_BringItemInElevator ? "" : "Find and ")}Process \"{ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemFromStart).publicName}\" into \"{ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemAfterActivation)?.publicName ?? "null"}\"",
             eWardenObjectiveType.Survival                => $"Survive {data.Objective.Survival_TimeToSurvive} Seconds and Reach Extract",
             eWardenObjectiveType.GatherTerminal          => $"Run Command \"{data.Objective.GatherTerminal_Command}\" {data.Objective.GatherTerminal_RequiredCount} Times",
             eWardenObjectiveType.CorruptedTerminalUplink => $"Complete {data.Objective.Uplink_NumberOfTerminals} Dual Uplinks",
@@ -32,7 +43,7 @@ public static class ObjectiveHandlers
             eWardenObjectiveType.TimedTerminalSequence   => $"Complete {data.Objective.TimedTerminalSequence_NumberOfRounds} Timed Sequences",
             _ => throw new NotImplementedException($"Objective name not recognized: {(int)data.Objective.Type} ({Enum.GetName(data.Objective.Type)})")
         };
-        return $"{data.LayerName} Objective {data.ObjectiveIndex + 1} ({name}))";
+        return $"{data.LayerName} Objective {data.ObjectiveIndex + 1} ({name})";
     }
 
 
@@ -66,7 +77,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split().First(), 
+                data, (data.Objective.EventsOnActivate.EventSplit().FirstOrDefault() ?? new()), 
                 result.LastRegion, $"{objectiveName} HSU Scan Completed"
             ));
         }
@@ -114,7 +125,7 @@ public static class ObjectiveHandlers
             int surviveRegion = manager.GetOrCreateRegion($"{objectiveName} Surive Wave {count}");
             int inputCodeRegion = manager.GetOrCreateRegion($"{objectiveName} Input Code {count}");
 
-            manager.ProcessEvent.Invoke(manager, new(data, wave.Events.Iter(), surviveRegion, $"{objectiveName} Surive Wave {count}"));
+            manager.ProcessEvent.Invoke(manager, new(data, wave.Events.Iter().ToList(), surviveRegion, $"{objectiveName} Surive Wave {count}"));
             manager.AddPath(lastRegion, surviveRegion); // This path is always allowed
 
             // Verification, which may require finding a code
@@ -141,7 +152,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split().First(),
+                data, (data.Objective.EventsOnActivate.EventSplit().FirstOrDefault() ?? new()),
                 result.LastRegion, $"{objectiveName} Startup Complete"
             ));
         }
@@ -181,7 +192,7 @@ public static class ObjectiveHandlers
         if (data.Objective.OnActivateOnSolveItem)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.EventsOnActivate.Split().First(),
+                data, (data.Objective.EventsOnActivate.EventSplit().FirstOrDefault() ?? new()),
                 result.LastRegion, $"{objectiveName} Shutdown Complete"
             ));
         }
@@ -202,23 +213,37 @@ public static class ObjectiveHandlers
         string itemName = ItemDataBlock.GetBlock(data.Objective.Gather_ItemId).publicName;
         string spawnSpotName = $"{objectiveName} Spawn Spot";
 
+        // A lot of test/debug levels use this objective type with no placement data. It just uses the first zone by default
+        List<ZonePlacementData> placements;
+        if (data.ObjectiveData.ZonePlacementDatas.Count == 0)
+            placements = new(1) { new() };
+        else
+        {
+            // The way items are placed varies a lot by objective. This works for most cases
+            placements = data.ObjectiveData.ZonePlacementDatas
+                .SelectMany(ps => ps.Iter())
+                .Distinct(new ZonePlacementEqualityComparer())
+                .ToList();
+        }
+
         // First thing we need to know is how many items can be "missing"
         // For example, in R1B1, there are 18 total IDs, 7 spawn zones, and up to 3 per zone
         // Therefore, there are (7*3)-18 = 3 "missing" IDs (7*3=21 spawn spots, 3 of which will be empty)
-        int numSpawnZones = data.ObjectiveData.ZonePlacementDatas[0].Count;
+        int numSpawnZones = placements.Count;
         int numSpawnSpots = numSpawnZones * data.Objective.Gather_MaxPerZone;
         int numMissing = numSpawnSpots - data.Objective.Gather_SpawnCount;
+        if (numMissing < 0) numMissing = 0; // This occurs on R7C2 overload, for example. We could handle it... TODO
 
         // Some simple assertions
         void assert(bool val, string message) { if (!val) throw new NotImplementedException($"{objectiveName} -> {message}"); }
         assert(numSpawnZones > 0, $"Expected positive number of spawn spots, got {numSpawnZones}");
         assert(data.Objective.Gather_MaxPerZone > 0, $"Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
-        assert(numMissing >= 0, $"Expected at least as many spawn spots as spawns, instead got {-numMissing} more spawns");
+        //assert(numMissing >= 0, $"Expected at least as many spawn spots as spawns, instead got {-numMissing} more spawns");
         assert(data.Objective.Gather_SpawnCount >= data.Objective.Gather_RequiredCount, "Expected at least as many spawns as required pickups");
 
         // We track progression not by how many pickups can be found, but instead by how many spawn spots can be found
         // The first numMissing spawn spots are assumed empty (because that is worst case), and therefore trigger no events
-        var eventLists = data.Objective.EventsOnActivate.Split().ToList();
+        var eventLists = data.Objective.EventsOnActivate.EventSplit();
         int lastRegion = result.FirstRegion;
         Path path;
         for (int i = 1; i <= numSpawnSpots; i++)
@@ -232,7 +257,7 @@ public static class ObjectiveHandlers
             if (data.Objective.OnActivateOnSolveItem && (itemNum > 0) && (itemNum <= eventLists.Count))
             {
                 manager.ProcessEvent.Invoke(manager, new(
-                    data, eventLists[i - 1].AsEnumerable(),
+                    data, eventLists[i - 1],
                     newRegion, $"{objectiveName} Collect \"{itemName}\" #{itemNum}"
                 ));
             }
@@ -244,7 +269,7 @@ public static class ObjectiveHandlers
 
         // Finally, we place the spawn spots into the world as pickups
         int count = 0;
-        foreach (var placement in data.ObjectiveData.ZonePlacementDatas[0].Iter())
+        foreach (var placement in placements)
         {
             List<int> regions = new(1) { manager.GetOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName) };
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
@@ -304,13 +329,13 @@ public static class ObjectiveHandlers
         manager.AddLocation(new(
             $"{itemName} (Location)",
             itemName,
-            data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas[0]),
+            data.PlacementsToZoneRegions(manager, data.ObjectiveData.ZonePlacementDatas.FirstOrDefault()?.Iter() ?? Enumerable.Repeat(new ZonePlacementData(), 1)),
             true
         ));
 
         // Events triggered upon running the command
         manager.ProcessEvent.Invoke(manager, new(
-            data, data.Objective.EventsOnActivate.Split().First(),
+            data, (data.Objective.EventsOnActivate.EventSplit().FirstOrDefault() ?? new()),
             result.LastRegion, $"{objectiveName} Command Inputed"
         ));
 
@@ -334,7 +359,7 @@ public static class ObjectiveHandlers
          */
         string itemName = $"{objectiveName} Big Pickup";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
 
         int lastRegion = result.FirstRegion;
         int count = 0;
@@ -388,7 +413,7 @@ public static class ObjectiveHandlers
         // Foreach gen needed, create two regions: One checks for access to cells, the other to gens
         string itemName = $"{objectiveName} Gen Location";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToZoneRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         Path path;
         for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
@@ -455,7 +480,7 @@ public static class ObjectiveHandlers
         // Very similar to big pickups. However, terminal pickups will be inside terminal regions. We will require all terminals in all possible zones
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
         string itemName = $"{objectiveName} Terminal";
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.Uplink_NumberOfTerminals; i++)
         {
@@ -536,7 +561,7 @@ public static class ObjectiveHandlers
         ));
 
         // c) Regions and events based on available cell counts
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         for (int i = 1; i < data.Objective.CentralPowerGenClustser_NumberOfGenerators; i++)
         {
@@ -605,7 +630,8 @@ public static class ObjectiveHandlers
         }
 
         // Events triggered by initiating processing on the small HSU - always triggered
-        manager.ProcessEvent.Invoke(manager, new(data, data.Objective.EventsOnActivate.Iter(), result.LastRegion, $"{objectiveName} HSU Processed"));
+        manager.ProcessEvent.Invoke(manager, new(data, data.Objective.EventsOnActivate.Iter().ToList(), result.LastRegion, $"{objectiveName} HSU Processed"));
+        manager.ProcessEvent.Invoke(manager, new(data, data.Objective.ActivateHSU_Events.Iter().ToList(), result.LastRegion, $"{objectiveName} HSU Processed"));
         return result;
     }
 
@@ -623,7 +649,7 @@ public static class ObjectiveHandlers
         // So, for simplicity, we're just going to make the objective immediately solved and all events immediately trigger
         manager.AddPath(result.FirstRegion, result.LastRegion);
         manager.ProcessEvent.Invoke(manager, new(
-            data, data.Objective.EventsOnActivate.Iter(),
+            data, data.Objective.EventsOnActivate.Iter().ToList(),
             result.FirstRegion, $"{objectiveName} Events"
         ));
         return result;
@@ -647,7 +673,7 @@ public static class ObjectiveHandlers
 
         string itemName = $"{objectiveName} Terminal";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps)).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
@@ -696,7 +722,7 @@ public static class ObjectiveHandlers
         // Both terminals in a pair are always in the same zone (unless spawning hijinks ensue, but we're ignoring those)
         string itemName = $"{objectiveName} Terminal Pair";
         List<List<int>> regionSets = data.ObjectiveData.ZonePlacementDatas.Select(ps => data.PlacementsToTerminalRegions(manager, ps).Distinct().ToList()).ToList();
-        List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+        List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
         int last = result.FirstRegion;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
@@ -773,7 +799,7 @@ public static class ObjectiveHandlers
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count > 0)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[0].Iter(),
+                data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[0].Iter().ToList(),
                 mainTermRegion, $"{objectiveName} Start Round #1"
             ));
         }
@@ -781,7 +807,7 @@ public static class ObjectiveHandlers
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceFail.Count > 0)
         {
             manager.ProcessEvent.Invoke(manager, new(
-                data, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[0].Iter(),
+                data, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[0].Iter().ToList(),
                 mainTermRegion, $"{objectiveName} Fail Round #1"
             ));
         }
@@ -812,7 +838,7 @@ public static class ObjectiveHandlers
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceDone.Count >= i)
             {
                 manager.ProcessEvent.Invoke(manager, new(
-                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1].Iter(),
+                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1].Iter().ToList(),
                     newRegion, $"{objectiveName} Complete Round #{i}"
                 ));
             }
@@ -820,7 +846,7 @@ public static class ObjectiveHandlers
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count > i)
             {
                 manager.ProcessEvent.Invoke(manager, new(
-                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i].Iter(),
+                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i].Iter().ToList(),
                     newRegion, $"{objectiveName} Start Round #{i + 1}"
                 ));
             }
@@ -828,7 +854,7 @@ public static class ObjectiveHandlers
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceFail.Count > i)
             {
                 manager.ProcessEvent.Invoke(manager, new(
-                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i].Iter(),
+                    data, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i].Iter().ToList(),
                     newRegion, $"{objectiveName} Fail Round #{i + 1}"
                 ));
             }
@@ -841,11 +867,11 @@ public static class ObjectiveHandlers
         path = manager.AddPath(last, result.LastRegion);
         if (data.Objective.OnActivateOnSolveItem)
         {
-            List<IEnumerable<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.Split().ToList();
+            List<List<WardenObjectiveEventData>> eventSets = data.Objective.EventsOnActivate.EventSplit();
             if (eventSets.Count == 0) return result;
             manager.ProcessEvent.Invoke(manager, new(
-                data, eventSets[0],
-                result.FirstRegion, $"{objectiveName} Sequence Completed"
+                data, eventSets.FirstOrDefault() ?? new(),
+                result.LastRegion, $"{objectiveName} Sequence Completed"
             ));
         }
         return result;

@@ -21,6 +21,11 @@ public static class Il2CppListIter
         return source.Iter().Any(predicate);
     }
 
+    public static T First<T>(this Il2CppSystem.Collections.Generic.List<T> source)
+    {
+        return source.Iter().First();
+    }
+
     public static T First<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
     {
         return source.Iter().First(predicate);
@@ -29,6 +34,11 @@ public static class Il2CppListIter
     public static T? FirstOrDefault<T>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, bool> predicate)
     {
         return source.Iter().FirstOrDefault(predicate);
+    }
+
+    public static T? FirstOrDefault<T>(this Il2CppSystem.Collections.Generic.List<T> source)
+    {
+        return source.Iter().FirstOrDefault();
     }
 
     public static IEnumerable<U> Select<T, U>(this Il2CppSystem.Collections.Generic.List<T> source, Func<T, U> func)
@@ -86,10 +96,10 @@ public static class Il2CppListIter
     }
 
     // Helper specifically for handling event breaks in WardenObjectiveEventData lists
-    public static IEnumerable<IEnumerable<WardenObjectiveEventData>> Split(this Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> source)
+    public static List<List<WardenObjectiveEventData>> EventSplit(this Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> source)
     {
-        foreach (var sublist in source.Split(e => (e?.Type ?? eWardenObjectiveEventType.EventBreak) == eWardenObjectiveEventType.EventBreak))
-            yield return sublist.OfType<WardenObjectiveEventData>(); // Filter out null values
+        return source.Split(e => (e?.Type ?? eWardenObjectiveEventType.EventBreak) == eWardenObjectiveEventType.EventBreak)
+            .Select(es => es.ToList()).ToList();
     }
 
 }

@@ -887,7 +887,7 @@ public class Manager
     // Helper which processes objective OnActivate events into lists for objective data
     public static void ProcessOnActivateEvents(Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events, ObjectiveData oData)
     {
-        var eventChains = events.Split();
+        var eventChains = events.EventSplit();
         foreach (var subEventList in eventChains)
         {
             List<WardenEvent> list = new();
