@@ -36,9 +36,10 @@ public static class EventTriggerProcessors
             var triggers = data.Zone.EventsOnTrigger.Select(e => e.WorldEventTriggerObjectFilter).Distinct();
             foreach (var trigger in triggers)
             {   // We're not bothering with event breaks here. If they're needed, too bad!
+                ProcessZone.Data sourceZone = data.FindWorldEventObjectZone(trigger);
                 manager.ProcessEvent.Invoke(manager, new(
                     data, data.Zone.EventsOnTrigger.Where(e => e.WorldEventTriggerObjectFilter == trigger).Cast<WardenObjectiveEventData>().ToList(), 
-                    region, $"{data.ZoneName} OnTrigger ({trigger})"
+                    manager.GetOrCreateRegion(sourceZone.ZoneName), $"{sourceZone.ZoneName} OnTrigger ({trigger})"
                 ));
             }
 
@@ -50,9 +51,10 @@ public static class EventTriggerProcessors
                 {
                     ++count;
                     int scanRegion = manager.GetOrCreateRegion($"{data.ZoneName} Custom Scan ({scan.WorldEventObjectFilter}) (Completion #{count})");
+                    ProcessZone.Data scanZone = data.FindWorldEventObjectZone(scan.WorldEventObjectFilter);
                     manager.AddPath(new Path()
                     {
-                        starting_region = region,
+                        starting_region = manager.GetOrCreateRegion(scanZone.ZoneName),
                         ending_region = scanRegion,
                         required_item = $"Start Scan {scan.WorldEventObjectFilter}",
                         required_item_count = count,
