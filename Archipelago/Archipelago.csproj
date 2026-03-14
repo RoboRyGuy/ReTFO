@@ -4,6 +4,7 @@
     <!-- R2ModMan profile name to build to -->
     <ProjectName>$(MSBuildProjectName.Replace(" ", "_"))</ProjectName>
     <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <DebugSymbols>true</DebugSymbols>
@@ -51,6 +52,8 @@
     <Reference Include="$(BepInEx)\plugins\*.dll" Private="false" />
     <Reference Remove="$(BepInEx)\interop\netstandard.dll" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <Reference Include="$(BepInEx)\plugins\dakkhuza-MTFO\MTFO.dll" Private="false" />
+    <Reference Include="$(BepInEx)\plugins\AuriRex-Clonesoft_Json\Clonesoft.Json.dll" Private="false" />
+    <Reference Include="$(BepInEx)\plugins\AuriRex-TheArchive_Core\TheArchive.Core.dll" Private="false" />
   </ItemGroup>
 </Project>
