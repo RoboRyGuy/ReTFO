@@ -1,5 +1,4 @@
-﻿
-using GameData;
+﻿using GameData;
 using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -31,8 +30,20 @@ public class ProgressionCellHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private static string GetProgressionCellLocationName(Zone.Data data, int count)
-        => $"{data.ZoneName} Progression Cell #{count} (Location)";
+    private class ProgressionCellLocation : Location
+    {
+        public ProgressionCellLocation(Zone.Data data, int count, RegionList regions, Item? item)
+            : base(MakeName(data, count), regions, item) { }
+
+        public static string MakeName(Zone.Data data, int count)
+            => $"{data.ZoneName} Progression Cell #{count} (Location)";
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
 
     [Zone.Callback]
     public static void AddProgressionCells(Zone.Data data)
@@ -40,18 +51,17 @@ public class ProgressionCellHandler : ArchipelagoFeature
         if ((data.Zone?.ProgressionPuzzleToEnter.PuzzleType ?? eProgressionPuzzleType.None) != eProgressionPuzzleType.PowerGenerator_And_PowerCell)
             return;
 
+        var cellItem = BigPickupHelper.GetBigPickupItem(data, BigPickupHelper.CellItemID);
         var placement = data.PlacementsToZoneRegions(data.Zone!.ProgressionPuzzleToEnter.ZonePlacementData).Select(i => i.Region).ToList();
         for (int count = 1; count <= data.Zone.ProgressionPuzzleToEnter.PlacementCount; count++)
         {
-            BigPickupHelper.AddBigPickupLocation(
-                data,
-                GetProgressionCellLocationName(data, ++count),
-                BigPickupHelper.CellItemID,
-                placement
-            );
+            data.GetLocation(new ProgressionCellLocation(
+                data, count, placement, cellItem
+            ));
         }
     }
 
+    // Catch progression cells after they're placed and associate them with their location ID
     [ArchivePatch(typeof(LG_Distribute_ProgressionPuzzles), nameof(LG_Distribute_ProgressionPuzzles.Build))]
     public static class LG_Distribute_ProgressionPuzzles__Build__Patch
     {
@@ -60,10 +70,14 @@ public class ProgressionCellHandler : ArchipelagoFeature
             var queuedJobs = LG_Factory.Current.m_batches[(int)LG_Factory.BatchName.Distribution].Jobs;
             Layer.Data layerData = Layer.Data.FromLayer(__instance.m_layer);
 
+            // Not sure why, but dimensions with no layout can inherit zone datas - this then causes problems
+            if (layerData.LayoutID == 0)
+                return;
+
             var queuedCells = __instance.m_layer.m_buildData.m_zoneBuildDatas
                 .Where(z => z.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
                 .Select(z => layerData.FindZoneByIndex(z.LocalIndex))
-                .SelectMany(z => Enumerable.Range(1, z.Zone!.ProgressionPuzzleToEnter.PlacementCount).Select(i => GetProgressionCellLocationName(z, i)))
+                .SelectMany(z => Enumerable.Range(1, z.Zone!.ProgressionPuzzleToEnter.PlacementCount).Select(i => ProgressionCellLocation.MakeName(z, i)))
                 .GetEnumerator();
 
             foreach (var job in queuedJobs)
@@ -78,7 +92,10 @@ public class ProgressionCellHandler : ArchipelagoFeature
                 if (dist.m_genericItemId != BigPickupHelper.CellItemID)
                     FeatureLogger.Error("Expected distribution to be a cell, but it wasn't!");
                 else if (queuedCells.MoveNext())
-                    BigPickupHelper.AssociateDistributionWithLocation(dist, layerData, queuedCells.Current);
+                {
+                    BigPickupHelper.AssociateDistributionWithLocation(dist, layerData.LookupLocation(queuedCells.Current).ID);
+                    FeatureLogger.Debug($"Created association for Progression Cell: {queuedCells.Current}");
+                }
                 else
                     FeatureLogger.Error("Had more cells than progression puzzle cells!");
             }

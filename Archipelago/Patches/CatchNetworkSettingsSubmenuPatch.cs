@@ -1,6 +1,5 @@
 ﻿using HarmonyLib;
 using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -24,9 +23,8 @@ internal static class CatchNetworkSettingsSubmenuPatch
 
     public static void Postfix(ModSettings.SubMenu __instance, string identifier)
     {
-        var feature = ArchipelagoFeatureHelper.GetFeature<APServerSettings>();
+        var feature = StateTracker.Get();
         if (feature.Identifier == identifier)
             NetworkSettingsSubMenu = __instance;
     }
-
 }

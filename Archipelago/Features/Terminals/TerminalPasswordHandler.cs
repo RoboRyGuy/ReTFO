@@ -1,7 +1,7 @@
 ﻿using Clonesoft.Json;
 using GameData;
-using HarmonyLib;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -16,14 +16,11 @@ namespace ReTFO.Archipelago.Features.Terminals;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using SNetwork;
 
 /*
  * TODO:
  Terminal log file format:
-
-
-
-
  */
 
 // Handles terminal password and the related utilities
@@ -42,11 +39,27 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    private class TerminalPasswordPartLocation : Location
+    {
+        public TerminalPasswordPartLocation(Terminal.Data data, int count, RegionList regions, Item? item)
+            : base(MakeName(data, count), regions, item)
+        { }
+
+        public static string MakeName(Terminal.Data data, int count)
+            => $"{data.TerminalName} Password Part #{count} Location";
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     // Password part item
     private class TerminalPasswordPartItem : Item
     {
         public TerminalPasswordPartItem(Terminal.Data data, int index)
-            : base($"{data.TerminalName} Password Part #{index}", $"{data.TerminalName} Password Part", eRandomizationType.Progression, new List<string>() { "All", "Logs", "Passwords" })
+            : base($"{data.TerminalName} Password Part #{index}")
         {
             TerminalData = data;
             PartNumber = index;
@@ -59,6 +72,15 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         // 1-indexed part number
         [JsonIgnore]
         public int PartNumber { get; set; }
+
+        public override List<string> Categories => new List<string>(1) { $"{TerminalData.TerminalName} Password Part" };
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = new() { "All", "Logs", "Passwords" },
+        };
+        public override RandomizationData RandData => s_randData;
 
         protected string GetPassword(StateTracker stateTracker, out bool isFirst)
         {
@@ -92,19 +114,20 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             return string.Join("", passwordParts);
         }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() != TerminalData.ExpeditionData)
                 return;
 
             string password = GetPassword(stateTracker, out _);
 
+            player ??= SNet.Master.PlayerAgent.Cast<PlayerAgent>();
             PlayerChatManager.WantToSentTextMessage(
-                Player.PlayerManager.GetLocalPlayerAgent(),
+                player,
                 $"{TerminalData.TerminalName} Password:"
             );
             PlayerChatManager.WantToSentTextMessage(
-                Player.PlayerManager.GetLocalPlayerAgent(),
+                player,
                 password
             );
             stateTracker.AddItemToTerminal(this);
@@ -118,12 +141,13 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             string password = GetPassword(stateTracker, out bool isFirst);
             if (!isFirst) return;
 
+            PlayerAgent player = SNet.Master.PlayerAgent.Cast<PlayerAgent>();
             PlayerChatManager.WantToSentTextMessage(
-                Player.PlayerManager.GetLocalPlayerAgent(),
+                player,
                 $"{TerminalData.TerminalName} Password:"
             );
             PlayerChatManager.WantToSentTextMessage(
-                Player.PlayerManager.GetLocalPlayerAgent(),
+                player,
                 password
             );
             stateTracker.AddItemToTerminal(this);
@@ -164,13 +188,11 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             {
                 ++count;
                 Item passwordItem = GetTerminalPasswordPartItem(data, count);
-                data.AddLocation(
-                    GetTerminalPasswordPartLocationName(data, count),
+                data.GetLocation(new TerminalPasswordPartLocation(
+                    data, count,
                     set!,
-                    eRandomizationType.Progression,
-                    false,
                     passwordItem
-                );
+                ));
             }
         }
     }
@@ -178,9 +200,6 @@ public class TerminalPasswordHandler : ArchipelagoFeature
     // Get a password part, 1-indexed. Use Categories[0] to count total parts obtained
     public static Item GetTerminalPasswordPartItem(Terminal.Data data, int count = 1)
         => data.GetItem(new TerminalPasswordPartItem(data, count));
-
-    private static string GetTerminalPasswordPartLocationName(Terminal.Data data, int count)
-        => $"{data.TerminalName} Password Part #{count} Location";
 
     // Identify terminal logs on generation and store references in a helper component
     [ArchivePatch(typeof(LG_TerminalPasswordLinkerJob), nameof(LG_TerminalPasswordLinkerJob.Build))]
@@ -201,7 +220,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             for (int i = 0; i < __instance.m_passwordLogsIDs.Count; i++)
             {
                 var terminal = __instance.m_terminalsWithPasswordParts[i];
-                var locationName = GetTerminalPasswordPartLocationName(data, i + 1);
+                var locationName = TerminalPasswordPartLocation.MakeName(data, i + 1);
 
                 var logNames = terminal.m_localLogs.entries.Where(e => e?.value?.FileName?.StartsWith($"KEY", StringComparison.OrdinalIgnoreCase) ?? false).ToList();
                 if (logNames.Count == 0)

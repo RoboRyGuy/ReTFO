@@ -2,7 +2,6 @@
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
@@ -35,28 +34,67 @@ public class TimedSequenceHandler : ArchipelagoFeature
      *  Region: 
      */
 
+    /// <summary>
+    /// TODO: Implement this
+    /// A location implemented via the TimedSequence objective
+    /// </summary>
+    private class TimedSequenceLocation : Location
+    {
+        public TimedSequenceLocation(string name, RegionList regions, Item? item = null)
+            : base(name, regions, item)
+        {
+            Name = name;
+            OwningRegionIds = regions;
+            ItemID = item?.ID ?? 0L;
+        }
+
+        private static RandomizationData s_randData = new() 
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    /// <summary>
+    /// Main terminal used for the sequence, where Init and Confirm are entered
+    /// </summary>
     private class MainTerminalItem : Item
     {
         public MainTerminalItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Terminal Commands", "Timed Sequence Main Terminals" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Terminal Commands", "Timed Sequence Main Terminals" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
+    /// <summary>
+    /// Verify terminal(s) used for sequence, where Verify is entered
+    /// </summary>
     private class VerifyTerminalItem : Item
     {
         public VerifyTerminalItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Terminal Commands", "Timed Sequence Verify Terminals" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Terminal Commands", "Timed Sequence Verify Terminals" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -144,13 +182,11 @@ public class TimedSequenceHandler : ArchipelagoFeature
 
         // Place main terminal in world
         Item mainTerminalItem = data.GetItem(new MainTerminalItem(ThisMainTerminalItemName(data), data));
-        data.AddLocation(
-            ThisMainTerminalLocationName(data),
+        Location mainTerminalLocation = data.GetLocation(new TimedSequenceLocation(
+            ThisMainTerminalItemName(data),
             regionSets.First().Select(info => info.Region).ToList(),
-            eRandomizationType.None,
-            true,
             mainTerminalItem
-        );
+        ));
 
         // Place verificaiton terminals in world
         Item verifyTerminalItem = data.GetItem(new VerifyTerminalItem(ThisVerifyTerminalItemName(data), data));
@@ -158,13 +194,11 @@ public class TimedSequenceHandler : ArchipelagoFeature
         foreach (var regionSet in regionSets.Skip(1))
         {
             ++count;
-            data.AddLocation(
+            Location verifyTerminalLocation = data.GetLocation(new TimedSequenceLocation(
                 ThisVerifyTerminalLocationName(data, count),
                 regionSet.Select(i => i.Region).ToList(),
-                eRandomizationType.None,
-                true,
                 verifyTerminalItem
-            );
+            ));
         }
 
         // Note: The first iteration (i = 1) has been unrolled so that we can add checks to the paths

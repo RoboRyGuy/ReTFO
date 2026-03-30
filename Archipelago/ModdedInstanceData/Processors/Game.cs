@@ -10,7 +10,6 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 
-
 public static class Game
 {
     /// <summary>
@@ -305,29 +304,53 @@ public static class Game
         /// <summary>
         /// Try to add a location. Logs an error if a location with that name already exists, returning the existing location
         /// </summary>
-        /// <param name="name">Name of the new location</param>
-        /// <param name="regions">Regions the new location can be found in</param>
-        /// <param name="type">The type of the location</param>
-        /// <param name="autoDiscover">If true, the region is discovered automatically when all its regions are discovered</param>
-        /// <param name="item">The item contained in the region</param>
+        /// <param name="location">The location to add</param>
         /// <returns>Either the new location if added successfully, or the existing location if one exists</returns>
-        public virtual Location AddLocation(string name, RegionList regions, eRandomizationType type, bool autoDiscover, Item? item = null)
+        public virtual T AddLocation<T>(T location)
+            where T : Location
         {
-            Location? location;
-            if (!LocationLookup.TryGetValue(name, out location))
+            if (LocationLookup.TryGetValue(location.Name, out var oldLocation))
             {
-                location = new(name, LocationList.Count + 1, regions, type, autoDiscover, item);
+                FeatureLogger.Error($"Failed to add duplicate location: {location.Name}");
+                return (oldLocation as T)!;
+            }
+            else
+            {
+                location.ID = LocationList.Count + 1;
                 LocationLookup[location.Name] = location;
                 LocationList.Add(location);
 
                 if (location.OwningRegionIds.Count == 0)
-                    FeatureLogger.Error($"Location is unreachable; not connected to any regions: {name}");
+                    FeatureLogger.Error($"Location is unreachable; not connected to any regions: {location.Name}");
                 foreach (var regionId in location.OwningRegionIds)
                     LookupRegion(regionId).ConnectedLocationIds.Add(location.ID);
+                return location;
             }
+        }
+
+        /// <summary>
+        /// Try to get a location matching the provided location's name. If no such location exists, the provided location
+        ///  is registered and returned instead.
+        /// </summary>
+        /// <param name="location">The location to compare to and potentially register</param>
+        /// <returns>The registered location</returns>
+        public virtual T GetLocation<T>(T location)
+            where T : Location
+        {
+            if (LocationLookup.TryGetValue(location.Name, out var oldLocation))
+                return (oldLocation as T)!;
             else
-                FeatureLogger.Error($"Failed to add duplicate location: {name}");
-            return location;
+            {
+                location.ID = LocationList.Count + 1;
+                LocationLookup[location.Name] = location;
+                LocationList.Add(location);
+
+                if (location.OwningRegionIds.Count == 0)
+                    FeatureLogger.Error($"Location is unreachable; not connected to any regions: {location.Name}");
+                foreach (var regionId in location.OwningRegionIds)
+                    LookupRegion(regionId).ConnectedLocationIds.Add(location.ID);
+                return location;
+            }
         }
 
         /// <summary>
@@ -403,9 +426,10 @@ public static class Game
 
         /// <summary>
         /// Adds an item as a floating item, meaning it will be given a random empty location during randomization
+        /// Floating items must still be registered, ie via AddItem or GetItem
         /// </summary>
         /// <param name="item">The item to add. This item must be registered</param>
-        public void RegisterFloatingItem(Item item)
+        public void AddFloatingItem(Item item)
             => FloatingItemIds.Add(GetItem(item).ID);
 
         /// <summary>
@@ -435,11 +459,13 @@ public static class Game
         /// String value to be used for items which do not exist.
         /// Typically used by Paths which are blocked and not unblockable.
         /// </summary>
+        [JsonIgnore]
         public virtual string NotAnItem => "NotAnItem";
 
         /// <summary>
         /// Name of the very first region in the game.
         /// </summary>
+        [JsonIgnore]
         public virtual string MenuRegionName => "Menu";
 
         /// <summary>

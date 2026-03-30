@@ -1,6 +1,5 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using Clonesoft.Json;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -13,15 +12,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using TheArchive;
-using TheArchive.Core;
-using TheArchive.Core.Attributes;
-using TheArchive.Core.Localization;
 using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago;
 
-// Marks a class as needing to be injected to Il2Cpp
-[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+// Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
 internal class InjectToIl2Cpp : Attribute
 {
     public InjectToIl2Cpp() { InterfaceTypes = Array.Empty<Type>(); }
@@ -33,7 +29,7 @@ internal class InjectToIl2Cpp : Attribute
 [BepInPlugin(GUID, Name, Version)]
 [BepInProcess("GTFO.exe")]
 [BepInDependency(MTFO.MTFO.GUID)]
-[BepInDependency(TheArchive.ArchiveMod.GUID)]
+[BepInDependency(ArchiveMod.GUID)]
 public class Plugin : BasePlugin
 {
     public const string Name = "Archipelago";       // Plugin name
@@ -67,7 +63,7 @@ public class Plugin : BasePlugin
 
         var types = Assembly.GetExecutingAssembly().GetTypes();
         InjectRecursive(types);
-        foreach (Type type in types) if (type.GetCustomAttribute<HarmonyPatch>() != null) harmony.PatchAll(type);
+        PatchRecursive(types);
 
         Log.LogInfo($"{GUID} is loaded!");
     }
@@ -92,7 +88,17 @@ public class Plugin : BasePlugin
                 };
                 ClassInjector.RegisterTypeInIl2Cpp(type, options);
             }
-            InjectRecursive(type.GetNestedTypes());
+            InjectRecursive(type.GetNestedTypes(AccessTools.all));
+        }
+    }
+
+    private void PatchRecursive(Type[] types)
+    {
+        foreach (Type type in types)
+        {
+            if (type.GetCustomAttribute<HarmonyPatch>() == null) continue;
+            harmony.PatchAll(type);
+            PatchRecursive(type.GetNestedTypes(AccessTools.all));
         }
     }
 

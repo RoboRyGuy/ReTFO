@@ -32,16 +32,35 @@ public class ReactorShutdownHandler : ArchipelagoFeature
      *  Region: Reactor completion regions detected using OnSolve events
      */
 
+    private class ReactorShutdownReactorLocation : Location
+    {
+        public ReactorShutdownReactorLocation(string name, RegionList regions, Item? item = null) 
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        { 
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+
+    }
+
     private class ReactorShutdownReactorItem : Item
     {
         public ReactorShutdownReactorItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Geomorphs", "Reactors" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Geomorphs", "Reactors" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -100,13 +119,11 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         void addReactor(Zone.Data zone)
         {
             ++count;
-            data.AddLocation(
+            data.GetLocation(new ReactorShutdownReactorLocation(
                 ThisReactorLocationName(data, count),
                 data.GetOrCreateRegion(zone.ZoneName),
-                eRandomizationType.None,
-                true, // TODO? Seems logical to immediately find it on entering the zone (or, at least, the correct area?)
                 reactorItem
-            );
+            ));
         }
 
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => ps.Iter()))

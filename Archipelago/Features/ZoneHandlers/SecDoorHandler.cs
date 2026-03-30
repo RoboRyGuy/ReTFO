@@ -3,7 +3,6 @@ using GameData;
 using Player;
 using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
-using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.Utilities;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
@@ -12,6 +11,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
+using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -130,7 +130,7 @@ public class SecDoorHandler : ArchipelagoFeature
         {
             Plugin plugin = Plugin.Get();
             Zone.Data zoneData = Zone.Data.FromZone(__instance.CourseNode.m_zone);
-            plugin.StateTracker.NotifyFoundRegion(zoneData.ZoneName);
+            plugin.StateTracker.NotifyFoundRegion(zoneData.ZoneName, __instance);
         }
     }
 }

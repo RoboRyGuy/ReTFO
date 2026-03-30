@@ -16,7 +16,7 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 /// In GTFO, locations are considered reachable if and only if all regions they can be located in are reachable.
 /// Note that in actual gameplay, it is still possible to reach locations without access to all possible regions.
 /// </summary>
-public class Location
+public abstract class Location
 {
     /// <summary>
     /// Standard constructor
@@ -27,54 +27,44 @@ public class Location
     /// The regions the location can be found in. 
     /// Archipelago will require all listed regions be reachable for this location to be reachable.
     /// </param>
-    /// <param name="type">The randomization type of this location</param>
-    /// <param name="autoDiscover">If true, the region is immediately discovered when all its regions are discovered</param>
     /// <param name="item">The item in this location, if there is one</param>
-    public Location(string name, long id, RegionList regions, eRandomizationType type, bool autoDiscover, Item? item = null)
+    public Location(string name, RegionList regions, Item? item = null)
     {
         Name = name;
-        ID = id;
         OwningRegionIds = regions;
-        Type = type;
-        AutoDiscover = autoDiscover;
         ItemID = item?.ID ?? 0L;
     }
 
     /// <summary>
-    /// Unique name of the location, used to identify it
+    /// Unique name of the location, used to identify it.
     /// </summary>
     public string Name { get; set; }
 
     /// <summary>
-    /// Unique ID of the location. IDs range from 1 to 2^53-1
+    /// Unique ID of the location. IDs range from 1 to 2^53-1.
+    /// The ID of the location will be set when it is registered.
     /// </summary>
     public long ID { get; set; }
 
     /// <summary>
-    /// Regions this location can be in
+    /// Regions this location can be in.
     /// </summary>
     public List<int> OwningRegionIds { get; init; } = new(1);
 
     /// <summary>
-    /// Type of location. This will be used to determine which items are placed here, or 
-    ///  if the location gets randomized at all
-    /// </summary>
-    public eRandomizationType Type { get; set; }
-
-    /// <summary>
-    /// When the containing region(s) are discovered, is this location automatically discovered?
-    /// If possible, make this false and add logic so players "find" the location correctly.
-    /// </summary>
-    [JsonIgnore]
-    public bool AutoDiscover { get; set; }
-
-    /// <summary>
-    /// Item typically located in this location. If null, this is simply a spare location archipelago can choose to fill
+    /// Item typically located in this location. 
+    /// If 0, this location will be a candidate for floating items.
     /// </summary>
     public long ItemID { get; set; } = 0;
 
     /// <summary>
-    /// Scouted location retrieved from archipelago during play. Null if not yet scouted (or if the location is scouted as empty)
+    /// The randomization data to use for this location.
+    /// </summary>
+    public abstract RandomizationData RandData { get; }
+
+    /// <summary>
+    /// Scouted location retrieved from archipelago during play. 
+    /// Locations are scouted on session start. This will be null if the item is not randomized.
     /// </summary>
     public ScoutedItemInfo? ScoutedItem { get; set; } = null;
 

@@ -1,6 +1,7 @@
 ﻿using Clonesoft.Json;
 using GameData;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -12,7 +13,6 @@ namespace ReTFO.Archipelago.Features.EventHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Text.Json.Serialization;
 
 [EnableFeatureByDefault]
 public class WarpEventsHandler : ArchipelagoFeature
@@ -33,19 +33,32 @@ public class WarpEventsHandler : ArchipelagoFeature
     private class DimensionWarpItem : Item
     { 
         public DimensionWarpItem(Zone.Data targetZone, bool clearDimension)
-            : base($"Warp to {targetZone.ZoneName}{(clearDimension ? "(with DimensionClearing)" : "")}", eRandomizationType.None, new List<string> { "All", "Events", "Warps", "Event Warps" })
+            : base($"Warp to {targetZone.ZoneName}{(clearDimension ? "(with DimensionClearing)" : "")}")
         {
             TargetZone = targetZone;
             ClearDimension = clearDimension;
         }
 
+        /// <summary>
+        /// The zone the warp goes to
+        /// </summary>
         [JsonIgnore]
         public Zone.Data TargetZone { get; set; }
 
+        /// <summary>
+        /// If true, the previous dimension will be cleared when the players leave
+        /// </summary>
         [JsonIgnore]
         public bool ClearDimension { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = new() { "All", "Events", "Warps", "Event Warps" },
+        };
+        public override RandomizationData RandData => s_randData;
+
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (TargetZone.IsCurrentExepdition())
                 OnStartExpeditionWithItem(stateTracker, TargetZone);
@@ -104,16 +117,7 @@ public class WarpEventsHandler : ArchipelagoFeature
 
             // Add warp as item / location pair
             Item item = GetDimensionWarpEventItem(targetZone, e.ClearDimension);
-            Location loc = data.AddLocation(
-                GetDimensionWarpEventLocationName(data, count),
-                data.EventRegion,
-                eRandomizationType.Progression,
-                false,
-                item
-            );
-
-            // Mark event as location
-            EventHelper.ConvertToCheckLocationEvent(e, loc.ID);
+            EventHelper.ConvertToCheckLocationEvent(data, e, count, item);
 
             // Add path represented by warp
             Path path = data.AddPath(

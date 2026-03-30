@@ -1,13 +1,12 @@
 ﻿using Clonesoft.Json;
 using GameData;
-using ReTFO.Archipelago.Features.EventHandlers;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
-using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
-namespace ReTFO.Archipelago.Features.Terminals;
+namespace ReTFO.Archipelago.Features.EventHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
@@ -18,7 +17,7 @@ public class UnlockEventHandler : ArchipelagoFeature
     public override string Name => "Unlock Event Handler";
     public override string Description
         => "Handles events which unlock or open doors";
-    public override FeatureGroup Group => FeatureGroups.TerminalHandlers;
+    public override FeatureGroup Group => FeatureGroups.EventHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
     {
@@ -29,13 +28,23 @@ public class UnlockEventHandler : ArchipelagoFeature
     private class UnlockZoneItem : Item
     {
         public UnlockZoneItem(Zone.Data data)
-            : base($"{data.ZoneName} Unlock Event", eRandomizationType.Progression, new List<string> { "All", "Events", "Unlock Events" })
+            : base($"{data.ZoneName} Unlock Event")
         {
             ZoneData = data;
         }
 
+        /// <summary>
+        /// Zone that this event unlocks
+        /// </summary>
         [JsonIgnore]
         public Zone.Data ZoneData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = new() { "All", "Events", "Unlock Events" }
+        };
+        public override RandomizationData RandData => s_randData;
 
         private void UnlockZoneNow()
         {
@@ -48,7 +57,7 @@ public class UnlockEventHandler : ArchipelagoFeature
             });
         }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() == ZoneData.ExpeditionData)
                 UnlockZoneNow();
@@ -64,10 +73,6 @@ public class UnlockEventHandler : ArchipelagoFeature
     public static Item GetUnlockEventItem(Zone.Data data)
         => data.GetItem(new UnlockZoneItem(data));
 
-    private static string GetUnlockEventName(Event.Data data, Zone.Data targetZone, int count)
-        => $"{data.EventName} - Unlock Event {count} (for {targetZone.ZoneName})";
-
-
     [Event.Callback]
     public static void ProcessUnlockEvents(Event.Data data)
     {
@@ -81,15 +86,12 @@ public class UnlockEventHandler : ArchipelagoFeature
             Zone.Data? targetZone = data.FindZoneByEvent(e);
             if (targetZone != null)
             {
-                string locationName = GetUnlockEventName(data, targetZone, count);
-                data.AddLocation(
-                    locationName,
-                    data.EventRegion,
-                    eRandomizationType.Progression,
-                    false,
-                    GetUnlockEventItem(targetZone)
-                );
-                EventHelper.ConvertToCheckLocationEvent(e, data, locationName);
+                Item item = GetUnlockEventItem(targetZone);
+                EventHelper.ConvertToCheckLocationEvent(data, e, count, item);
+            }
+            else
+            {
+                FeatureLogger.Debug($"Failed to find zone for unlock event: {data.EventName} #{count}");
             }
         }
     }

@@ -1,5 +1,6 @@
 ﻿using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +10,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
 
-using ReTFO.Archipelago.Features.EventHandlers;
+using PlayFab;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -47,9 +48,20 @@ public class APCommandExtractHandler : ArchipelagoFeature
         APCommandHandler.UnregisterCommand(m_releaseCommand ??= new());
     }
 
-    // Name of releasable locations in archipelago
-    private static string ReleaseLocationName(Terminal.Data data, int count)
-        => $"{data.TerminalName} Generic Location #{count}";
+    private class TerminalExtractReleaseLocation : Location
+    {
+        public TerminalExtractReleaseLocation(Terminal.Data data, int count)
+            : base(MakeName(data, count), data.GetOrCreateRegion(data.TerminalName), null) { }
+
+        public static string MakeName(Terminal.Data data, int count)
+            => $"{data.TerminalName} Generic Location #{count}";
+
+        private static RandomizationData s_randData = new()
+        {
+            IsUseful = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
 
     // Make the item codes used for extract / release
     private static IEnumerable<Tuple<string, string>> MakeItemCodes(LG_ComputerTerminal terminal)
@@ -66,7 +78,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         }
 
         return Enumerable.Range(1, ItemsPerTerminal)
-            .Select(i => Tuple.Create($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", ReleaseLocationName(terminalData, i)));
+            .Select(i => Tuple.Create($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", TerminalExtractReleaseLocation.MakeName(terminalData, i)));
     }
 
     /// <summary>
@@ -88,16 +100,24 @@ public class APCommandExtractHandler : ArchipelagoFeature
         {
             terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, "Extracting codes", ExtractDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Positive);
 
+            StateTracker stateTracker = StateTracker.Get();
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
             var codes = MakeItemCodes(terminal);
             bool printedSomething = false;
             foreach (var pair in codes)
             {
-                Location location = Expedition.Data.FromCurrentExpedition().LookupLocation(pair.Item2);
-                bool isEmpty = location.ScoutedItem == null || Plugin.Get().StateTracker.HasLocation(pair.Item2);
-                terminal.AddLine($"\n |--------------| {(isEmpty ? "" : " Item: " + location.ScoutedItem!.ItemDisplayName)}", false);
-                terminal.AddLine($" | {pair.Item1} | {(isEmpty ? "-- MODULE EMPTY --" : "World: " + location.ScoutedItem!.ItemGame)}", false);
-                terminal.AddLine($" |--------------| {(isEmpty ? "" : "Owner: " + location.ScoutedItem!.Player.Name)}", false);
+                Location location = gameData.LookupLocation(pair.Item2);
+                bool isEmpty = location.ItemID == 0 || stateTracker.HasLocation(pair.Item2);
+
+                string itemName()   => location.ScoutedItem?.ItemDisplayName ?? gameData.LookupItem(location.ItemID).Name;
+                string itemGame()   => location.ScoutedItem?.ItemGame ?? "GTFO";
+                string itemPlayer() => location.ScoutedItem?.Player.Name ?? StateTracker.Config.Username;
+                
+                terminal.AddLine($"\n |--------------| {(isEmpty ? ""                   : " Item: " + itemName())}", false);
+                terminal.AddLine(  $" | {pair.Item1} | {(isEmpty ? "-- MODULE EMPTY --" : "World: " + itemGame())}", false);
+                terminal.AddLine(  $" |--------------| {(isEmpty ? ""                   : "Owner: " + itemPlayer())}", false);
                 printedSomething = true;
+
             }
             if (printedSomething)
                 terminal.AddLine($"\n   -- END OF LIST --", true);
@@ -132,19 +152,19 @@ public class APCommandExtractHandler : ArchipelagoFeature
             else
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, $"Releasing item {param2.ToUpper()}", ReleaseDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Positive);
-                Location location = Expedition.Data.FromCurrentExpedition().LookupLocation(pair.Item2);
-                bool isEmpty = location.ScoutedItem == null || Plugin.Get().StateTracker.HasLocation(pair.Item2);
 
-                if (isEmpty)
+                StateTracker stateTracker = StateTracker.Get();
+                Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+                Location location = gameData.LookupLocation(pair.Item2);
+
+                if (location.ItemID == 0)
                 {
                     terminal.AddLine("No item to release.");
                 }
                 else
                 {
-                    terminal.AddLine("Item released successfully: " + location.ScoutedItem!.ItemDisplayName);
-                    var e = EventHelper.CreateCheckLocationEvent(location.ID);
-                    e.Delay = ReleaseDelay;
-                    WorldEventManager.ExecuteEvent(e);
+                    terminal.AddLine("Item released successfully: " + location.ScoutedItem?.ItemDisplayName ?? gameData.LookupItem(location.ItemID).Name);
+                    terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(location.ID, terminal.m_syncedInteractionSource));
                 }
             }
         }
@@ -159,13 +179,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
     {
         for (int i = 1; i <= ItemsPerTerminal; i++)
         {
-            data.AddLocation(
-                ReleaseLocationName(data, i),
-                data.GetOrCreateRegion(data.TerminalName),
-                eRandomizationType.Useful,
-                false,
-                null
-            );
+            data.GetLocation(new TerminalExtractReleaseLocation(data, i));
         }
     }
 

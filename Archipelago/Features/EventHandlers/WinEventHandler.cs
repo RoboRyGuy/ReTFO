@@ -1,6 +1,9 @@
 ﻿using Clonesoft.Json;
 using GameData;
+using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using System;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
@@ -27,7 +30,16 @@ public class WinEventHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Get the "Instant Win" item, signaling an objective for this layer has been completed
+    /// <summary>
+    /// Get an instant win item
+    /// </summary>
+    /// <param name="data">the expedition the item is for</param>
+    /// <param name="onDeath">
+    /// If true, the instant win is "on death".
+    /// Note that this is lazily-implemented; if an expedition has both onDeath and non onDeath, the
+    ///  first to be registered will be the one used for all items.
+    /// </param>
+    /// <returns></returns>
     public static Item GetInstantWinItem(Expedition.Data data, bool onDeath = false)
         => data.GetItem(new InstantWinItem(data, onDeath));
 
@@ -39,7 +51,7 @@ public class WinEventHandler : ArchipelagoFeature
     private class InstantWinItem : Item
     {
         public InstantWinItem(Expedition.Data data, bool onDeath)
-            : base($"{data.ExpeditionName} Instant Win", eRandomizationType.None, new List<string>() { "Objective Completions" })
+            : base($"{data.ExpeditionName} Instant Win")
         {
             ExpeditionData = data;
             OnDeath = onDeath;
@@ -50,6 +62,55 @@ public class WinEventHandler : ArchipelagoFeature
 
         [JsonIgnore]
         public bool OnDeath { get; set; }
+
+        private static readonly RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = new() { "All", "Objective Completions" }
+        };
+        public override RandomizationData RandData => s_randData;
+
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
+        {
+            if (Expedition.Data.FromCurrentExpedition() == ExpeditionData)
+                stateTracker.AddItemToTerminal(this);
+        }
+
+        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
+        {
+            if (data == ExpeditionData)
+                stateTracker.AddItemToTerminal(this);
+        }
+
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        {
+            yield return () =>
+            {
+                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving your win event", 2f);
+            };
+
+            yield return () =>
+            {
+                if (OnDeath)
+                {
+                    WorldEventManager.DoExcecuteEvent(new WardenObjectiveEventData()
+                    {
+                        Type = eWardenObjectiveEventType.WinOnDeath,
+                        Delay = 0f,
+                    });
+                    terminal.AddLine("<#F00>ERROR: Prisoner death required. Proceed to self-terminate immediately.</color>");
+                }
+                else
+                {
+                    WorldEventManager.DoExcecuteEvent(new WardenObjectiveEventData()
+                    {
+                        Type = eWardenObjectiveEventType.ForceInstantWin,
+                        Delay = 0f,
+                    });
+                    terminal.AddLine("Congrats, you win!");
+                }
+            };
+        }
     }
 
     // Add win event items and set up win event locations
@@ -64,11 +125,8 @@ public class WinEventHandler : ArchipelagoFeature
                 continue;
             ++count;
 
-            Location loc = data.AddLocation(
-                $"{data.EventName} - Instant Win Event {count}",
-                data.EventRegion,
-                eRandomizationType.None,
-                true,
+            EventHelper.ConvertToCheckLocationEvent(
+                data, e, count, 
                 GetInstantWinItem(data, e.Type == eWardenObjectiveEventType.WinOnDeath)
             );
         }

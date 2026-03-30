@@ -36,16 +36,34 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
      *  Region: Currently detected via OnSolve events
      */
 
+    private class BigRetrievalLocation : Location
+    {
+        public BigRetrievalLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class BigRetrievalItem : Item
     {
         public BigRetrievalItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Big Pickups", "Big Retrieval Items" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = { "All", "Objective Items", "Big Pickups", "Big Retrieval Items" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -112,13 +130,11 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
         for (int i = 1; i <= data.Objective.Retrieve_Items.Count; i++)
         {
             // Note that retrieval targets cannot be used as normal items, and so cannot currently be added the same way
-            data.AddLocation(
+            data.AddLocation(new BigRetrievalLocation(
                 ThisLocationName(data, i),
                 regionSets[i - 1],
-                eRandomizationType.None,
-                true,
                 item
-            );
+            ));
 
             string regionName = ThisRegionName(data, i);
             int newRegion = data.GetOrCreateRegion(regionName);

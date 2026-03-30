@@ -56,7 +56,10 @@ public class UniqueCommandsHandler : ArchipelagoFeature
             }
 
             if (cmd >= TERM_Command.UniqueCommand1 && cmd <= TERM_Command.UniqueCommand5)
-                plugin.StateTracker.NotifyFoundRegion(GetUniqueCommandRegionName(terminal, terminal.TerminalUniqueCommands[(int)cmd - (int)TERM_Command.UniqueCommand1]));
+                plugin.StateTracker.NotifyFoundRegion(
+                    GetUniqueCommandRegionName(terminal, terminal.TerminalUniqueCommands[(int)cmd - (int)TERM_Command.UniqueCommand1]),
+                    __instance.m_terminal.m_syncedInteractionSource
+                );
         }
     }
 

@@ -1,7 +1,7 @@
-﻿
-using Clonesoft.Json;
+﻿using Clonesoft.Json;
 using GameData;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -14,7 +14,6 @@ using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
-using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -22,7 +21,8 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 public class BigPickupHelper : ArchipelagoFeature
 {
     public override string Name => "Big Pickups Helper";
-    public override string Description => "Provides utilites used by other features to manage big pickups";
+    public override string Description 
+        => "Provides utilites used by other features to manage big pickups";
     public override FeatureGroup Group => FeatureGroups.PickupHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -33,25 +33,59 @@ public class BigPickupHelper : ArchipelagoFeature
 
     private class BigPickupItem : Item
     {
-        public BigPickupItem(string itemName, List<string> randomizationCats, ItemDataBlock item, Expedition.Data data)
-            : base(itemName, eRandomizationType.Progression, randomizationCats)
+        public BigPickupItem(Expedition.Data data, ItemDataBlock? item)
+            : base($"{data.ExpeditionName} Item #{item?.persistentID ?? 0} ({item?.publicName ?? "null"})")
         {
             Data = data;
             ItemDataBlock = item;
+            m_randData = new()
+            {
+                IsProgression = true,
+                IsRandomLike = item?.terminalItemShortName == "CELL",
+                Categories = new() { $"{item?.publicName}s", "Big Pickups", "Pickups", "Items", "All" }
+            };
         }
 
-        // The expedition this item was created for
+        /// <summary>
+        /// The expedition this item was created for
+        /// </summary>
         [JsonIgnore]
         public Expedition.Data Data { get; set; }
 
-        // The item datablock this big pickup represents
+        /// <summary>
+        /// The item datablock this big pickup represents
+        /// </summary>
         [JsonIgnore]
-        public ItemDataBlock ItemDataBlock { get; set; }
+        public ItemDataBlock? ItemDataBlock { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        private RandomizationData m_randData;
+        public override RandomizationData RandData => m_randData;
+
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() == Data)
-                stateTracker.AddItemToTerminal(this);
+            {
+                if (RandData.IsRandomLike && !stateTracker.TestRandomization(this, true).IsRandomized && player != null)
+                {
+                    // Give it directly to the player
+                    global::Item? item =
+                        ItemDataBlock == null
+                        ? null
+                        : ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
+                    CarryItemPickup_Core? carryItem = item?.TryCast<CarryItemPickup_Core>();
+                    if (carryItem == null)
+                    {
+                        string itemName = $"Big Pickup #{ItemDataBlock?.persistentID ?? 0} \"{ItemDataBlock?.publicName ?? "null"}\"";
+                        FeatureLogger.Error($"Failed to spawn {itemName}! Item added to terminal.");
+                    }
+                    else
+                    {
+                        carryItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player.Owner);
+                        return;
+                    }
+                }
+            }
+            stateTracker.AddItemToTerminal(this);
         }
 
         public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
@@ -62,9 +96,12 @@ public class BigPickupHelper : ArchipelagoFeature
 
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
-            string itemName = $"Big Pickup #{ItemDataBlock.persistentID} \"{ItemDataBlock.publicName}\"";
-            global::Item item = ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-            CarryItemPickup_Core? carryItem = item.TryCast<CarryItemPickup_Core>();
+            string itemName = $"Big Pickup #{ItemDataBlock?.persistentID ?? 0} \"{ItemDataBlock?.publicName ?? "null"}\"";
+            global::Item? item = 
+                ItemDataBlock == null
+                ? null
+                : ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
+            CarryItemPickup_Core? carryItem = item?.TryCast<CarryItemPickup_Core>();
             if (carryItem == null)
             {
                 FeatureLogger.Error($"Failed to spawn {itemName}!");
@@ -130,58 +167,49 @@ public class BigPickupHelper : ArchipelagoFeature
         if (itemDataBlock == null)
             FeatureLogger.Error($"Failed to find big pickup #{itemDataBlockId}: {data.ExpeditionName}");
 
-        string itemName = $"{data.ExpeditionName} Big Item #{itemDataBlockId} ({itemDataBlock?.publicName ?? "null!"})";
-        List<string> randomCats = new() { "All", "Big Pickups", $"{itemDataBlock?.publicName ?? "Null Big Pickup"}s" };
-
-        return data.GetItem(new BigPickupItem(itemName, randomCats, itemDataBlock!, data));
+        return data.GetItem(new BigPickupItem(data, itemDataBlock));
     }
 
-    // Place a big pickup item into the expedition
-    public static void AddBigPickupLocation(Expedition.Data data, string locationName, uint itemDataBlockId, RegionList regions)
-    {
-        data.AddLocation(
-            locationName,
-            regions,
-            eRandomizationType.Progression,
-            false,
-            GetBigPickupItem(data, itemDataBlockId)
-        );
-    }
-
-    // Basically, we can associate particular distributions with big pickups
-    // The PostSetupGO patch will use the association created here to associate it as a pickup when the big pickup is spawned in
-    // This version uses distrbution data from an unbuilt job
-    public static void AssociateDistributionWithLocation(LG_Distribute_PickupItemsPerZone distribution, Expedition.Data data, string locationName)
+    /// <summary>
+    /// Associate a big pickup distribution with a location ID so it's checked when the pickup is grabbed.
+    /// </summary>
+    /// <param name="distribution">The distribution to associate</param>
+    /// <param name="locationId">ID of the location</param>
+    /// <exception cref="ArgumentException">If given a non-big-pickup distribution, or if the distribution already has an association</exception>
+    public static void AssociateDistributionWithLocation(LG_Distribute_PickupItemsPerZone distribution, long locationId)
     {
         if (!ArchipelagoFeatureHelper.GetFeature<BigPickupHelper>().Enabled)
             return;
 
-        Location location = data.LookupLocation(locationName);
+        string locationName() => StateTracker.Get().MidManager.GetProcessedGameData().LookupLocation(locationId).Name;
         if (distribution.m_pickupType != ePickupItemType.BigGenericPickup)
-            throw new ArgumentException($"Cannot use AssociateDistributionWithLocation on non-big-pickup item; attempted with location: {locationName}");
+            throw new ArgumentException($"Cannot use AssociateDistributionWithLocation on non-big-pickup item; attempted with location: {locationName()}");
         if (distribution.m_consumableDistributionData != null)
-            throw new ArgumentException($"Existing association on big pickup; cannot replace! Location: {locationName}");
+            throw new ArgumentException($"Existing association on big pickup; cannot replace! Location: {locationName()}");
         distribution.m_consumableDistributionData = new(); // Dud block used to associate info
-        var bytes = BitConverter.GetBytes(location.ID);
+        var bytes = BitConverter.GetBytes(locationId);
         distribution.m_consumableDistributionData.SpawnsPerZone = BitConverter.ToInt32(bytes, 0);
         distribution.m_consumableDistributionData.persistentID = BitConverter.ToUInt32(bytes, 4);
     }
 
-    // Basically, we can associate particular distributions with big pickups
-    // The PostSetupGO patch will use the association created here to associate it as a pickup when the big pickup is spawned in
-    // This version uses the distribution data as stored in LG_ZoneDistribtion
-    public static void AssociateDistributionWithLocation(LG_DistributePickUpItem distribution, Expedition.Data data, string locationName)
+    /// <summary>
+    /// Associate a big pickup distribution with a location ID so it's checked when the pickup is grabbed.
+    /// </summary>
+    /// <param name="distribution">The distribution to associate</param>
+    /// <param name="locationId">ID of the location</param>
+    /// <exception cref="ArgumentException">If given a non-big-pickup distribution, or if the distribution already has an association</exception>
+    public static void AssociateDistributionWithLocation(LG_DistributePickUpItem distribution, long locationId)
     {
         if (!ArchipelagoFeatureHelper.GetFeature<BigPickupHelper>().Enabled)
             return;
 
-        Location location = data.LookupLocation(locationName);
+        string locationName() => StateTracker.Get().MidManager.GetProcessedGameData().LookupLocation(locationId).Name;
         if (distribution.m_type != ePickupItemType.BigGenericPickup || distribution.m_function != ExpeditionFunction.BigPickupItem)
-            throw new ArgumentException($"Cannot use AssociateDistributionWithLocation on non-big-pickup item; attempted with location: {locationName}");
+            throw new ArgumentException($"Cannot use AssociateDistributionWithLocation on non-big-pickup item; attempted with location: {locationName()}");
         if (distribution.m_consumableData != null)
-            throw new ArgumentException($"Existing association on big pickup; cannot replace! Location: {locationName}");
+            throw new ArgumentException($"Existing association on big pickup; cannot replace! Location: {locationName()}");
         distribution.m_consumableData = new(); // Dud block used to associate info
-        var bytes = BitConverter.GetBytes(location.ID);
+        var bytes = BitConverter.GetBytes(locationId);
         distribution.m_consumableData.SpawnsPerZone = BitConverter.ToInt32(bytes, 0);
         distribution.m_consumableData.persistentID = BitConverter.ToUInt32(bytes, 4);
     }

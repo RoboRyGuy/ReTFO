@@ -1,5 +1,4 @@
-﻿
-using Clonesoft.Json;
+﻿using Clonesoft.Json;
 using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Features.EventHandlers;
@@ -19,6 +18,7 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 /// <summary>
 /// Handles several items related to objectives, since currently I'm too lazy to separate these 
 /// out into their own features
+/// TODO: This needs to be split into several sub handlers
 /// </summary>
 [EnableFeatureByDefault, AutomatedFeature]
 public class SharedObjectiveHandler : ArchipelagoFeature
@@ -35,36 +35,104 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Location where you can find generic item in elevator items.
+    /// These are misc non-objective items the player can drop with; very rare.
+    /// </summary>
+    private class GenericItemInElevatorLocation : Location
+    {
+        public GenericItemInElevatorLocation(Expedition.Data data, RegionList regions, Item? item)
+            : base($"{data.ExpeditionName} Generic Item-in-Elevator", regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    /// <summary>
     /// Randomization category used by sector clear items
     /// </summary>
     public const string SectorClearsCat = "Sector Clears";
 
-    // Item representing a single objective being completed.
-    // Each sector can have multiple objectives, chained together. However, they typically only have one
+    /// <summary>
+    /// Generic complete objective location
+    /// </summary>
+    public class CompleteObjectiveLocation : Location
+    {
+        public CompleteObjectiveLocation(Objective.Data data, string? objectiveSummary, RegionList regions, Item? item)
+            : base($"{data.ObjectiveName(objectiveSummary)} Complete", regions, item)
+        { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    /// <summary>
+    /// Item representing a single objective being completed.
+    /// Each sector can have multiple objectives, chained together. However, they typically only have one.
+    /// </summary>
     public class CompleteObjectiveItem : Item
     {
         public CompleteObjectiveItem(Layer.Data layer)
-            : base($"{layer.LayerName} Objective Completed", eRandomizationType.None, new List<string>() { "Objective Completions" })
+            : base($"{layer.LayerName} Objective Completed")
         {
             this.Layer = layer;
         }
 
         [JsonIgnore]
         public Layer.Data Layer { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "Objective Completions" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
-    // Item representing a sector being cleared for a particular layer
-    // Category[0] represents any sector being cleared for a particular expedition
+    /// <summary>
+    /// Location used by SectorCleared items
+    /// </summary>
+    private class SectorClearedLocation : Location
+    {
+        public SectorClearedLocation(Layer.Data data, RegionList regions, Item? item)
+            : base($"{data.LayerName} Sector Cleared", regions, item)
+        {
+
+        }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+
+    }
+
+    /// <summary>
+    /// Item representing a sector being cleared for a particular layer.
+    /// Category[0] represents any sector being cleared for a particular expedition.
+    /// </summary>
     public class SectorClearedItem : Item
     {
         public SectorClearedItem(Layer.Data layer)
-            : base($"{layer.LayerName} Sector Cleared", $"{layer.ExpeditionName} Any Sector Cleared", eRandomizationType.None, new List<string>() { SectorClearsCat })
+            : base($"{layer.LayerName} Sector Cleared")
         {
             this.layer = layer;
         }
 
         [JsonIgnore]
         public Layer.Data layer { get; set; }
+
+        public override List<string> Categories => new(1) { $"{layer.ExpeditionName} Any Sector Cleared" };
+
+        public override RandomizationData RandData => new()
+        {
+            Categories = { SectorClearsCat, $"{layer.ExpeditionName} Completion Items" },
+        };
     }
 
     // Add the shared objective and sector cleared regions not handled in individual objective processing
@@ -89,12 +157,8 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             // I believe GenericInElevator also only works for the first objective of the main layer
             if (firstObjective.Objective.GenericItemFromStart != 0)
             {
-                BigPickupHelper.AddBigPickupLocation(
-                    data,
-                    $"{data.ExpeditionName} Generic Item-in-Elevator",
-                    firstObjective.Objective.GenericItemFromStart,
-                    firstRegion
-                );
+                Item item = BigPickupHelper.GetBigPickupItem(data, firstObjective.Objective.GenericItemFromStart);
+                data.GetLocation(new GenericItemInElevatorLocation(data, firstRegion, item));
             }
         }
 
@@ -121,12 +185,9 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             data.ProcessEvents(winLayerRegion, winLayerName, lastObjective.Objective.EventsOnGotoWin ??= new(1));
         else throw new ArgumentException($"Objective.EventsOnGotoWinTrigger is an unexpected value for expedition: {lastObjective.ExpeditionName}");
 
-        data.AddLocation(
-            $"{data.LayerName} Sector Cleared",
-            winLayerRegion,
-            eRandomizationType.Progression,
-            true, // TODO
-            GetSectorClearedItem(data)
+        Item sectorClearedItem = GetSectorClearedItem(data);
+        Location sectorClearedLocation = data.GetLocation(
+            new SectorClearedLocation(data, winLayerRegion, sectorClearedItem)
         );
     }
 
@@ -150,17 +211,12 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     /// Helper to add the "complete objective" item to one region during objective handling
     /// </summary>
     /// <param name="data">The objective to add the item to</param>
-    /// <param name="objectiveSummary">A brief summary of the objective, used for naming</param>
+    /// <param name="objectiveSummary">A brief summary of the objective, used for naming; optional, may be null</param>
     /// <param name="regions">The regions to add the completion to</param>
-    public static void AddObjectiveCompleteItem(Objective.Data data, string objectiveSummary, RegionList regions)
+    public static void AddObjectiveCompleteItem(Objective.Data data, string? objectiveSummary, RegionList regions)
     {
-        data.AddLocation(
-            $"{data.ObjectiveName(objectiveSummary)} Complete",
-            regions,
-            eRandomizationType.None,
-            true, // TODO
-            GetCompleteObjectiveItem(data)
-        );
+        Item item = GetCompleteObjectiveItem(data);
+        Location location = data.GetLocation(new CompleteObjectiveLocation(data, objectiveSummary, regions, item));
     }
 
 }

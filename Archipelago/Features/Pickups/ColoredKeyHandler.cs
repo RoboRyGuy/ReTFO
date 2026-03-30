@@ -2,6 +2,7 @@
 using Clonesoft.Json;
 using GameData;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -14,7 +15,6 @@ using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
-using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -31,10 +31,22 @@ public class ColoredKeyHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    private class ColoredKeyLocation : Location
+    {
+        public ColoredKeyLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class ColoredKeyItem : Item
     {
         public ColoredKeyItem(Zone.Data data)
-            : base($"{data.ZoneName} Colored Key", eRandomizationType.Progression, new List<string>() { "All", "Small Pickups", "Keys", "Colored Keys" })
+            : base($"{data.ZoneName} Colored Key")
         {
             ZoneData = data;
         }
@@ -42,7 +54,14 @@ public class ColoredKeyHandler : ArchipelagoFeature
         [JsonIgnore]
         public Zone.Data ZoneData { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = { "All", "Small Pickups", "Keys", "Colored Keys" },
+        };
+        public override RandomizationData RandData => s_randData;
+
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() == ZoneData.ExpeditionData)
                 stateTracker.AddItemToTerminal(this);
@@ -118,13 +137,11 @@ public class ColoredKeyHandler : ArchipelagoFeature
         if (data.Zone == null) return;
         if (data.Zone.ProgressionPuzzleToEnter.PuzzleType != eProgressionPuzzleType.Keycard_SecurityBox) return;
 
-        data.AddLocation(
+        data.GetLocation(new ColoredKeyLocation(
             GetColoredKeyLocationName(data),
             data.PlacementsToZoneRegions(data.Zone.ProgressionPuzzleToEnter.ZonePlacementData).Select(info => info.Region).ToList(),
-            eRandomizationType.Progression,
-            false,
             GetColoredKeyItem(data)
-        );
+        ));
     }
 
     /// <summary>

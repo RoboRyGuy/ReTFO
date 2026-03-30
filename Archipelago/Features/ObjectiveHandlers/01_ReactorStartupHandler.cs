@@ -41,22 +41,55 @@ public class ReactorStartupHandler : ArchipelagoFeature
      *          Reactor completion regions detected using OnSolve events
      */
 
+    private class ReactorStartupReactorLocation : Location
+    {
+        public ReactorStartupReactorLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private RandomizationData s_randData = new()
+        {
+            AutoDiscover = true
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class ReactorStartupReactorItem : Item
     {
         public ReactorStartupReactorItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Geomorphs", "Reactors" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Geomorphs", "Reactors" },
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    private class ReactorStartupCodeLocation : Location
+    {
+        public ReactorStartupCodeLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item)
+        {
+
+        }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private class ReactorStartupCodeItem : Item
     {
         public ReactorStartupCodeItem(string name, int index, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string> { "All", "Objective Items", "Logs", "Reactor Codes" })
+            : base(name)
         {
             objective_data = data;
             this.index = index;
@@ -67,6 +100,12 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
         [JsonIgnore]
         public int index { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Logs", "Reactor Codes" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -142,14 +181,11 @@ public class ReactorStartupHandler : ArchipelagoFeature
         void addReactor(Zone.Data zone)
         {
             ++count;
-
-            data.AddLocation(
+            data.AddLocation(new ReactorStartupReactorLocation(
                 ThisReactorLocationName(data, count),
                 data.GetOrCreateRegion(zone.ZoneName),
-                eRandomizationType.None,
-                true, // TODO? Seems logical to immediately find it on entering the zone (or, at least, the correct area?)
                 reactorItem
-            );
+            ));
         }
 
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => ps.Iter()))
@@ -207,23 +243,19 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 Zone.Data codeZone = data.FindZoneByIndex(wave.ZoneForVerification)
                     ?? throw new NullReferenceException($"Failed to find zone for reactor code placement!");
                 List<int> placement = codeZone.TerminalDatas.Select(t => data.GetOrCreateRegion(t.TerminalName)).ToList();
-                data.AddLocation(
+                data.AddLocation(new ReactorStartupCodeLocation(
                     ThisCodeLocationName(data, count),
                     placement,
-                    eRandomizationType.None,
-                    true, // TODO: Detect reading of relevant logs
                     codeItem
-                );
+                ));
             }
             else
             {
-                data.AddLocation(
+                data.AddLocation(new ReactorStartupCodeLocation(
                     ThisCodeLocationName(data, count),
                     surviveRegion,
-                    eRandomizationType.None,
-                    true,
                     codeItem
-                );
+                ));
             }
         }
 

@@ -34,16 +34,34 @@ public class GatherTerminalHandler : ArchipelagoFeature
      *  Region: Currently detected using OnSolve events
      */
 
+    private class GatherTerminalLocation : Location
+    {
+        public GatherTerminalLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class GatherTerminalCommandRanItem : Item
     {
         public GatherTerminalCommandRanItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Terminal Commands", "Gather Terminal Commands" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Terminal Commands", "Gather Terminal Commands" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -110,13 +128,11 @@ public class GatherTerminalHandler : ArchipelagoFeature
         Item item = data.GetItem(new GatherTerminalCommandRanItem(ThisItemName(data), data));
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
-            data.AddLocation(
+            data.GetLocation(new GatherTerminalLocation(
                 ThisLocationName(data, i),
                 regionSets[i - 1],
-                eRandomizationType.None,
-                true,
                 item
-            );
+            ));
 
             string newName = ThisRegionName(data, i);
             int newRegion = data.GetOrCreateRegion(newName);

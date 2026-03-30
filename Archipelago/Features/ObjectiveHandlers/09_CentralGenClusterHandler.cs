@@ -38,10 +38,22 @@ public class CentralGenClusterHandler : ArchipelagoFeature
      *          PoweredGen currently detected using OnSolve events
      */
 
+    private class GenClusterLocation : Location
+    {
+        public GenClusterLocation(string name, RegionList regions, Item? item = null) 
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class GenClusterItem : Item
     {
         public GenClusterItem(string name, int size, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Function Markers", "Central Generator Clusters" })
+            : base(name)
         {
             ObjectiveData = data;
             this.size = size;
@@ -52,6 +64,12 @@ public class CentralGenClusterHandler : ArchipelagoFeature
 
         [JsonIgnore]
         public int size { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Function Markers", "Central Generator Clusters" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -123,12 +141,11 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             .ToList();
         for (int i = 1; i <= data.Objective.CentralPowerGenClustser_NumberOfPowerCells; i++)
         {
-            BigPickupHelper.AddBigPickupLocation(
-                data,
+            data.GetLocation(new GenClusterLocation(
                 ThisCellLocationName(data, i),
-                BigPickupHelper.CellItemID,
-                regionSets[i - 1]
-            );
+                regionSets[i - 1],
+                BigPickupHelper.GetBigPickupItem(data, BigPickupHelper.CellItemID)
+            ));
         }
 
         // b) Finding the central gen cluster
@@ -148,13 +165,11 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         }
 
         Item genItem = data.GetItem(new GenClusterItem(ThisGenItemName(data), data.Objective.CentralPowerGenClustser_NumberOfGenerators, data));
-        data.AddLocation(
+        data.GetLocation(new GenClusterLocation(
             ThisGenLocationName(data),
             data.GetOrCreateRegion(clusterZone.ZoneName),
-            eRandomizationType.None,
-            true,
             genItem
-        );
+        ));
 
         // This region represents having found the gen cluster
         int foundGenClusterRegion = data.GetOrCreateRegion(ThisFoundGenRegionName(data));

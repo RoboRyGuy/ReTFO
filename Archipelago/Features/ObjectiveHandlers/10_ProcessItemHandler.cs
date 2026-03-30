@@ -39,16 +39,46 @@ public class ProcessItemHandler : ArchipelagoFeature
      *          ProcessedItem detected using OnProcess events
      */
 
+    private class ProcessItemItemFromStartLocation : Location
+    {
+        public ProcessItemItemFromStartLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    private class ProcessItemProcessorLocation : Location
+    {
+        public ProcessItemProcessorLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class ProcessItemProcessorItem : Item
     {
         public ProcessItemProcessorItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Geomorphs", "Item Processors" })
+            : base(name)
         {
             objective_data = data;
         }
 
         [JsonIgnore]
         public Objective.Data objective_data { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Geomorphs", "Item Processors" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -125,12 +155,12 @@ public class ProcessItemHandler : ArchipelagoFeature
         // Add the item to the elevator zone, if necessary
         if (data.Objective.ActivateHSU_BringItemInElevator)
         {
-            BigPickupHelper.AddBigPickupLocation(
-                data,
+            Item item = BigPickupHelper.GetBigPickupItem(data, data.Objective.ActivateHSU_ItemFromStart);
+            data.GetLocation(new ProcessItemItemFromStartLocation(
                 ThisStartLocationName(data),
-                data.Objective.ActivateHSU_ItemFromStart,
-                data.GetOrCreateRegion(data.GetLayer(LayerType.Main).FirstZone.ZoneName)
-            );
+                data.GetOrCreateRegion(data.GetLayer(LayerType.Main).FirstZone.ZoneName),
+                item
+            ));
         }
 
         // Collected item zone
@@ -141,13 +171,11 @@ public class ProcessItemHandler : ArchipelagoFeature
 
         // Add the processor to the expedition
         Item processorItem = data.GetItem(new ProcessItemProcessorItem(ThisProcessorItemName(data), data));
-        data.AddLocation(
+        data.GetLocation(new ProcessItemProcessorLocation(
             ThisProcessorLocationName(data),
             data.ObjectiveData.ZonePlacementDatas.SelectMany(data.PlacementsToZoneRegions).Select(info => info.Region).ToList(),
-            eRandomizationType.None,
-            true,
             processorItem
-        );
+        ));
 
         // Processed item region
         string processedItemName = ThisProcessedRegionName(data);

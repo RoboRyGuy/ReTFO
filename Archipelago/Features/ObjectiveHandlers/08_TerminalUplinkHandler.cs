@@ -35,16 +35,37 @@ public class TerminalUplinkHandler : ArchipelagoFeature
      *  Region: Currently detected using OnSolve events
      */
 
+    private class UplinkLocation : Location
+    {
+        public UplinkLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) 
+        {
+            
+        }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class UplinkCompleteItem : Item
     {
         public UplinkCompleteItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Terminal Commands", "Uplink Completions", "Standard Uplink Completions" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Terminal Commands", "Uplink Completions", "Standard Uplink Completions" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -103,13 +124,11 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         int last = data.ObjectiveStartRegion;
         for (int i = 1; i <= data.Objective.Uplink_NumberOfTerminals; i++)
         {
-            data.AddLocation(
+            data.GetLocation(new UplinkLocation(
                 ThisLocationName(data, i),
                 regionSets[i - 1],
-                eRandomizationType.None,
-                true,
                 item
-            );
+            ));
 
             string regionName = ThisRegionName(data, i);
             int newRegion = data.GetOrCreateRegion(regionName);

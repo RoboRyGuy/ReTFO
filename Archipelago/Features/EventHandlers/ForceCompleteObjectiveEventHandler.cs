@@ -24,9 +24,6 @@ public class ForceCompleteObjectiveEventHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private static string GetForCompleteObjectiveEventName(Event.Data data, int count)
-        => $"{data.EventName} - Force Complete Objective Event {count}";
-
     [Event.Callback]
     public static void ProcessForceCompleteEvents(Event.Data data)
     {
@@ -39,14 +36,8 @@ public class ForceCompleteObjectiveEventHandler : ArchipelagoFeature
             ++count;
 
             Layer.Data layer = data.GetLayer(e.Layer);
-            Location loc = data.AddLocation(
-                GetForCompleteObjectiveEventName(data, count),
-                data.EventRegion,
-                eRandomizationType.None,
-                true,
-                SharedObjectiveHandler.GetCompleteObjectiveItem(layer)
-            );
-            EventHelper.ConvertToCheckLocationEvent(e, loc.ID);
+            Item item = SharedObjectiveHandler.GetCompleteObjectiveItem(layer);
+            EventHelper.ConvertToCheckLocationEvent(data, e, count, item);
         }
     }
 

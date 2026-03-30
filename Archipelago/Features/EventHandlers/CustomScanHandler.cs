@@ -2,6 +2,7 @@
 using Clonesoft.Json;
 using GameData;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -33,21 +34,32 @@ public class CustomScanHandler : ArchipelagoFeature
     public class StartCustomScanItem : Item
     {
         public StartCustomScanItem(Expedition.Data data, string worldEventObjectFilter)
-            : base($"{data.ExpeditionName} Start Custom Scan ({worldEventObjectFilter})", eRandomizationType.Progression, new List<string> { "All", "Events", "Scans", "Custom Scans" })
+            : base($"{data.ExpeditionName} Start Custom Scan ({worldEventObjectFilter})")
         {
             Data = data;
             WorldEventObjectFilter = worldEventObjectFilter;
         }
 
-        // The expedition this item was created for
+        /// <summary>
+        /// The expedition this scan occurs in
+        /// </summary>
         [JsonIgnore]
         public Expedition.Data Data { get; set; }
 
-        // The item datablock this big pickup represents
+        /// <summary>
+        /// The world event object filter used to initiate this scan
+        /// </summary>
         [JsonIgnore]
         public string WorldEventObjectFilter { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker)
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+            Categories = new() { "All", "Events", "Scans", "Custom Scans" }
+        };
+        public override RandomizationData RandData => s_randData;
+
+        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() == Data)
                 stateTracker.AddItemToTerminal(this);
@@ -82,9 +94,6 @@ public class CustomScanHandler : ArchipelagoFeature
     public static Item GetCustomScanStartItem(Expedition.Data data, string worldEventObjectFilter)
         => data.GetItem(new StartCustomScanItem(data, worldEventObjectFilter));
 
-    public static string GetCustomScanEventName(Event.Data data, string worldEventObjectFilter, int count)
-        => $"{data.EventName} - Start Custom Scan {count} (for {worldEventObjectFilter})";
-
     // Replace custom scan events with check location events for that scan location
     [Event.Callback]
     public static void ProcessCustomScanStartEvents(Event.Data data)
@@ -107,16 +116,8 @@ public class CustomScanHandler : ArchipelagoFeature
             if ((e.WorldEventObjectFilter?.Length ?? 0) == 0)
                 continue;
 
-            string locationName = GetCustomScanEventName(data, e.WorldEventObjectFilter!, count);
-            data.AddLocation(
-                locationName,
-                data.EventRegion,
-                eRandomizationType.Progression,
-                false,
-                GetCustomScanStartItem(data, e.WorldEventObjectFilter!)
-            );
-
-            EventHelper.ConvertToCheckLocationEvent(e, data, locationName);
+            Item item = GetCustomScanStartItem(data, e.WorldEventObjectFilter!);
+            EventHelper.ConvertToCheckLocationEvent(data, e, count, item);
         }
     }
 

@@ -3,12 +3,13 @@ using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
+using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
+using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using TheArchive.Core.FeaturesAPI;
 
 [EnableFeatureByDefault]
 public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
@@ -27,9 +28,35 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Name of a big pickup spawned by a zone's big pickup distribution / specific pickup spawn data
-    private static string GetBigPickupDistributionLocationName(Zone.Data data, int count)
-        => $"{data.ZoneName} Big Pickup #{count}";
+    private class BigPickupZoneDistributionLocation : Location
+    {
+        public BigPickupZoneDistributionLocation(Zone.Data data, int count, Item? item)
+            : base(MakeName(data, count), data.GetOrCreateRegion(data.ZoneName), item) { }
+
+        public static string MakeName(Zone.Data data, int count)
+            => $"{data.ZoneName} Big Pickup #{count}";
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+    private class BigPickupSpecificDistributionLocation : Location
+    {
+        public BigPickupSpecificDistributionLocation(Zone.Data data, int count, Item? item)
+            : base(MakeName(data, count), data.GetOrCreateRegion(data.ZoneName), item) { }
+
+        public static string MakeName(Zone.Data data, int count)
+            => $"{data.ZoneName} Big Pickup #{count}";
+
+        private static RandomizationData s_randData = new()
+        {
+            IsProgression = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
 
     // Add big pickups in zones which spawn them via big pickup distributions
     [Zone.Callback]
@@ -47,12 +74,8 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
             int index = 0;
             while ((usedWeight + pickups.SpawnData[index].Weight) <= pickups.SpawnsPerZone)
             {
-                BigPickupHelper.AddBigPickupLocation(
-                    data,
-                    GetBigPickupDistributionLocationName(data, ++count),
-                    pickups.SpawnData[index].ItemID,
-                    region
-                );
+                Item item = BigPickupHelper.GetBigPickupItem(data, pickups.SpawnData[index].ItemID);
+                data.GetLocation(new BigPickupZoneDistributionLocation(data, ++count, item));
                 usedWeight += pickups.SpawnData[index].Weight;
                 index = (index + 1) % pickups.SpawnData.Count;
             }
@@ -66,12 +89,8 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
         {
             if (item.WorldEventObjectFilter == null) continue; // R8C1 has some null data for some reason
             else if (item.PickupToSpawn == 0u) continue; // R8C1 has some null data for some reason
-            BigPickupHelper.AddBigPickupLocation(
-                data,
-                GetBigPickupDistributionLocationName(data, ++count),
-                item.PickupToSpawn,
-                region
-            );
+            Item it = BigPickupHelper.GetBigPickupItem(data, item.PickupToSpawn);
+            data.GetLocation(new BigPickupZoneDistributionLocation(data, ++count, it));
         }
     }
 
@@ -93,7 +112,11 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
             {
                 var item = __instance.m_distributionData.PickupItems.m_itemQueue._array[i];
                 if (item.m_type == ePickupItemType.BigGenericPickup && item.m_function == ExpeditionFunction.BigPickupItem && item.m_bigPickupData != null)
-                    BigPickupHelper.AssociateDistributionWithLocation(item, zone, GetBigPickupDistributionLocationName(zone, ++count));
+                {
+                    string name = BigPickupZoneDistributionLocation.MakeName(zone, ++count);
+                    BigPickupHelper.AssociateDistributionWithLocation(item, zone.LookupLocation(name).ID);
+                    FeatureLogger.Debug($"Created association for location: {name}");
+                }
             }
         }
     }

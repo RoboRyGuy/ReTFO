@@ -37,16 +37,47 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
      *          The GenPowered region is discoverable using OnSolve events only
      */
 
+    private class PowerCellDistributionCellLocation : Location
+    {
+        public PowerCellDistributionCellLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
+
+    private class PowerCellDistributionGenLocation : Location
+    {
+        public PowerCellDistributionGenLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class PowerCellDistributionGenItem : Item
     {
         public PowerCellDistributionGenItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Function Markers", "Generators" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = new() { "All", "Objective Items", "Function Markers", "Generators" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -117,12 +148,12 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             int region = data.GetOrCreateRegion(data.FirstZone.ZoneName);
             for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
             {
-                BigPickupHelper.AddBigPickupLocation(
-                    data,
+                Item item = BigPickupHelper.GetBigPickupItem(data, BigPickupHelper.CellItemID);
+                data.GetLocation(new PowerCellDistributionCellLocation(
                     ThisCellLocationName(data, i),
-                    BigPickupHelper.CellItemID,
-                    region
-                );
+                    region,
+                    item
+                ));
             }
         }
 
@@ -135,13 +166,11 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
         for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
         {
             // Place gen
-            data.AddLocation(
+            data.GetLocation(new PowerCellDistributionGenLocation(
                 ThisGenLocationName(data, i),
                 regionSets[i - 1],
-                eRandomizationType.None,
-                true,
                 genItem
-            );
+            ));
 
             // Check that we have enough cells
             int cellRegion = data.GetOrCreateRegion(ThisCellFoundRegionName(data, i));

@@ -36,16 +36,33 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
      *  Region: Currently detected using OnSolve events
      */
 
+    private class GatherSmallItemsLocation : Location
+    {
+        public GatherSmallItemsLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class GatherSmallItemsItem : Item
     {
         public GatherSmallItemsItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string> { "All", "Objective Items", "Small Pickups", $"{ItemDataBlock.GetBlock(data.Objective.Gather_ItemId).publicName ?? "Null Item"}s" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        public override RandomizationData RandData => new()
+        {
+            Categories = new() { "All", "Objective Items", "Small Pickups", $"{ItemDataBlock.GetBlock(ObjectiveData.Objective.Gather_ItemId).publicName ?? "Null Item"}s" },
+        };
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -143,13 +160,11 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
             {
                 ++count;
-                data.AddLocation(
+                data.GetLocation(new GatherSmallItemsLocation(
                     ThisLocationName(data, count),
                     region,
-                    eRandomizationType.None,
-                    true, // TODO,
                     item
-                );
+                ));
             }
         }
 

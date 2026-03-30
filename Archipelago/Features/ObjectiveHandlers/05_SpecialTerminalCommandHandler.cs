@@ -3,7 +3,6 @@ using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
@@ -37,16 +36,34 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
      *  Region: Currently detected using OnActivate events
      */
 
+    private class STCLocation : Location
+    {
+        public STCLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class STCItem : Item
     {
         public STCItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Terminal Commands", "Special Terminal Commands" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = { "All", "Objective Items", "Terminal Commands", "Special Terminal Commands" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -103,14 +120,12 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         var rawPlacements = data.ObjectiveData.ZonePlacementDatas.FirstOrDefault()?.Iter() ?? Enumerable.Repeat(new ZonePlacementData(), 1);
         var placement = data.PlacementsToTerminalRegions(rawPlacements).Select(info => info.Region);
 
-        var item = data.GetItem(new STCItem(ThisItemName(data), data));
-        data.AddLocation(
+        Item item = data.GetItem(new STCItem(ThisItemName(data), data));
+        Location location = data.GetLocation(new STCLocation(
             ThisLocationName(data),
             placement.ToList(),
-            eRandomizationType.None,
-            true,
             item
-        );
+        ));
 
         string commandExecutedName = ThisRegionName(data);
         int commandExecutedRegion = data.GetOrCreateRegion(commandExecutedName);

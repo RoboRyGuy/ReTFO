@@ -44,7 +44,6 @@ public class APCommandHandler : ArchipelagoFeature
         /// <summary>
         /// Execute the command using the given input
         /// </summary>
-        /// <param name="handler">The handler feature instance</param>
         /// <param name="terminal">The terminal which called the command</param>
         /// <param name="fullLine">The full text for the command. I believe this is truncated to 25 characters by GTFO</param>
         /// <param name="subCommand">The sub command which was executed</param>

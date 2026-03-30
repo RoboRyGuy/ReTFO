@@ -28,19 +28,34 @@ public class ExtractionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    private class ExtractionReachableLocation : Location
+    {
+        public ExtractionReachableLocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     /// <summary>
     /// A purely event item used to identify when extraction is reachable
     /// </summary>
     private class ExtractionReachableItem : Item
     {
         public ExtractionReachableItem(Expedition.Data data)
-            : base($"{data.ExpeditionName} Extraction Reachable", eRandomizationType.None, new List<string>(0))
+            : base($"{data.ExpeditionName} Extraction Reachable")
         {
             ExpeditionData = data;
         }
 
         [JsonIgnore]
         Expedition.Data ExpeditionData { get; set; }
+
+        private static RandomizationData s_randData = new();
+        public override RandomizationData RandData => s_randData;
     }
 
     public static Item GetExtractionReachableItem(Expedition.Data data)
@@ -74,13 +89,11 @@ public class ExtractionHandler : ArchipelagoFeature
             return;
         }
 
-        data.AddLocation(
+        data.GetLocation(new ExtractionReachableLocation(
             $"{data.ExpeditionName} Extraction",
             data.GetOrCreateRegion(zone.ZoneName),
-            eRandomizationType.None,
-            true,
             GetExtractionReachableItem(data)
-        );
+        ));
     }
 
 }

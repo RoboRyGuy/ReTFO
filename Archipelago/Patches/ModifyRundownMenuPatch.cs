@@ -15,7 +15,7 @@ namespace ReTFO.Archipelago.Patches;
 [HarmonyPatch]
 internal static class ModifyRundownMenuPatch
 {
-
+    // Helper which clones the Connect To Rundown button to create a new button
     public static CM_Item AddButton(CM_PageRundown_New __instance, float offset)
     {
         Vector3 vOffset = Vector3.down * offset;
@@ -39,11 +39,13 @@ internal static class ModifyRundownMenuPatch
     public static void PreMenuSetup(CM_PageRundown_New __instance)
     {
         const float margin = 25f;
-
+        
+        // Overwriting the connect button so it starts archipelago
         var connectButton = __instance.m_buttonConnect;
         connectButton.SetText("Connect to <#F0F><i>ARCHIPELAGO</i></color>");
         connectButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().StateTracker.Connect()));
 
+        // Button which opens the settings menu
         float gap = connectButton.GetSize().y + margin;
         var openSettingsButton = AddButton(__instance, gap);
         openSettingsButton.SetText("Server Settings");
@@ -55,6 +57,7 @@ internal static class ModifyRundownMenuPatch
             }
         ));
 
+        // Button which dumps modded instance data
         var dumpMIDButton = AddButton(__instance, 2f * gap);
         dumpMIDButton.SetText("Export MID Data");
         dumpMIDButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().MidManager.ExportGameData()));
@@ -68,6 +71,9 @@ internal static class ModifyRundownMenuPatch
     [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.Setup)), HarmonyPostfix]
     public static void PostMenuSetup(CM_PageRundown_New __instance)
     {
+        // Marking the selection as revealed allowes the Join Lobby button to operate
+        __instance.m_selectionIsRevealed = true;
+
         // Removing the connect callback so pressing the button does not open the rundown
         var connectButton = __instance.m_buttonConnect;
         foreach (var action in connectButton.OnBtnPressCallback.GetInvocationList())

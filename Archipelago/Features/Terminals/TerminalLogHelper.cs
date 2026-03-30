@@ -1,5 +1,6 @@
 ﻿using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
+using System;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
@@ -32,7 +33,7 @@ public class TerminalLogHelper : ArchipelagoFeature
     [InjectToIl2Cpp]
     private class ContainsLocationLogComp : MonoBehaviour
     {
-        public SortedList<string, List<long>> StoredLocations = new();
+        public SortedList<string, long> StoredLocations = new();
     }
 
     // Associate a log with a location
@@ -41,10 +42,18 @@ public class TerminalLogHelper : ArchipelagoFeature
         ContainsLocationLogComp? comp = terminal.GetComponent<ContainsLocationLogComp>();
         if (comp == null)
             comp = terminal.gameObject.AddComponent<ContainsLocationLogComp>();
-        if (comp.StoredLocations.TryGetValue(logName, out var locations))
-            locations.Add(locationId);
-        else
-            comp.StoredLocations[logName.ToUpper()] = new(1) { locationId };
+        if (comp.StoredLocations.TryGetValue(logName, out var oldLocation))
+        {
+            Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
+            int locLength = Math.Max(oldLocation.ToString().Length, locationId.ToString().Length);
+            string formatString = new string('0', locLength);
+            FeatureLogger.Error(
+                $"Overwriting location on pickup!\n"
+                + $"  Old Location: [{oldLocation.ToString(formatString)}] {gameData.LookupLocation(oldLocation)}"
+                + $"  New Location: [{locationId.ToString(formatString)}] {gameData.LookupLocation(locationId)}"
+            );
+        }
+        comp.StoredLocations[logName.ToUpper()] = locationId;
     }
 
     // When reading a log, check for associated locations
@@ -55,8 +64,8 @@ public class TerminalLogHelper : ArchipelagoFeature
         {
             ContainsLocationLogComp? comp = __instance.m_terminal.GetComponent<ContainsLocationLogComp>();
             if (comp == null) return;
-            if (comp.StoredLocations.TryGetValue(param1.ToUpper(), out List<long>? locations))
-                Plugin.Get().StateTracker.NotifyFoundLocations(locations);
+            if (comp.StoredLocations.TryGetValue(param1.ToUpper(), out long location))
+                StateTracker.Get().NotifyFoundLocation(location, __instance.m_terminal.m_syncedInteractionSource);
         }
     }
 

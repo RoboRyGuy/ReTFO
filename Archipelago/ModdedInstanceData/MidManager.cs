@@ -1,6 +1,6 @@
-﻿
-using BepInEx;
+﻿using BepInEx;
 using Clonesoft.Json;
+using Clonesoft.Json.Serialization;
 using GameData;
 using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Features.ObjectiveHandlers;
@@ -9,12 +9,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace ReTFO.Archipelago.ModdedInstanceData;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using ReTFO.Archipelago.Utilities;
 
 // Wraps modded instance data; creates it and manages its lifetime
 public class MidManager
@@ -83,7 +85,7 @@ public class MidManager
 
         var gameData = GetUnprocessedGameData();
         gameData.GameProcessor.Process(gameData);
-        DoGraphTraversal(gameData, false, true, null, -1, true);
+        DoGraphTraversal(gameData, false, true, null, true);
 
         // We've most likely touched these blocks, so we're going to mark them dirty. Not sure if this really does anything
         RundownDataBlock.FileDirty = true;
@@ -97,6 +99,22 @@ public class MidManager
     [DllImport("shell32", CharSet = CharSet.Unicode, ExactSpelling = true, PreserveSig = false)]
     private static extern string SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, nint hToken = 0);
     private static Guid DownloadsGUID => new("374DE290-123F-4565-9164-39C4925E467B");
+
+    private class NoExtensionsContractResolver : DefaultContractResolver
+    {
+        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
+        {
+            JsonProperty property = base.CreateProperty(member, memberSerialization);
+
+            if (property.PropertyType != null && !property.Ignored)
+            {
+                if (property.PropertyType.IsAssignableTo(typeof(Game.Data)) && property.PropertyType != typeof(Game.Data))
+                    property.Ignored = true;
+            }
+
+            return property;
+        }
+    }
 
     /// <summary>
     /// Export game data as a JSON file to the designated path.
@@ -113,10 +131,12 @@ public class MidManager
         Game.Data gameData = GetProcessedGameData();
         JsonSerializerSettings settings = new()
         {
-            Formatting = Formatting.None,
+            Formatting = Formatting.Indented,
         };
         settings.Converters.Add(new Clonesoft.Json.Converters.StringEnumConverter());
-        settings.Converters.Add(new Utilities.IntListConverer());
+        settings.Converters.Add(new Utilities.ListConverer<int>(20));
+        settings.Converters.Add(new Utilities.ListConverer<long>(15));
+        settings.ContractResolver = new NoExtensionsContractResolver();
         string json = JsonConvert.SerializeObject(gameData, settings);
         File.WriteAllText(filename, json);
     }
@@ -127,13 +147,11 @@ public class MidManager
     /// <param name="gameData">The Game.Data data to traverse</param>
     /// <param name="hasDirectReqs">If true, the provided Game.Data has had its direct requirements evaluated already</param>
     /// <param name="doProcessing">If true, overwrite the region reachability. If not hasDirectReqs, also calculate and add direct path requirements</param>
-    /// <param name="startingItemCategories">
-    ///   Randomization categories to pull from floating items. Items matching these categories are added to the starting inventory.
-    ///   If null, defaults to just <see cref="UnlockExpeditionHandler.ExpeditionUnlocksCat"/>, which enables traversal of all expeditions.
-    /// </param>
-    /// <param name="expectedSectorCount">
-    ///   How many sectors to expect. When exploration is complete, it will check against this count to test for success.
-    ///   Defaults to -1, which will have it calculate how many sector clear items there are total.
+    /// <param name="itemFilters">
+    ///   Special filters used to create a starting item set and identify which items the player needs to "clear" the game.
+    ///   For each filter, it will match $"{filter} Start Items" for starting items and $"{filter} Completion Items" for required items.
+    ///   Typically, this will just be the list of expeditions to explore. For R1A1, this would produce "R1A1 Start Items" and "R1A1 Completion Items", which by default is just its expedition unlock and sector clear.
+    ///   If null, defaults to <see cref="UnlockExpeditionHandler.ExpeditionUnlocksCat"/> for starting items and <see cref="SharedObjectiveHandler.SectorClearsCat"/> for required items.
     /// </param>
     /// <param name="logDebugInfo">If true and the Game.Data is not beatable, log info describing the stuck state to help debug why it's considered unbeatable</param>
     /// <returns>True if the Game.Data can be fully traversed (all sectors cleared), false otherwise</returns>
@@ -165,10 +183,8 @@ public class MidManager
     ///   It's also worth noting that while I made logDebugInfo as good as I can, it can help to place a break on the final 
     ///    print statement for the debug logging (so you can examine the full state yourself using the debugger)
     /// </remarks>
-    public static bool DoGraphTraversal(Game.Data gameData, bool hasDirectReqs = true, bool doProcessing = false, HashSet<string>? startingItemCategories = null, int expectedSectorCount = -1, bool logDebugInfo = true)
+    public static bool DoGraphTraversal(Game.Data gameData, bool hasDirectReqs = true, bool doProcessing = false, ICollection<string>? itemFilters = null, bool logDebugInfo = true)
     {
-        startingItemCategories ??= new() { UnlockExpeditionHandler.ExpeditionUnlocksCat };
-
         // Progress tracking
         Dictionary<string, int> items;
         List<Item> itemsActuals;
@@ -200,6 +216,17 @@ public class MidManager
         setReachable(startingRegion);
         if (!hasDirectReqs) usedItems[startingRegion] = new(0);
 
+        // Helper which gets all items in expedition matching certain randomization categories
+        IEnumerable<Item> GetAllByCategory(HashSet<string> categories)
+        {
+            return gameData.LocationList.Select(l => l.ItemID)
+                .Concat(gameData.FloatingItemIds)
+                .Where(id => id != 0)
+                .Select(gameData.LookupItem)
+                .Where(item => item.RandData.Categories.TryIntersect(categories, out _));
+        }
+
+        HashSet<string> startingItemCategories = itemFilters?.Select(f => $"{f} Start Items").ToHashSet() ?? new() { UnlockExpeditionHandler.ExpeditionUnlocksCat };
         itemsActuals = Enumerable.Empty<Item>()
             .Concat( // Items in locations in the starting region
                 gameData.RegionList[startingRegion].ConnectedLocationIds
@@ -207,10 +234,8 @@ public class MidManager
                   .Where(l => (l.OwningRegionIds.Count == 1) && (l.OwningRegionIds[0] == startingRegion))
                   .Where(l => l.ItemID != 0)
                   .Select(l => gameData.LookupItem(l.ItemID))
-            ).Concat( // Floating items matching startingItemCategories 
-                gameData.FloatingItemIds
-                  .Select(gameData.LookupItem)
-                  .Where(i => i.RandomizationCategories.Any(startingItemCategories.Contains))
+            ).Concat( // Items matching starting categories
+                GetAllByCategory(startingItemCategories)
             ).ToList();
 
         items = itemsActuals
@@ -282,6 +307,7 @@ public class MidManager
                     foreach (var loc in gameData.RegionList[path.EndingRegion].ConnectedLocationIds.Select(gameData.LookupLocation))
                     {
                         if (loc.ItemID == 0) continue;
+                        if (gameData.LookupItem(loc.ItemID).RandData.Categories.TryIntersect(startingItemCategories, out _)) continue;
                         if (!loc.OwningRegionIds.Contains(path.EndingRegion)) continue;
                         if (loc.OwningRegionIds.Any(r => !getReachable(r))) continue;
                         Item item = gameData.LookupItem(loc.ItemID);
@@ -294,17 +320,29 @@ public class MidManager
             }
         }
 
-        // If we stopped making progress and have not won...
-        var sectorCounts = expectedSectorCount != -1 
-            ? expectedSectorCount 
-            : gameData.LocationList.Select(l => l.ItemID).Where(i => i != 0).Count(i => gameData.LookupItem(i).RandomizationCategories.Contains(SharedObjectiveHandler.SectorClearsCat));
-        var currentSectorCounts = itemsActuals.Count(item => item.RandomizationCategories.Contains(SharedObjectiveHandler.SectorClearsCat));
-        if (sectorCounts > currentSectorCounts)
+        // We've stopped making progress. Check if we've won!
+        HashSet<string> completionItemCategories = itemFilters?.Select(f => $"{f} Completion Items").ToHashSet() ?? new() { SharedObjectiveHandler.SectorClearsCat };
+        List<Item> requiredItems = GetAllByCategory(completionItemCategories).ToList();
+        foreach (var item in itemsActuals) 
+            requiredItems.Remove(item); // Intentionally ignore cases where there is no such item to remove
+
+        // "Pretty" formatting for debugging
+        if (requiredItems.Count > 0)
         {
             if (!logDebugInfo) return false;
 
-            // Print prettily formatted error message to help debug
             FeatureLogger.Error($"Graph traversal failed for game!");
+
+            // ------------------------------------------------------------------------------------
+
+            ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
+            ConsoleManager.ConsoleStream.WriteLine($"\n    Missing Item{(requiredItems.Count > 1 ? "s" : "")} Required for Completion:");
+
+            ConsoleManager.SetConsoleColor(ConsoleColor.White);
+            foreach (var item in requiredItems)
+                ConsoleManager.ConsoleStream.WriteLine($"  - {item.Name}");
+
+            // ------------------------------------------------------------------------------------
 
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             ConsoleManager.ConsoleStream.WriteLine("\n    Regions:");
@@ -318,6 +356,8 @@ public class MidManager
             }
             if (gameData.RegionList.Count == 0)
                 ConsoleManager.ConsoleStream.WriteLine($"\n  NO REGIONS FOUND");
+
+            // ------------------------------------------------------------------------------------
 
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             ConsoleManager.ConsoleStream.WriteLine("\n    Blocked paths:");
@@ -337,6 +377,8 @@ public class MidManager
             }
             if (paths.Count == 0)
                 ConsoleManager.ConsoleStream.WriteLine($"\n  NO BLOCKED PATHS FOUND");
+
+            // ------------------------------------------------------------------------------------
 
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             ConsoleManager.ConsoleStream.WriteLine("\n    Notable unfound locations:");

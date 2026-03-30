@@ -33,16 +33,34 @@ public class CollectHSUHandler : ArchipelagoFeature
      *  Region: Currently detected using OnSolve events
      */
 
+    private class CollectHSULocation : Location
+    {
+        public CollectHSULocation(string name, RegionList regions, Item? item)
+            : base(name, regions, item) { }
+
+        private static RandomizationData s_randData = new()
+        {
+            AutoDiscover = true,
+        };
+        public override RandomizationData RandData => s_randData;
+    }
+
     private class CollectHSUItem : Item
     {
         public CollectHSUItem(string name, Objective.Data data)
-            : base(name, eRandomizationType.None, new List<string>() { "All", "Objective Items", "Scans", "DNA Samples" })
+            : base(name)
         {
             ObjectiveData = data;
         }
 
         [JsonIgnore]
         public Objective.Data ObjectiveData { get; set; }
+
+        private static RandomizationData s_randData = new()
+        {
+            Categories = { "All", "Objective Items", "Scans", "DNA Samples" },
+        };
+        public override RandomizationData RandData => s_randData;
     }
 
     private const eWardenObjectiveType ThisObjectiveType
@@ -94,13 +112,11 @@ public class CollectHSUHandler : ArchipelagoFeature
 
         // Add HSU item to expedition
         var hsuItem = data.GetItem(new CollectHSUItem(ThisItemName(data), data));
-        data.AddLocation(
+        data.GetLocation(new CollectHSULocation(
             ThisLocationName(data),
             data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas[0]).Select(info => info.Region).ToList(),
-            eRandomizationType.None,
-            true,
             hsuItem
-        );
+        ));
 
         // Region representing the objective being completed
         string regionName = ThisRegionName(data);
