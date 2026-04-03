@@ -1,5 +1,4 @@
 ﻿using GameData;
-using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
@@ -423,6 +422,8 @@ public partial class StateTracker : ArchipelagoFeature
         if (CurrentState.IsConnected)
             ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.ID).ToArray()).ContinueWith(OnLocationsScouted);
 
+        SetupReplication();
+
         // If we're in fake connect, we need to at least allow access to the first expedition
         if (CurrentState.IsFakeConnected)
         {
@@ -435,7 +436,7 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Wraps data around a randomization test, and informs how an entity is or is not randomized
+    /// Wraps around a randomization test result, and informs on how an entity is or is not randomized
     /// </summary>
     public struct RandTest
     {

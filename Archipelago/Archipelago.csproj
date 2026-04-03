@@ -13,7 +13,7 @@
     <BuildDirectory>$(BepInEx)\plugins\$(ProjectName)\</BuildDirectory>
     <OutputPath>$(BuildDirectory)</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <RunPostBuildEvent>Always</RunPostBuildEvent>
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
     <RootNamespace>ReTFO.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
