@@ -22,22 +22,51 @@ public partial class StateTracker : ArchipelagoFeature
     public static class SerializationHelpers
     {
         /// <summary>
+        /// Get the byte size of an array length.
+        /// Currently defaults to an encoded long, but I may optimize it later.
+        /// </summary>
+        /// <param name="value">The value to calculate the size for</param>
+        /// <returns>The size, in bytes</returns>
+        public static int GetLengthSize(int value)
+            => Get7BitEncodedSize(value, false);
+
+        /// <summary>
+        /// Write an array length.
+        /// Currently defaults to an encoded long, but I may optimize it later.
+        /// </summary>
+        /// <param name="bytes">The byte array to write to</param>
+        /// <param name="index">Index to write out. Will be moved to the next unwritten byte</param>
+        /// <param name="value">The value to write</param>
+        public static void WriteLength(Il2CppStructArray<byte> bytes, ref int index, int value)
+            => Write7BitEncodedLong(bytes, ref index, value);
+
+        /// <summary>
+        /// Read an array length from bytes.
+        /// </summary>
+        /// <param name="bytes">The bytes to read from</param>
+        /// <param name="index">The index to read the length at. Will be moved to the next unread byte</param>
+        /// <returns>The read length</returns>
+        public static int ReadLength(Il2CppStructArray<byte> bytes, ref int index)
+            => checked((int)Read7BitEncodedLong(bytes, ref index));
+
+        /// <summary>
         /// Calculate the number of bytes this long will need after being encoded
         /// </summary>
         /// <param name="value">The value to calculate</param>
+        /// <param name="skipZeros">If true, return zero for inputs with zero (and consider them erroneous)</param>
         /// <returns>
         /// The predicted size, in bytes, from 0 to 9. 
         /// 0 is returned if the input is 0 as a special case for StateTracker.
         /// </returns>
-        public static int Get7BitEncodedSize(long value)
+        public static int Get7BitEncodedSize(long value, bool skipZeros=true)
             => Get7BitEncodedSize(unchecked((ulong)value));
 
         /// <inheritdoc cref="Get7BitEncodedSize(long)"/>
-        public static int Get7BitEncodedSize(ulong value)
+        public static int Get7BitEncodedSize(ulong value, bool skipZeros = false)
         {
             // This is the most convenient place to perform debug checks
           #if DEBUG
-            if (value == 0)
+            if (skipZeros && value == 0)
                 FeatureLogger.Error("Attempting to send 0 over the network; not allowed!");
             else if (value > 0xFE000000000000)
                 FeatureLogger.Warning("Networking a value greater than allowed; this may cause issues");
@@ -60,24 +89,46 @@ public partial class StateTracker : ArchipelagoFeature
         /// </summary>
         /// <param name="values">The values to encode</param>
         /// <returns>The calculated encoded size, in bytes</returns>
-        public static int Get7BitEncodedArraySize(IEnumerable<long> values)
-            => Get7BitEncodedArraySize(values.Cast<ulong>());
+        public static int Get7BitEncodedArraySize(ICollection<long> values)
+            => Get7BitEncodedArraySize(values.Cast<ulong>(), values.Count);
 
-        /// <inheritdoc cref="Get7BitEncodedArraySize(IEnumerable{long})"/>
-        public static int Get7BitEncodedArraySize(IEnumerable<ulong> values)
-            => sizeof(int) + values.Sum(Get7BitEncodedSize);
+        /// <inheritdoc cref="Get7BitEncodedArraySize(ICollection{long})"/>
+        public static int Get7BitEncodedArraySize(ICollection<ulong> values)
+            => Get7BitEncodedArraySize(values, values.Count);
+
+        /// <inheritdoc cref="Get7BitEncodedArraySize(ICollection{long})"/>
+        /// <param name="count">Number of items in the enumeration</param>
+        public static int Get7BitEncodedArraySize(IEnumerable<long> values, int count)
+            => Get7BitEncodedArraySize(values.Cast<ulong>(), count);
+
+        /// <inheritdoc cref="Get7BitEncodedArraySize(ICollection{long})"/>
+        public static int Get7BitEncodedArraySize(IEnumerable<ulong> values, int count)
+            => Get7BitEncodedSize(count) + values.Sum(i => Get7BitEncodedSize(i));
 
         /// <summary>
         /// Get the size this helper will use to encode multiple enumerations of long values as one array
         /// </summary>
         /// <param name="values">The values which would be encoded</param>
         /// <returns>The calculated encoded size, in bytes</returns>
-        public static int Get7BitEncodedMultiArraySize(IEnumerable<IEnumerable<long>> values)
-            => Get7BitEncodedMultiArraySize(values.Cast<IEnumerable<ulong>>());
+        public static int Get7BitEncodedMultiArraySize(ICollection<ICollection<long>> values)
+            => Get7BitEncodedMultiArraySize(values.Cast<ICollection<ulong>>(), values.Count, values.Sum(arr => arr.Count));
 
-        /// <inheritdoc cref="Get7BitEncodedMultiArraySize(IEnumerable{IEnumerable{long}})"/>
-        public static int Get7BitEncodedMultiArraySize(IEnumerable<IEnumerable<ulong>> values)
-            => values.Any() ? sizeof(int) + values.Sum(arr => arr.Sum(Get7BitEncodedSize) + 1) - 1 : sizeof(int);
+        /// <inheritdoc cref="Get7BitEncodedMultiArraySize(ICollection{ICollection{long}})"/>
+        public static int Get7BitEncodedMultiArraySize(ICollection<ICollection<ulong>> values)
+            => Get7BitEncodedMultiArraySize(values, values.Count, values.Sum(arr => arr.Count));
+
+        /// <inheritdoc cref="Get7BitEncodedMultiArraySize(IEnumerable{ICollection{long}})"/>
+        /// <param name="arrCount">Number of arrays being passed</param>
+        /// <param name="valueCount">Number of values being passed (sum of counts in arrays)</param>
+        public static int Get7BitEncodedMultiArraySize(IEnumerable<IEnumerable<long>> values, int arrCount, int valueCount)
+            => Get7BitEncodedMultiArraySize(values.Cast<IEnumerable<ulong>>(), arrCount, valueCount);
+
+        /// <inheritdoc cref="Get7BitEncodedMultiArraySize(IEnumerable{IEnumerable{long}}, int, int)"/>
+        public static int Get7BitEncodedMultiArraySize(IEnumerable<IEnumerable<ulong>> values, int arrCount, int valueCount)
+        {
+            arrCount = arrCount == 0 ? 0 : arrCount - 1;
+            return GetLengthSize(valueCount + arrCount) + arrCount + values.Sum(arr => arr.Sum(i => Get7BitEncodedSize(i)));
+        }
 
         /// <summary>
         /// Write a 7-bit encoded long value to an array, and move the index to the next open spot
@@ -155,12 +206,7 @@ public partial class StateTracker : ArchipelagoFeature
         public static unsafe void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<ulong> values, int count)
         {
             byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, 4 * IntPtr.Size).ToPointer();
-
-            // Write the size (unencoded)
-            *(int*)pBytes = count;
-            index += sizeof(int);
-
-            // Write all values!
+            WriteLength(bytes, ref index, count);
             foreach (var value in values)
                 Write7BitEncodedLong(bytes, ref index, value);
         }
@@ -174,8 +220,7 @@ public partial class StateTracker : ArchipelagoFeature
         public static unsafe long[] Read7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index)
         {
             byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, 4 * IntPtr.Size).ToPointer();
-            int size = *(int*)(&pBytes[index]);
-            index += 4;
+            int size = ReadLength(bytes, ref index);
             long[] result = new long[size];
             for (int i = 0; i < size; i++) result[i] = Read7BitEncodedLong(bytes, ref index);
             return result;
@@ -185,8 +230,7 @@ public partial class StateTracker : ArchipelagoFeature
         public static unsafe ulong[] Read7BitEncodedUArray(Il2CppStructArray<byte> bytes, ref int index)
         {
             byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, 4 * IntPtr.Size).ToPointer();
-            int size = *(int*)(&pBytes[index]);
-            index += 4;
+            int size = ReadLength(bytes, ref index);
             ulong[] result = new ulong[size];
             for (int i = 0; i < size; i++) result[i] = Read7BitEncodedULong(bytes, ref index);
             return result;
@@ -209,7 +253,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}})"/>
         /// <param name="arrCount">The number of arrays being written</param>
         public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<long>> values, int arrCount, int valuesCount)
-            => Write7BitEncodedMultiArray(bytes, ref index, values, arrCount, valuesCount);
+            => Write7BitEncodedMultiArray(bytes, ref index, values.Cast<IEnumerable<ulong>>(), arrCount, valuesCount);
 
         /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, IEnumerable{IEnumerable{long}}, int)"/>
         public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<ulong>> values, int arrCount, int valuesCount)
@@ -290,15 +334,20 @@ public partial class StateTracker : ArchipelagoFeature
         /// </summary>
         /// <param name="strings">The strings which would be serialized</param>
         /// <returns>The size, in bytes</returns>
-        public static int CalcStringArraySize(IEnumerable<string> strings)
+        public static int CalcStringArraySize(ICollection<string> strings)
+            => CalcStringArraySize(strings, strings.Count);
+
+        /// <inheritdoc cref="CalcStringArraySize(ICollection{string})"/>
+        /// <param name="arrSize">Number of strings in the array</param>
+        public static int CalcStringArraySize(IEnumerable<string> strings, int arrSize)
         {
           #if DEBUG
             if (strings.Any(s => s.Contains('\0')))
                 FeatureLogger.Error("Serializing a string with '\\0' inside of it!");
           #endif
 
-            return sizeof(int)
-                + strings.Sum(s => s.EndsWith('\0') ? s.Length : s.Length + 1);
+            return GetLengthSize(arrSize)
+                + strings.Sum(s => s.Length * sizeof(char) + sizeof(char));
         }
 
         /// <summary>
@@ -309,8 +358,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="strings">The strings to write</param>
         public static unsafe void WriteStringArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<string> strings)
         {
-            int startIndex = index;
-            index += sizeof(int);
+            WriteLength(bytes, ref index, strings.Count());
 
             byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, IntPtr.Size * 4).ToPointer();
             int count = 0;
@@ -322,7 +370,6 @@ public partial class StateTracker : ArchipelagoFeature
                 index += sizeof(char);
                 ++count;
             }
-            *(int*)(pBytes + startIndex) = count;
         }
 
         /// <summary>
@@ -334,8 +381,7 @@ public partial class StateTracker : ArchipelagoFeature
         public static unsafe string[] ReadStringArray(Il2CppStructArray<byte> bytes, ref int index)
         {
             byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, IntPtr.Size * 4).ToPointer();
-            int count = *(int*)(pBytes + index);
-            index += sizeof(int);
+            int count = ReadLength(bytes, ref index);
 
             string[] result = new string[count];
             for (count = 0; count < result.Length; count++)
