@@ -2,6 +2,7 @@
 using CellMenu;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
+using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
 using System.Collections.Generic;
 using System.Linq;
@@ -81,6 +82,9 @@ internal static class ModifyRundownMenuPatch
             if (action.Target?.GetIl2CppType().Pointer == Il2CppType.Of<CM_PageRundown_New>().Pointer)
                 connectButton.remove_OnBtnPressCallback(action.Cast<Il2CppSystem.Action<int>>());
         }
+
+        // Convenient time to setup replication
+        StateTracker.Get().SetupReplication();
     }
 
 }

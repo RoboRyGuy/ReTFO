@@ -1,11 +1,14 @@
 ﻿using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using TheArchive.Core.Attributes.Feature.Patches;
 using pArtifactInventoryState = BoosterImplants.pArtifactInventoryState;
 
 namespace ReTFO.Archipelago.Features;
@@ -429,7 +432,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// </summary>
         /// <param name="offset">Number of empty bytes to leave at the start of the array</param>
         /// <returns>The new array of serialized bytes</returns>
-        public Il2CppStructArray<byte> ToBytes(int offset)
+        public Il2CppStructArray<byte> ToBytes(int offset = 0)
         {
             Il2CppStructArray<byte> bytes = new(CalcByteSize() + offset);
             WriteToBytes(bytes, ref offset);
@@ -559,16 +562,25 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         /// <summary>
+        /// Create new pArchipelagoInteraction with the provided values
+        /// </summary>
+        public pArchipelagoInteraction(eType type, long value)
+        {
+            Type = type;
+            Value = value;
+        }
+
+        /// <summary>
         /// The type of interaction
         /// </summary>
         [FieldOffset(0)]
-        public eType type;
+        public eType Type;
 
         /// <summary>
         /// A singular long value associated with the interaction, if applicable
         /// </summary>
         [FieldOffset(4)]
-        public long value;
+        public long Value;
 
         /// <summary>
         /// Create an interaction from the networked type used for this type
@@ -684,9 +696,8 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="data">Data about the buffer being received</param>
         private void OnReceiveInitState(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
         {
-            // TODO: Do something with the state
             pArchipelagoInitState state = pArchipelagoInitState.ReadFromBytes(bytes);
-            FeatureLogger.Warning("Received init state, cannot use!");
+            m_owner.ReceiveInitState(state);
         }
 
         /// <summary>
@@ -696,9 +707,8 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="data">Data about the buffer being received</param>
         private void OnReceiveGeneralState(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
         {
-            // TODO: Do something with the state
             pArchipelagoGeneralState state = pArchipelagoGeneralState.FromBytes(bytes);
-            FeatureLogger.Warning("Received state, cannot use!");
+            m_owner.ReceiveGeneralState(state, false);
         }
 
         /// <summary>
@@ -708,9 +718,8 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="data">Data about the buffer being received</param>
         private void OnReceiveRecallState(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
         {
-            // TODO: Do something with the state
             pArchipelagoGeneralState state = pArchipelagoGeneralState.FromBytes(bytes);
-            FeatureLogger.Warning("Received recall state, cannot use!");
+            m_owner.ReceiveGeneralState(state, true);
         }
 
         /// <summary>
@@ -725,30 +734,66 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         /// <summary>
-        /// Update the current state as a result of an interaction. This will sync the interaction
-        ///  and set the current state.
+        /// Immediately send an init packet
         /// </summary>
-        /// <param name="state">The new state, after being modified by the interaction</param>
-        /// <param name="interaction">The interaction being performed</param>
-        public void InteractWithState(pArchipelagoGeneralState state, pArchipelagoInteraction interaction)
+        public void SendInit(SNet_Player? player = null)
         {
-            m_interactionPacket.Send(interaction.ToBytes(), SNet_ChannelType.SessionOrderCritical);
-            m_generalStatePacket.Send(
-                state.ToBytes(),
-                SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(m_currentBufferId, 0)),
-                SNet_SendGroup.PlayersInSessionHub,
-                SNet_SendQuality.Unreliable,
-                (int)SNet_ChannelType.SessionOrderCritical
-            );
+            if (player == null)
+            {
+                m_initStatePacket.Send(
+                    m_owner.MakeInitState().ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendGroup.PlayersInSessionHub,
+                    SNet_SendQuality.Reliable_WithBuffering,
+                    (int)SNet_ChannelType.SessionOrderCritical
+                );
+            }
+            else
+            {
+                m_initStatePacket.Send(
+                    m_owner.MakeInitState().ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendQuality.Reliable_WithBuffering,
+                    (int)SNet_ChannelType.SessionOrderCritical,
+                    player
+                );
+            }
         }
 
         /// <summary>
-        /// Set the current state of the replicator without syncing. Use when receiving network updates to set the internal state.
+        /// Immediately send a general sync packet
         /// </summary>
-        /// <param name="state">The new state to use</param>
-        public void SetStateUnsynced(pArchipelagoInitState state)
+        public void SendGeneral(SNet_Player? player = null)
         {
+            if (player == null)
+            {
+                m_generalStatePacket.Send(
+                    m_owner.MakeGeneralState().ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendGroup.PlayersInSessionHub,
+                    SNet_SendQuality.Reliable_WithBuffering,
+                    (int)SNet_ChannelType.SessionOrderCritical
+                );
+            }
+            else
+            {
+                m_generalStatePacket.Send(
+                    m_owner.MakeGeneralState().ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendQuality.Reliable_WithBuffering,
+                    (int)SNet_ChannelType.SessionOrderCritical,
+                    player
+                );
+            }
+        }
 
+        /// <summary>
+        /// Send an interaction
+        /// </summary>
+        /// <param name="interaction">The interaction being performed</param>
+        public void SendInteraction(pArchipelagoInteraction interaction)
+        {
+            m_interactionPacket.Send(interaction.ToBytes(), SNet_ChannelType.SessionOrderCritical, SNet_SendQuality.Reliable_WithBuffering);
         }
     }
 
@@ -757,10 +802,35 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     ArchipelagoStateReplicator? m_stateReplicator = null;
 
-    protected void SetupReplication()
+    private class UpdateStateEnumerator : IEnumerator
     {
+        private StateTracker m_owner;
+
+        public UpdateStateEnumerator(StateTracker owner)
+            => m_owner = owner;
+
+        public object Current => new UnityEngine.WaitForSecondsRealtime(60f);
+        
+        public bool MoveNext()
+        {
+            if (m_owner.CurrentState.IsConnected || m_owner.CurrentState.IsFakeConnected)
+                m_owner.m_stateReplicator!.SendGeneral();
+            return true;
+        }
+
+        public void Reset() { }
+    }
+
+    /// <summary>
+    /// Ensure replication is running for this StateTracker
+    /// </summary>
+    public void SetupReplication()
+    {
+        if (m_stateReplicator != null) return;
         m_stateReplicator ??= new(this);
-        m_stateReplicator.SetStateUnsynced(MakeInitState());
+
+        // Seems fitting to put this on SNet, though it probably doesn't matter
+        SNet.Current.StartCoroutine(new Il2CppEnumerator(new UpdateStateEnumerator(this)));
     }
 
     /// <summary>
@@ -793,4 +863,126 @@ public partial class StateTracker : ArchipelagoFeature
         };
     }
 
+    /// <summary>
+    /// Attempt to send an interaction as a packet to all clients
+    /// </summary>
+    /// <param name="type">The type of interaction to send</param>
+    /// <param name="value">An optional value associated with the interaction type</param>
+    protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0)
+    {
+        // Check if master
+        if (!(CurrentState.IsConnected || CurrentState.IsClientConnected)) return;
+        
+        // If recalling, we'll redo several interactions (ie adding items to terminal)
+        if (SNet.Capture.IsRecalling) return;
+
+        m_stateReplicator!.SendInteraction(new pArchipelagoInteraction(type, value));
+    }
+
+    /// <summary>
+    /// Receive an init state, expected when first joining a lobby
+    /// </summary>
+    /// <param name="state">The init state being received</param>
+    public void ReceiveInitState(pArchipelagoInitState state)
+    {
+        if (!CurrentState.IsDisconnected)
+        {
+            FeatureLogger.Warning("Received init state while connected. Ignoring!");
+            return;
+        }
+
+        RootSeed = state.RootSeed;
+        ExpeditionNames = state.ExpeditionNames.ToList();
+        RandomizationCategories = state.RandCategories.ToHashSet();
+        CurrentState = eState.ClientConnect;
+
+        PostConnectCommon();
+    }
+
+    /// <summary>
+    /// Receive a general state, expected periodically to ensure good sync
+    /// </summary>
+    /// <param name="state">The state being received</param>
+    /// <param name="isRecall">If the state is the reuslt of a recall</param>
+    public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall)
+    {
+        if (!CurrentState.IsClientConnected)
+        {
+            FeatureLogger.Warning("Ignoring GeneralState packet because this is not a client!");
+            return;
+        }
+
+        var gameData = MidManager.GetProcessedGameData();
+
+        foreach (var id in state.ItemsInTerminalSystem)
+            AddItemToTerminal(gameData.LookupItem(id));
+
+        // Reading state can never lower item counts
+        var newItemCounts = state.ItemIds.GroupBy(i => i)
+            .ToDictionary(g => gameData.LookupItem(g.Key), g => g.Count());
+        foreach (var key in ItemCounts.Keys.Union(newItemCounts.Keys)) 
+        {
+            if (isRecall)
+            {
+                int count = ItemCounts[key];
+                for (int i = newItemCounts[key]; i < count; i++)
+                    key.OnItemObtained(this, 0, null);
+            }
+            else
+            {
+                int count = newItemCounts[key];
+                for (int i = ItemCounts[key]; i < count; i++)
+                    CollectItem(key);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Receive and handle an interaction from the network
+    /// </summary>
+    /// <param name="interaction">The interaction to receive and handle</param>
+    public void ReceiveInteraction(pArchipelagoInteraction interaction)
+    {
+        switch (interaction.Type)
+        {
+            case pArchipelagoInteraction.eType.CollectItem:
+                CollectItem(interaction.Value);
+                break;
+
+            case pArchipelagoInteraction.eType.AddItemToTerminal:
+                AddItemToTerminal(interaction.Value);
+                break;
+
+            default:
+                FeatureLogger.Error($"Received unknown interaction type: {interaction.Type}");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Patch which sends init packet when players join the lobby
+    /// </summary>
+    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.PlayerJoinedLobby))]
+    public static class SNet_LobbyManager__PlayerJoinedLobby__Patch
+    {
+        public static void Prefix(SNet_Player player)
+        {
+            StateTracker stateTracker = StateTracker.Get();
+            if (stateTracker.CurrentState.IsConnected || stateTracker.CurrentState.IsFakeConnected)
+                stateTracker.m_stateReplicator!.SendInit(player);
+        }
+    }
+
+    /// <summary>
+    /// Patch which ensures migration fails, since we really don't support that
+    /// </summary>
+    [ArchivePatch(typeof(SNet_MasterManager), nameof(SNet_MasterManager.SearchForMigrationMaster))]
+    public static class SNet_MasterManager__SearchForMigrationMaster__Patch
+    {
+        public static bool Prefix()
+        {
+            SNet.MigrationMaster = null;
+            return false;
+        }
+    }
 }

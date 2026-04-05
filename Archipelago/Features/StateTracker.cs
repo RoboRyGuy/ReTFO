@@ -52,7 +52,7 @@ public partial class StateTracker : ArchipelagoFeature
     // Things provided by the server at initial sync
     protected List<string> ExpeditionNames { get; set; } = new();
     protected HashSet<string> RandomizationCategories { get; set; } = new();
-    public int RootSeed { get; protected set; } = 0;
+    public long RootSeed { get; protected set; } = 0;
 
     // Things needing to be consistently synced
     protected HashSet<long> FoundRegions { get; init; } = new();
@@ -243,7 +243,7 @@ public partial class StateTracker : ArchipelagoFeature
             "R3A1", "R3A2", "R3A3", "R3B1", "R3B2", "R3C1", "R3D1",
             "R4A1", "R4A2", "R4A3", "R4B1", "R4B2", "R4B3", "R4C1", "R4C2", "R4C3", "R4D1", "R4D2", "R4E1",
             "R5A1", "R5A2", "R5A3", "R5B1",
-            "R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C2", "R6C3", "R6CX", "R6D2", "R6D2", "R6D3", "R6D4",
+            "R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C3", "R6CX", "RD61", "R6D2", "R6D3", "R6D4",
             "R7A1", "R7B1", "R7B2", "R7B3", "R7C1", "R7C2", "R7C3", "R7D1", "R7D2", "R7E1",
             "R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
         };
@@ -377,6 +377,14 @@ public partial class StateTracker : ArchipelagoFeature
         // Early overwrite so that callbacks can depend on them being there
         TryOverwriteRundowns();
 
+        // Ensure everything is reset
+        FoundRegions.Clear();
+        FoundUnusedRegions.Clear();
+        FoundLocations.Clear();
+        ItemCounts.Clear();
+        ItemsInTerminalSystem.Clear();
+        QueuedItemReplacements.Clear();
+
         // Identify reachable regions and locations
         var reachableRegions = gameData.RegionList.Select((r, i) => Tuple.Create(r, i)).Where(pair => pair.Item1.Reachable);
         var reachableRegionIDs = reachableRegions.Select(pair => pair.Item2).ToHashSet();
@@ -407,9 +415,9 @@ public partial class StateTracker : ArchipelagoFeature
             count += step;
             if (count >= 1f)
             {
-                if (emptyLocations[(i + RootSeed) % emptyLocations.Count].ItemID != 0L)
+                if (emptyLocations[(i + Math.Abs(unchecked((int)RootSeed))) % emptyLocations.Count].ItemID != 0L)
                     FeatureLogger.Error("Overwriting item during floating items placement!"); // In case there's an error in my math
-                emptyLocations[(i + RootSeed) % emptyLocations.Count].ItemID = floatingItems.Pop().ID;
+                emptyLocations[(i + Math.Abs(unchecked((int)RootSeed))) % emptyLocations.Count].ItemID = floatingItems.Pop().ID;
                 count -= 1f;
             }
         }
@@ -421,8 +429,6 @@ public partial class StateTracker : ArchipelagoFeature
         var randomizedLocations = reachableLocations.Where(l => TestRandomization(l).IsRandomized);
         if (CurrentState.IsConnected)
             ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.ID).ToArray()).ContinueWith(OnLocationsScouted);
-
-        SetupReplication();
 
         // If we're in fake connect, we need to at least allow access to the first expedition
         if (CurrentState.IsFakeConnected)
@@ -1046,9 +1052,9 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         ItemCounts[item] = ItemCounts.GetValueOrDefault(item, 0) + 1;
-        FeatureLogger.Warning("Checkpoint CollectedItem is missing!");
         item.Item.OnItemObtained(this, sourceLocationId, player);
         FeatureLogger.Debug($"Collecting item: {item.Item.Name}");
+        SendInteraction(pArchipelagoInteraction.eType.CollectItem, item.Item.ID);
     }
 
     /// <summary>
@@ -1099,7 +1105,10 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="item">The item to add</param>
     public void AddItemToTerminal(ItemOrId item)
     {
-        System.Random random = new();
+        // Lazy seed generation
+        long seed = RootSeed ^ item.Item.ID;
+        seed = seed ^ (seed >> 32);
+        System.Random random = new(unchecked((int)seed));
         char r() // Picks a random character
         {
             int choice = (int)(36d * random.NextDouble());
