@@ -1,9 +1,10 @@
 ﻿using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
+using System.Runtime.CompilerServices;
 using System;
-using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -12,10 +13,8 @@ using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
-using Player;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Runtime.CompilerServices;
 
 /// <summary>
 /// Utility for associating pickups with locations so that those locations get checked when the pickup is grabbed.
@@ -84,7 +83,7 @@ public class PickupHelper : ArchipelagoFeature
         if (despawnIfFound && stateTracker.HasLocation(locationId) && randomization.IsTreatedAsRandom)
         {
             // Try to despawn the item
-            item.GetComponent<LG_PickupItem_Sync>()?.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, null);
+            item.internalSync.Cast<LG_PickupItem_Sync>().GetReplicator().Cast<SNet_Replicator>().Despawn(); 
         }
         else if (randomization.IsRandomized)
         {
@@ -141,7 +140,8 @@ public class PickupHelper : ArchipelagoFeature
                 __instance.GetReplicator().Cast<SNet_Replicator>().Despawn();
             }
 
-            // Big pickups can re-enter the level. If our comp is still there, it can cause issues
+            // Big pickups can re-enter the level. If our comp is still there, it would
+            //  be rechecked on next pickup, potentially causing issues
             UnityEngine.Object.Destroy(comp);
         }
     }

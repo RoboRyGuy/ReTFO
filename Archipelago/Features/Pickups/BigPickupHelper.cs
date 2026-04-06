@@ -1,5 +1,6 @@
 ﻿using Clonesoft.Json;
 using GameData;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
@@ -61,6 +62,36 @@ public class BigPickupHelper : ArchipelagoFeature
         private RandomizationData m_randData;
         public override RandomizationData RandData => m_randData;
 
+        /// <summary>
+        /// Immediately attempt to spawn the related big pickup.
+        /// </summary>
+        /// <returns>The spawned item, or null if it failed</returns>
+        private CarryItemPickup_Core? TrySpawnItemNow()
+        {
+            global::Item? item =
+                ItemDataBlock == null
+                ? null
+                : ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
+            CarryItemPickup_Core? carryItem = item?.TryCast<CarryItemPickup_Core>();
+            if (carryItem == null) return null;
+
+            // Inject a despawn packet into all captured buffers to trigger this item to despawn if a reload occurs
+            var packet = ItemReplicationManager.Current.m_SNetReplicationManager_Item.m_despawnPacket;
+            SNetwork.pReplicationData data = new()
+            {
+                isRecall = 0,
+                PrefabID = 0,
+                ReplicatorKey = carryItem.m_sync.GetReplicator().Key
+            };
+            Il2CppStructArray<byte> bytes = new(SNetwork.SNet_Packet<SNetwork.pReplicationData>.s_marshaller.SizeWithIDs);
+            SNetwork.SNet_Packet<SNetwork.pReplicationData>.s_marshaller.MarshalToBytes(data, bytes);
+            SNetwork.SNet_Packet.InjectIDPacketIndex(packet, bytes, carryItem.m_sync.GetReplicator().KeyBytes);
+            foreach (var buffer in SNetwork.SNet.Capture.m_buffers)
+                buffer.GetPass(SNetwork.eCapturePass.SessionPass).Add(bytes);
+
+            return carryItem;
+        }
+
         public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
         {
             if (Expedition.Data.FromCurrentExpedition() == Data)
@@ -68,15 +99,12 @@ public class BigPickupHelper : ArchipelagoFeature
                 if (RandData.IsRandomLike && !stateTracker.TestRandomization(this, true).IsRandomized && player != null)
                 {
                     // Give it directly to the player
-                    global::Item? item =
-                        ItemDataBlock == null
-                        ? null
-                        : ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-                    CarryItemPickup_Core? carryItem = item?.TryCast<CarryItemPickup_Core>();
+                    CarryItemPickup_Core? carryItem = TrySpawnItemNow();
                     if (carryItem == null)
                     {
                         string itemName = $"Big Pickup #{ItemDataBlock?.persistentID ?? 0} \"{ItemDataBlock?.publicName ?? "null"}\"";
                         FeatureLogger.Error($"Failed to spawn {itemName}! Item added to terminal.");
+                        stateTracker.AddItemToTerminal(this);
                     }
                     else
                     {
@@ -97,11 +125,7 @@ public class BigPickupHelper : ArchipelagoFeature
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
             string itemName = $"Big Pickup #{ItemDataBlock?.persistentID ?? 0} \"{ItemDataBlock?.publicName ?? "null"}\"";
-            global::Item? item = 
-                ItemDataBlock == null
-                ? null
-                : ItemSpawnManager.SpawnItem(ItemDataBlock.persistentID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-            CarryItemPickup_Core? carryItem = item?.TryCast<CarryItemPickup_Core>();
+            var carryItem = TrySpawnItemNow();
             if (carryItem == null)
             {
                 FeatureLogger.Error($"Failed to spawn {itemName}!");
