@@ -70,7 +70,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         if (terminalData == null)
             return Enumerable.Empty<Tuple<string, string>>();
 
-        Random random = new(Plugin.Get().StateTracker.RootSeed + terminalData.TerminalName.GetHashCode());
+        Random random = new(Tuple.Create(Plugin.Get().StateTracker.RootSeed, terminalData.TerminalName.GetHashCode()).GetHashCode());
         char r()
         {
             int choice = (int)(36d * random.NextDouble());

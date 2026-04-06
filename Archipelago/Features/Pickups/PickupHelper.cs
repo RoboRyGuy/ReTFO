@@ -136,7 +136,10 @@ public class PickupHelper : ArchipelagoFeature
             PlayerAgent agent = player.PlayerAgent.Cast<PlayerAgent>();
             var randomization = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent, new Closure(comp.StoredLocation, __instance).Invoke);
             if (randomization.IsTreatedAsRandom)
-                player = null!; // A null player picks it up, effectively despawning it
+            {
+                player = null!; // Prevent the pickup (and send it to the void)
+                __instance.GetReplicator().Cast<SNet_Replicator>().Despawn();
+            }
 
             // Big pickups can re-enter the level. If our comp is still there, it can cause issues
             UnityEngine.Object.Destroy(comp);

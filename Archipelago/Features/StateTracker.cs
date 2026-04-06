@@ -716,7 +716,7 @@ public partial class StateTracker : ArchipelagoFeature
             numRundowns = newExpeditions.Count / 10;
         numRundowns = Math.Min(numRundowns, MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections.Count);
 
-        System.Random random = new(RootSeed);
+        System.Random random = new(RootSeed.GetHashCode());
         List<RundownDataBlock> newRundowns = Enumerable.Range(1, numRundowns).Select(i => RundownDataBlock.GetBlock($"Archipelago {i}")).ToList();
 
         for (int i = 0; i < numRundowns; i++)
@@ -1106,9 +1106,7 @@ public partial class StateTracker : ArchipelagoFeature
     public void AddItemToTerminal(ItemOrId item)
     {
         // Lazy seed generation
-        long seed = RootSeed ^ item.Item.ID;
-        seed = seed ^ (seed >> 32);
-        System.Random random = new(unchecked((int)seed));
+        System.Random random = new(Tuple.Create(RootSeed, item.Item.ID).GetHashCode());
         char r() // Picks a random character
         {
             int choice = (int)(36d * random.NextDouble());

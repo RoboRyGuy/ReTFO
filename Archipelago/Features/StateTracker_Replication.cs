@@ -3,6 +3,7 @@ using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
+using Steamworks;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -906,7 +907,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="isRecall">If the state is the reuslt of a recall</param>
     public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall)
     {
-        if (!CurrentState.IsClientConnected)
+        if (!(CurrentState.IsClientConnected || isRecall))
         {
             FeatureLogger.Warning("Ignoring GeneralState packet because this is not a client!");
             return;
@@ -914,6 +915,8 @@ public partial class StateTracker : ArchipelagoFeature
 
         var gameData = MidManager.GetProcessedGameData();
 
+        // Reset terminal items
+        ItemsInTerminalSystem.Clear();
         foreach (var id in state.ItemsInTerminalSystem)
             AddItemToTerminal(gameData.LookupItem(id));
 
@@ -922,16 +925,17 @@ public partial class StateTracker : ArchipelagoFeature
             .ToDictionary(g => gameData.LookupItem(g.Key), g => g.Count());
         foreach (var key in ItemCounts.Keys.Union(newItemCounts.Keys)) 
         {
+            int count = ItemCounts.GetValueOrDefault(key, 0);
+            int newCount = newItemCounts.GetValueOrDefault(key, 0);
+
             if (isRecall)
             {
-                int count = ItemCounts[key];
-                for (int i = newItemCounts[key]; i < count; i++)
+                for (int i = newCount; i < count; i++)
                     key.OnItemObtained(this, 0, null);
             }
             else
             {
-                int count = newItemCounts[key];
-                for (int i = ItemCounts[key]; i < count; i++)
+                for (int i = count; i < newCount; i++)
                     CollectItem(key);
             }
         }
@@ -962,17 +966,21 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Patch which sends init packet when players join the lobby
     /// </summary>
-    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.PlayerJoinedLobby))]
-    public static class SNet_LobbyManager__PlayerJoinedLobby__Patch
+    [ArchivePatch(typeof(SNet_Lobby_STEAM), nameof(SNet_Lobby_STEAM.PlayerJoined), new Type[] { typeof(SNet_Player), typeof(CSteamID) })]
+    public static class SNet_Lobby_STEAM__PlayerJoined__Patch
     {
         public static void Prefix(SNet_Player player)
         {
+            if ((player?.Pointer ?? IntPtr.Zero) == IntPtr.Zero) return;
             StateTracker stateTracker = StateTracker.Get();
             if (stateTracker.CurrentState.IsConnected || stateTracker.CurrentState.IsFakeConnected)
+            {
                 stateTracker.m_stateReplicator!.SendInit(player);
+                stateTracker.m_stateReplicator!.SendGeneral(player);
+            }
         }
     }
-
+    
     /// <summary>
     /// Patch which ensures migration fails, since we really don't support that
     /// </summary>
