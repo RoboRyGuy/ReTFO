@@ -50,9 +50,6 @@ public class PickupHelper : ArchipelagoFeature
     /// </summary>
     /// <param name="item">The item to associate with the location</param>
     /// <param name="locationId">The location to associate</param>
-    /// If true and the item is unrandomized, it will treated as randomized after the first pickup.
-    /// Used for bulkhead keys and cells to prevent bad randomization.
-    /// </param>
     /// <param name="despawnIfFound">If true, will despawn the pickup if the location has already been checked</param>
     /// <remarks>
     /// This method works by placing a component on the item which can be checked at pickup time.
