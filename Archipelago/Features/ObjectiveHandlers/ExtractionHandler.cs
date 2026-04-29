@@ -1,8 +1,6 @@
-﻿using Clonesoft.Json;
-using GameData;
+﻿using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
-using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
@@ -13,11 +11,23 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class ExtractionHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_ExtractionLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Extraction Locations", "Locations checked by reaching extraction on an expedition", gd.Tag_Never));
+
+        public TagResolver Tag_ExtractionItems
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Extraction Items", "Items indicating extraction is reachable on a particular level", gd.Tag_Never));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class ExtractionHandler : ArchipelagoFeature
 {
     public override string Name => "Extraction Handler";
-    public override string Description 
+    public override string Description
         => "Adds an \"Extraction Reachable\" item used to help identify when an expedition is clearable.\n"
         + "This item has no impact on play and is purely an internal item.";
     public override FeatureGroup Group => FeatureGroups.ObjectiveHandlers;
@@ -28,16 +38,12 @@ public class ExtractionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private class ExtractionReachableLocation : Location
+    private static class ExtractionReachableLocation
     {
-        public ExtractionReachableLocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
+        public static TagResolver MakeTag(Expedition.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Extraction Location", "The locaiton of extraction for a particular expedition", gd.Tag_ExtractionLocations));
 
-        private static RandomizationData s_randData = new()
-        {
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
 
     /// <summary>
@@ -46,23 +52,30 @@ public class ExtractionHandler : ArchipelagoFeature
     private class ExtractionReachableItem : Item
     {
         public ExtractionReachableItem(Expedition.Data data)
-            : base($"{data.ExpeditionName} Extraction Reachable")
+            : base(MakeTag(data), MakeRandData())
         {
             ExpeditionData = data;
         }
 
-        [JsonIgnore]
-        Expedition.Data ExpeditionData { get; set; }
+        public static TagResolver MakeTag(Expedition.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Extraction Reachable", "Indiciates extraction is reachable for a particular expedition", gd.Tag_ExtractionItems));
 
-        private static RandomizationData s_randData = new();
-        public override RandomizationData RandData => s_randData;
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+
+        Expedition.Data ExpeditionData { get; set; }
     }
 
-    public static Item GetExtractionReachableItem(Expedition.Data data)
-        => data.GetItem(new ExtractionReachableItem(data));
+    public static KeyedItem GetExtractionReachableItem(Expedition.Data data)
+    {
+        if (data.TryLookupItem(ExtractionReachableItem.MakeTag(data), out var item))
+            return item;
+
+        Item newItem = new ExtractionReachableItem(data);
+        return new(data.AddItem(newItem), newItem);
+    }
 
     [Expedition.Callback]
-    public static void AddExtraction(Expedition.Data data)
+    public void AddExtraction(Expedition.Data data)
     {
         // The win condition indicates the intended extraction point
         // However, if a forward extract geo is found, it takes priority over the rear extract win condition
@@ -89,11 +102,13 @@ public class ExtractionHandler : ArchipelagoFeature
             return;
         }
 
-        data.GetLocation(new ExtractionReachableLocation(
-            $"{data.ExpeditionName} Extraction",
-            data.GetOrCreateRegion(zone.ZoneName),
-            GetExtractionReachableItem(data)
-        ));
+        KeyedItem item = GetExtractionReachableItem(data);
+        data.AddLocation(
+            ExtractionReachableLocation.MakeTag(data),
+            data.LookupOrCreateRegion(zone.ZoneName),
+            ExtractionReachableLocation.MakeRandData(),
+            item.ID
+        );
     }
 
 }

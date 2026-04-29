@@ -17,28 +17,70 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 public static class Zone
 {
     // Interface class passed to processing giving access to necessary data
-    public abstract class Data : Layer.Data
+    public class Data : Layer.Data
     {
-        // Minimal interface implementation
-        public abstract Layer.Data LayerData { get; }
-        public abstract ExpeditionZoneData? Zone { get; }
+        /// <summary>
+        /// Create a new zone data
+        /// </summary>
+        /// <param name="data">The layer containing this zone</param>
+        /// <param name="zone">The zone build data</param>
+        public Data(Layer.Data data, ExpeditionZoneData? zone)
+            : base(data)
+            => Zone = zone;
 
-        // Zone basics
+        /// <summary>
+        /// Copy constructor
+        /// </summary>
+        public Data(Zone.Data other)
+            : base(other as Layer.Data)
+        {
+            Zone = other.Zone;
+        }
+
+        /// <summary>
+        /// The zone being processed.
+        /// Null if and only if processing a dimension layer which has no layout (only one custom geo)
+        /// </summary>
+        public ExpeditionZoneData? Zone { get; private init; }
+
+        /// <summary>
+        /// Helper for calculating aliases
+        /// </summary>
         private int WithOverride(int alias, int over) => over == -1 ? alias : over;
-        public virtual int ZoneAlias // Note: Both DimensionData and Zone may be null if referring to the snatcher dimension
+        
+        /// <summary>
+        /// Get the zone alias for this zone; accounts for dimensions
+        /// </summary>
+        public int ZoneAlias // Note: Both DimensionData and Zone may be null if referring to the snatcher dimension
            => Zone != null ? WithOverride(Layout!.ZoneAliasStart + ((int)Zone.LocalIndex), Zone.AliasOverride)
                            : WithOverride((Layout?.ZoneAliasStart ?? 0), DimensionData?.StaticAliasOverride ?? 0);
-        public virtual string ZoneName => $"{LayerName} ZONE_{ZoneAlias}";
-        public virtual string? CustomGeo
+
+        /// <summary>
+        /// A name uniquely identifying this zone in a user-friendly way
+        /// </summary>
+        /// <remarks>
+        /// This assumes all zones in a layer have unique aliases, which is true for all vanilla expeditions.
+        /// If that is not the case, we can modify this to use local index instead of the alias.
+        /// </remarks>
+        public string ZoneName => $"{LayerName} ZONE_{ZoneAlias}";
+        public string? CustomGeo
             => Zone == null ? DimensionData!.DimensionGeomorph : Zone.CustomGeomorph;
 
+        /// <summary>
+        /// Create zone data from the provided LG_Zone object
+        /// </summary>
+        /// <param name="zone">The LG_Zone created as part of level generation</param>
+        /// <returns>The relevant zone data</returns>
         public static Data FromZone(LG_Zone zone)
         {
             var layer = FromLayer(zone.m_layer);
             return layer.FindZoneByIndex(zone.LocalIndex);
         }
 
-        // Get the LG_Zone associated with this zone, if loaded
+        /// <summary>
+        /// Get the LG_Zone associated with this zone, if loaded
+        /// </summary>
+        /// <returns>The LG_Zone object created by level generation</returns>
         public LG_Zone? GetLG_Zone()
         {
             LG_Layer? layer = GetLG_Layer();
@@ -46,46 +88,14 @@ public static class Zone
             int entry = layer.m_zonesByLocalIndex.FindEntry(Zone?.LocalIndex ?? eLocalZoneIndex.Zone_0);
             return entry == -1 ? null : layer.m_zonesByLocalIndex.entries[entry].value;
         }
-
-        // Implementing Layer.Data
-        public override Expedition.Data ExpeditionData => LayerData.ExpeditionData;
-        public override LayerType LayerType => LayerData.LayerType;
-    }
-
-    // Minimal concrete implementation of Data
-    protected class BaseData : Data
-    {
-        // Standard constructor
-        public BaseData(Layer.Data layerData, ExpeditionZoneData? zone)
-        {
-            this.layerData = layerData;
-            this.zone = zone;
-            if (zone == null && layerData.LayerType.IsReality)
-                FeatureLogger.Error($"Constructed zone data for null zone in reality. Layer: {LayerName}");
-        }
-
-        // Copy constructor
-        public BaseData(BaseData source)
-        {
-            layerData = source.layerData;
-            zone = source.zone;
-        }
-
-        // Concretes
-        private readonly Layer.Data layerData;
-        private readonly ExpeditionZoneData? zone;
-
-        // Interface implementation
-        public override Layer.Data LayerData => layerData;
-        public override ExpeditionZoneData? Zone => zone;
     }
 
     // Attribute used to mark static functions which should autoregister to this processor
     [AttributeUsage(AttributeTargets.Method)]
-    public class Callback : Game.IProcessor<Data>.Callback { }
+    public class Callback : MidManager.Processor<Data>.Callback { }
 
     // Actual class wrapping an event processing instance
-    public class Processor : Game.IProcessor<Data>
+    public class Processor : MidManager.Processor<Data>
     {
         // Public constructor which automatically registers callbacks using helper
         public Processor()
@@ -102,7 +112,7 @@ public static class Zone
         public override void Process(Data data)
             => Event?.Invoke(data);
 
-        public Processor SubscribedTo(Layer.Processor owner)
+        public Processor SubscribedTo(MidManager.Processor<Layer.Data> owner)
         {
             owner.RegisterCallback(OnProcessLayer);
             return this;
@@ -112,44 +122,65 @@ public static class Zone
         protected void OnProcessLayer(Layer.Data data)
         {
             if (data.Layout != null)
-                foreach (var zone in data.Layout.Zones) Process(new BaseData(data, zone));
+                foreach (var zone in data.Layout.Zones) Process(new Data(data, zone));
             else
-                Process(new BaseData(data, null));
+                Process(new Data(data, null));
         }
     }
 
     extension(Game.Data gameData)
     {
         public Processor ZoneProcessor
-            => (Processor)gameData.GetProcessor<Data>();
+            => (Processor)gameData.Manager.GetProcessor<Data>();
     }
 
     extension(Expedition.Data expeditionData)
     {
-        // First zone in an expedition
+        /// <summary>
+        /// First zone in an expedition
+        /// </summary>
         public Data StartingZone
             => expeditionData.MainLayer.FirstZone;
 
-        // Region for the first zone
-        public int StartingRegion
-            => expeditionData.GetOrCreateRegion(expeditionData.StartingZone.ZoneName);
+        /// <summary>
+        /// Region for the first zone
+        /// </summary>
+        public RegionID StartingRegion
+            => expeditionData.LookupOrCreateRegion(expeditionData.StartingZone.ZoneName);
 
-        // Find a zone using event data
+        /// <summary>
+        /// Find a zone using event data
+        /// </summary>
+        /// <param name="ev">Event data targetting a zone-based event</param>
+        /// <returns>The relevant zone data</returns>
         public Data FindZoneByEvent(WardenObjectiveEventData ev)
             => expeditionData.FindZoneExact(ev.DimensionIndex, ev.Layer, ev.LocalIndex);
 
-        // Find a zone in an expedition using its full coordinates
+        /// <summary>
+        /// Find a zone in an expedition using its full coordinates
+        /// </summary>
+        /// <param name="dimension">The dimension containing the zone</param>
+        /// <param name="layer">The layer of the zone in that dimension (ignored for non-reality dimensions)</param>
+        /// <param name="zoneIndex">The local index of the zone</param>
+        /// <returns>The found zone data</returns>
         public Data FindZoneExact(eDimensionIndex dimension, LG_LayerType layer, eLocalZoneIndex zoneIndex)
             => expeditionData.FindZoneExact(new LayerType(dimension, layer), zoneIndex);
 
-        // Find a zone in an expedition using its full coordinates
+        /// <summary>
+        /// Find a zone in an expedition using its full coordinates
+        /// </summary>
+        /// <param name="layerType">The LayerType of the zone</param>
+        /// <param name="zoneIndex">The local index of the zone</param>
+        /// <returns></returns>
         public Data FindZoneExact(LayerType layerType, eLocalZoneIndex zoneIndex)
             => expeditionData.GetLayer(layerType).FindZoneByIndex(zoneIndex);
     }
 
     extension(Layer.Data layerData)
     {
-        // The first zone in the layer, which will connect to previous layers or will be the elevator drop zone
+        /// <summary>
+        /// The first zone in the layer, which will connect to previous layers or will be the elevator drop zone
+        /// </summary>
         public Data FirstZone
         {
             get
@@ -157,68 +188,86 @@ public static class Zone
                 if (layerData.Layout != null)
                 {
                     if ((layerData.Layout.Zones?.Count ?? 0) > 0)
-                        return new BaseData(layerData, layerData.Layout?.Zones![0]);
+                        return new Data(layerData, layerData.Layout?.Zones![0]);
                     else
                         FeatureLogger.Error($"Layer has no zones: {layerData.LayerName}");
                 }
                 else if (!layerData.LayerType.IsDimension)
                     FeatureLogger.Error($"Failed to find layout data for layer: {layerData.LayerName}");
-                return new BaseData(layerData, null);
+                return new Data(layerData, null);
             }
         }
 
-        // All zones in a layer
+        /// <summary>
+        /// Enumerates all zones in a layer
+        /// </summary>
         public IEnumerable<Data> AllZones
-            => layerData.Layout == null ? Enumerable.Repeat(new BaseData(layerData, null), 1)
-             : layerData.Layout.Zones.Select(zone => new BaseData(layerData, zone));
+            => layerData.Layout == null ? Enumerable.Repeat(new Data(layerData, null), 1)
+             : layerData.Layout.Zones.Select(zone => new Data(layerData, zone));
 
-        // Find a zone given a zone placement
+        /// <summary>
+        /// Find a zone given a zone placement
+        /// </summary>
+        /// <param name="placement">The zone placement relative to this layer</param>
+        /// <returns>The found zone data</returns>
         public Data FindZoneByPlacement(ZonePlacementData placement)
         {
             // Two edge cases: 
-            //  1) If an event occurs in reality and targets reality, we inherit the layer
-            //  2) If an event occurs in the same dimension as our current layer, we can reuse the layer data
+            //  1) If this layer is reality and the placement targets reality, we inherit the layer
+            //  2) If this placement targets the same layer as our current layer, we can reuse the layer data
             if (placement.DimensionIndex == eDimensionIndex.Reality && layerData.LayerType.IsReality
                 || placement.DimensionIndex == layerData.LayerType
             ) return layerData.FindZoneByIndex(placement.LocalIndex);
             return layerData.GetLayer(placement.DimensionIndex).FindZoneByIndex(placement.LocalIndex);
         }
 
-        // Convert a list of placement lists into zone regions
+        /// <summary>
+        /// Convert a list of placement lists into zone regions
+        /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToZoneRegions(DoublePlacementList placements)
             => layerData.PlacementsToZoneRegions(placements.Iter());
 
-        // Convert an enumerable of placement lists into zone regions
+        /// <summary>
+        /// Convert an enumerable of placement lists into zone regions
+        /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToZoneRegions(IEnumerable<PlacementList> placements)
             => placements.Select(ps => layerData.PlacementsToZoneRegions(ps));
 
-        // Convert a list of placements into zone regions
+        /// <summary>
+        /// Convert a list of placements into zone regions
+        /// </summary>
         public IEnumerable<RegionInfo> PlacementsToZoneRegions(PlacementList placements)
             => layerData.PlacementsToZoneRegions(placements.Iter());
 
-        // Convert an enumerable of placements into zone regions
+        /// <summary>
+        /// Convert an enumerable of placements into zone regions
+        /// </summary>
         public IEnumerable<RegionInfo> PlacementsToZoneRegions(IEnumerable<ZonePlacementData> placements)
             => placements.Select(p => layerData.PlacementToZoneRegion(p));
 
-        // Convert a single placement into a zone region
+        /// <summary>
+        /// Convert a single placement into a zone region
+        /// </summary>
         public RegionInfo PlacementToZoneRegion(ZonePlacementData placement)
         {
             var zone = layerData.FindZoneByPlacement(placement);
             return new()
             {
-                Region = layerData.GetOrCreateRegion(zone.ZoneName),
+                Region = layerData.LookupOrCreateRegion(zone.ZoneName),
                 IsBad = (zone.Zone?.ProgressionPuzzleToEnter?.PuzzleType ?? eProgressionPuzzleType.None) != eProgressionPuzzleType.None
             };
         }
 
-        // Find a zone by its local index (not its index in the zone array)
+        /// <summary>
+        /// Find a zone in this layer by its local index property (not its index in the zone array)
+        /// </summary>
         public Data FindZoneByIndex(eLocalZoneIndex zoneIndex)
         {
             if (layerData.Layout == null)
             {
                 if (zoneIndex != eLocalZoneIndex.Zone_0)
                     FeatureLogger.Warning($"Attempted to find {Enum.GetName(zoneIndex)} in dimension with no layout: {layerData.LayerName}");
-                return new BaseData(layerData, null);
+                return new Data(layerData, null);
             }
 
             ExpeditionZoneData? zone = layerData.Layout.Zones.FirstOrDefault(z => z.LocalIndex == zoneIndex);
@@ -228,14 +277,16 @@ public static class Zone
                 return layerData.FirstZone;
             }
             else
-                return new BaseData(layerData, zone);
+                return new Data(layerData, zone);
         }
     }
 
     extension(Objective.Data objectiveData)
     {
-        // Make and unstuff zone region sets for an objective
-        public IEnumerable<List<int>> ObjectiveToZoneRegionSets(int count)
+        /// <summary>
+        /// Make and unstuff zone region sets for an objective
+        /// </summary>
+        public IEnumerable<List<RegionID>> ObjectiveToZoneRegionSets(int count)
             => objectiveData.UnstuffPlacements(objectiveData.PlacementsToZoneRegions(objectiveData.ObjectiveData.ZonePlacementDatas), count);
     }
 }

@@ -8,7 +8,7 @@ namespace ReTFO.Archipelago.Features.Terminals;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class APCommandHelpHandler : ArchipelagoFeature
 {
     public override string Name => "AP Help Command";
@@ -31,7 +31,7 @@ public class APCommandHelpHandler : ArchipelagoFeature
 
     public override void OnDisable()
     {
-        base.OnEnable();
+        base.OnDisable();
         APCommandHandler.UnregisterCommand(m_helpCommand ??= new());
     }
 

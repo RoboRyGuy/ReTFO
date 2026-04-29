@@ -2,10 +2,10 @@
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Features.FloatingItems;
 using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Patches;
 using ReTFO.Archipelago.Utilities;
-using SNetwork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,54 +47,28 @@ public partial class StateTracker : ArchipelagoFeature
         protected set => m_plugin = value;
     }
     public MidManager MidManager => Plugin.MidManager;
-    protected AP.ArchipelagoSession? ApSession { get; set; } = null;
+    public AP.ArchipelagoSession? ApSession { get; protected set; } = null;
+    public event Action<StateTracker>? OnStateChange;
 
     // Things provided by the server at initial sync
-    protected List<string> ExpeditionNames { get; set; } = new();
-    protected HashSet<string> RandomizationCategories { get; set; } = new();
+    protected List<Expedition.Data> Expeditions { get; set; } = new();
+    protected HashSet<RandomizationTag> WhitelistTags { get; set; } = new();
+    protected HashSet<RandomizationTag> BlacklistTags { get; set; } = new();
     public long RootSeed { get; protected set; } = 0;
 
-    // Things needing to be consistently synced
-    protected HashSet<long> FoundRegions { get; init; } = new();
+    // Things consistently synced / updated
+    protected HashSet<RegionID> FoundRegions { get; init; } = new();
     protected HashSet<string> FoundUnusedRegions { get; init; } = new();
-    protected HashSet<long> FoundLocations { get; init; } = new();
-    protected Dictionary<Item, int> ItemCounts { get; init; } = new();
-    protected Dictionary<Item, Queue<Item>> QueuedItemReplacements = new();
-    public List<Tuple<Item, string>> ItemsInTerminalSystem { get; init; } = new();
+    protected HashSet<LocationID> FoundLocations { get; init; } = new();
+    protected Dictionary<ItemID, int> ItemCounts { get; init; } = new();
+    protected Dictionary<ItemID, Queue<ItemID>> QueuedItemReplacements = new();
+    public List<Tuple<ItemID, string>> ItemsInTerminalSystem { get; init; } = new();
 
     /// <summary>
     /// Get the current state tracker
     /// </summary>
     /// <returns>The current state tracker</returns>
     public static StateTracker Get() => Plugin.Get().StateTracker;
-
-    /// <summary>
-    /// Helper type which allows functions to accept either a location or an ID as an input
-    /// </summary>
-    public struct LocationOrId
-    {
-        public Location Location { get; init; }
-        public static implicit operator LocationOrId(long id)
-            => new LocationOrId() { Location = StateTracker.Get().MidManager.GetProcessedGameData().LookupLocation(id) };
-        public static implicit operator LocationOrId(Location location)
-            => new LocationOrId() { Location = location };
-        public static implicit operator Location(LocationOrId self)
-            => self.Location;
-    }
-
-    /// <summary>
-    /// Helper type which allows functions to accept either an item or an ID as an input
-    /// </summary>
-    public struct ItemOrId
-    {
-        public Item Item { get; init; }
-        public static implicit operator ItemOrId(long id)
-            => new ItemOrId() { Item = StateTracker.Get().MidManager.GetProcessedGameData().LookupItem(id) };
-        public static implicit operator ItemOrId(Item location)
-            => new ItemOrId() { Item = location };
-        public static implicit operator Item(ItemOrId self)
-            => self.Item;
-    }
 
     /// <summary>
     /// Possible states the StateTracker can be in, generally with regards to network connectivity
@@ -222,6 +196,42 @@ public partial class StateTracker : ArchipelagoFeature
     public static NetworkSettingsType Config { get; set; } = null!;
 
     /// <summary>
+    /// Get a list of expedition data from a set of input names.
+    /// Logs an error if a name does not have expedition data, then skips it.
+    /// </summary>
+    public List<Expedition.Data> ExpeditionsFromNames(ICollection<string> names)
+    {
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        List<Expedition.Data> results = new(names.Count);
+        foreach (string name in names.Distinct())
+        {
+            if (gameData.TryLookupExpedition(name, out Expedition.Data? data))
+                results.Add(data);
+            else
+                FeatureLogger.Error($"Failed to find expedition with name {name}; dropping!");
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Get a list of randomization tags from string names.
+    /// Logs an error if a name does not have a tag value, then skips it
+    /// </summary>
+    public HashSet<RandomizationTag> TagsFromNames(ICollection<string> names)
+    {
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        HashSet<RandomizationTag> results = new(names.Count);
+        foreach (string name in names.Distinct())
+        {
+            if (gameData.TryLookupTag(name, out RandomizationTag data))
+                results.Add(data);
+            else
+                FeatureLogger.Error($"Failed to find tag with name {name}; dropping!");
+        }
+        return results;
+    }
+
+    /// <summary>
     /// Enter the fake connect state, which is for debug
     /// </summary>
     public void FakeConnect()
@@ -237,25 +247,17 @@ public partial class StateTracker : ArchipelagoFeature
 
         CurrentState = eState.FakeConnect;
         RootSeed = 0;
-        ExpeditionNames = new()
-        {
+        Expeditions = ExpeditionsFromNames([
             "R1B1", "R1A1", "R1B2", "R1C1", "R1C2", "R1D1",
             "R3A1", "R3A2", "R3A3", "R3B1", "R3B2", "R3C1", "R3D1",
             "R4A1", "R4A2", "R4A3", "R4B1", "R4B2", "R4B3", "R4C1", "R4C2", "R4C3", "R4D1", "R4D2", "R4E1",
             "R5A1", "R5A2", "R5A3", "R5B1",
-            "R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C3", "R6CX", "RD61", "R6D2", "R6D3", "R6D4",
+            "R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C3", "R6CX", "R6D1", "R6D2", "R6D3", "R6D4",
             "R7A1", "R7B1", "R7B2", "R7B3", "R7C1", "R7C2", "R7C3", "R7D1", "R7D2", "R7E1",
             "R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
-        };
-        IEnumerable<string> helper()
-        {
-            yield break;
-            yield return "All";
-        }
-        RandomizationCategories =
-            helper()
-            .Concat(ExpeditionNames)
-            .ToHashSet();
+        ]);
+        WhitelistTags = [ MidManager.GetProcessedGameData().Tag_All ];
+        BlacklistTags = new();
 
         PostConnectCommon();
     }
@@ -342,16 +344,23 @@ public partial class StateTracker : ArchipelagoFeature
             return;
         }
 
-        if (loginSuccessful.SlotData.GetValueOrDefault("RandomizationCategories") is not List<string> randomizationCategories)
+        if (loginSuccessful.SlotData.GetValueOrDefault("WhitelistTags") is not List<string> whitelistTags)
         {
-            FeatureLogger.Error("No randomization categories associated with slot data!");
+            FeatureLogger.Error("No whitelist tags associated with slot data!");
+            return;
+        }
+
+        if (loginSuccessful.SlotData.GetValueOrDefault("BlacklistTags") is not List<string> blacklistTags)
+        {
+            FeatureLogger.Error("No blacklist tags associated with slot data!");
             return;
         }
 
         CurrentState = eState.Synced;
         RootSeed = rootSeed;
-        ExpeditionNames = expeditionNames;
-        RandomizationCategories = randomizationCategories.Distinct().ToHashSet();
+        Expeditions = ExpeditionsFromNames(expeditionNames);
+        WhitelistTags = TagsFromNames(whitelistTags);
+        BlacklistTags = TagsFromNames(blacklistTags);
 
         PostConnectCommon();
     }
@@ -362,11 +371,17 @@ public partial class StateTracker : ArchipelagoFeature
     protected void PostConnectCommon()
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
+        WhitelistTags.Add(gameData.Tag_Always);
+        BlacklistTags.Add(gameData.Tag_Never);
 
         FeatureLogger.Notice("Beginning graph traversal for new rundowns");
-        if (!MidManager.DoGraphTraversal(gameData, true, true, ExpeditionNames, true))
+        HashSet<RandomizationTag> unlockTags = Expeditions.Select(e => e.Tag_UnlockItems_ByExpedition.SelfResolve()).ToHashSet();
+        HashSet<RandomizationTag> goalTags = Expeditions.Select(e => e.Tag_GoalItems_ByExpedition.SelfResolve()).ToHashSet();
+        WhitelistTags.UnionWith(unlockTags);
+
+        if (!MidManager.DoGraphTraversal(gameData, true, unlockTags, goalTags, false))
         {
-            FeatureLogger.Error("Graph traversal failed! Cancelling connection. View log for details");
+            FeatureLogger.Error("Graph traversal failed! Cancelling connection. View log for details.");
             ApSession?.Socket.DisconnectAsync();
             ApSession = null;
             CurrentState = eState.Disconnected;
@@ -385,59 +400,85 @@ public partial class StateTracker : ArchipelagoFeature
         ItemsInTerminalSystem.Clear();
         QueuedItemReplacements.Clear();
 
-        // Identify reachable regions and locations
-        var reachableRegions = gameData.RegionList.Select((r, i) => Tuple.Create(r, i)).Where(pair => pair.Item1.Reachable);
-        var reachableRegionIDs = reachableRegions.Select(pair => pair.Item2).ToHashSet();
+        // Note: All below code must be deterministic and perfectly recreated on all clients and in Archipelago
 
-        var reachableLocations = gameData.LocationList.Where(l => l.OwningRegionIds.All(id => reachableRegionIDs.Contains(id)));
-        var emptyLocations = reachableLocations
-            .Where(l => TestRandomization(l).Type == RandTest.eType.RandomizedEmptyLocation)
-            .ToList();
+        // Identify reachable regions and locations
+        HashSet<RegionID> reachableRegionIDs = gameData.GetAllRegions().Where(r => r.Value.Reachable).Select(r => r.Key).ToHashSet();
+        List<KeyValuePair<LocationID, Location>> reachableLocations = gameData.GetAllLocations().Where(l => l.Value.OwningRegionIds.All(id => reachableRegionIDs.Contains(id))).ToList();
 
         // Find and place floating items randomly in empty locations
-        var floatingItems = new Stack<Item>(
-            MidManager.GetProcessedGameData().FloatingItemIds
-            .Select(MidManager.GetProcessedGameData().LookupItem)
-            .Where(i => TestRandomization(i).Type == RandTest.eType.RandomizedFloatingItem));
-        foreach (var item in floatingItems)
-            item.OnItemLost(this);
-        if (floatingItems.Count > emptyLocations.Count)
-        {
-            FeatureLogger.Error($"More floating items than empty locations! Immediately collecting {floatingItems.Count - emptyLocations.Count} extra items");
-            while (floatingItems.Count > emptyLocations.Count)
-                CollectItem(floatingItems.Pop());
-        }
+        List<Location> emptyLocations;
+        HashSet<ItemID> seenItems = new();
+        Queue<ItemID> queuedItems = new();
+        IEnumerable<ItemID> floatingItems;
 
-        float count = 0.2f; // .2 instead of 0 because of floating point issues
-        float step = floatingItems.Count / (float)emptyLocations.Count;
-        for (int i = 0; i < emptyLocations.Count; i++)
-        {
-            count += step;
-            if (count >= 1f)
-            {
-                if (emptyLocations[(i + Math.Abs(unchecked((int)RootSeed))) % emptyLocations.Count].ItemID != 0L)
-                    FeatureLogger.Error("Overwriting item during floating items placement!"); // In case there's an error in my math
-                emptyLocations[(i + Math.Abs(unchecked((int)RootSeed))) % emptyLocations.Count].ItemID = floatingItems.Pop().ID;
-                count -= 1f;
-            }
-        }
+        // Round 1 - Place floating progression items into priority spots
+        emptyLocations = reachableLocations
+            .Select(pair => pair.Value)
+            .Where(l => l.RandData.IsPriority)
+            .Where(l => TestRandomization(l).IsEmptyLocation)
+            .ToList();
+        floatingItems = gameData
+            .GetAllFloatingItemIds()
+            .Select(id => new KeyedItem(id, gameData.LookupItem(id)))
+            .Where(i => i.RandData.IsProgression)
+            .Where(i => TestRandomization(i.Item).IsFloatingItem)
+            .Select(i => i.ID);
+        foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
+        DistributeItems(emptyLocations, queuedItems);
 
-        if (floatingItems.Count > 0)
-            FeatureLogger.Error("Failed to place all floating items! Bug in algorithm?");
+        // Round 2 - Place the remaining progression items (if any) into all locations
+        emptyLocations.Clear();
+        emptyLocations.AddRange(
+            reachableLocations
+             .Select(pair => pair.Value)
+             .Where(l => l.RandData.IsPriority || l.RandData.IsDefault)
+             .Where(l => TestRandomization(l).IsEmptyLocation)
+        );
+        DistributeItems(emptyLocations, queuedItems);
+
+        // Round 3 - Place all items into all spots
+        emptyLocations.Clear();
+        emptyLocations.AddRange(
+            reachableLocations
+             .Select(pair => pair.Value)
+             .Where(l => TestRandomization(l).IsEmptyLocation)
+        );
+        floatingItems = gameData
+            .GetAllFloatingItemIds()
+            .Where(id => TestRandomization(gameData.LookupItem(id)).IsFloatingItem);
+        foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
+        DistributeItems(emptyLocations, queuedItems);
+
+        // Round 4 - Any remaining items are given
+        if (queuedItems.Count > 0)
+        {
+            FeatureLogger.Warning($"Insufficient empty locations for selected floating items. Granting {queuedItems.Count} free items!");
+            foreach (var item in queuedItems) CollectItem(item);
+        }
 
         // Attempt to scout all relevant locations
-        var randomizedLocations = reachableLocations.Where(l => TestRandomization(l).IsRandomized);
+        var randomizedLocations = reachableLocations.Where(l => TestRandomization(l.Value).IsRandomized);
         if (CurrentState.IsConnected)
-            ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.ID).ToArray()).ContinueWith(OnLocationsScouted);
+            ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.Key.Value).ToArray()).ContinueWith(OnLocationsScouted);
+
+        // OnItemLost callbacks for all randomized items
+        foreach (var pair in reachableLocations)
+        {
+            if (pair.Value.ItemID.IsNull) continue;
+            Item item = gameData.LookupItem(pair.Value.ItemID);
+            if (!item.RandData.DoLoseOnStart) continue;
+            if (!TestRandomization(pair.Value).IsTreatedAsRandom) continue;
+            item.OnItemLost(this);
+        }
 
         // If we're in fake connect, we need to at least allow access to the first expedition
         if (CurrentState.IsFakeConnected)
         {
-            var firstCat = $"{ExpeditionNames[0]} Start Items";
-            FeatureLogger.Notice($"Because of fake connect, granting items from category {firstCat}");
-            var itemIds = emptyLocations.Select(l => l.ItemID).Where(i => i != 0);
-            foreach (var item in itemIds.Select(gameData.LookupItem).Where(i => i.RandData.Categories.Contains(firstCat)))
-                CollectItem(item);
+            RandomizationTag firstUnlockTag = Expeditions[0].UnlockItemsTag;
+            FeatureLogger.Notice($"Because of fake connect, granting duplicate items from tag {gameData.LookupTagDef(firstUnlockTag).Name}");
+            foreach (var item in gameData.GetAllFloatingItemIds())
+                if (gameData.TagMatches(firstUnlockTag, gameData.LookupItem(item))) CollectItem(item);
         }
     }
 
@@ -446,76 +487,85 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public struct RandTest
     {
-        public RandTest()
-        {
-            Type = eType.LocationDoesNotSupportRandomization;
-            IsRandomlike = false;
-            IntersectingRandCategories = Enumerable.Empty<string>();
-        }
-
         public enum eType
         {
             /// <summary>
+            /// This is not randomized, but should still be treated like it is
+            /// </summary>
+            Randomlike = 1,
+
+            /// <summary>
             /// This is randomized. If a location, the contained item is also randomized
             /// </summary>
-            Randomized,
+            Randomized = 2,
 
             /// <summary>
             /// This is a location which contains no item, but is a candidate for randomization
             /// </summary>
-            RandomizedEmptyLocation,
+            RandomizedEmptyLocation = 4,
 
             /// <summary>
             /// This is an item with no source location which is a candidate for randomization
             /// </summary>
-            RandomizedFloatingItem,
+            RandomizedFloatingItem = 6,
 
             /// <summary>
-            /// This location does not support randomization
+            /// This location is not allowed to be randomized due to its tag(s) being blacklisted
             /// </summary>
-            LocationDoesNotSupportRandomization,
+            LocationBlacklisted = 8,
 
             /// <summary>
-            /// This location is not allowed to be randomized due to the applied randomization categories
+            /// There is no whitelist tag allowing this location to be randomized
             /// </summary>
-            LocationBlockedByCategory,
+            LocationNotWhitelisted = 10,
 
             /// <summary>
-            /// This item (or the item contained by this location) does not support randomization
+            /// This item (or the item contained by this location) is not allowed to be randomized due to its tag(s) being blacklisted
             /// </summary>
-            ItemDoesNotSupporRandomization,
+            ItemBlacklisted = 12,
 
             /// <summary>
-            /// This item (or the item contained by this location) does not match any of the randomization categories
+            /// There is no whitelist tag allowing this item to be randomized
             /// </summary>
-            ItemNotAllowedByCategory,
+            ItemNotWhitelisted = 14,
         }
 
-        /// <summary>
-        /// The result type of randomization
-        /// </summary>
-        public eType Type { get; init; }
+        public RandTest(eType type) { m_value = type; }
 
         /// <summary>
-        /// If true, this item should be treated as random even when not randomized
+        /// The packed result type of the randomization test
         /// </summary>
-        public bool IsRandomlike { get; init; }
+        private readonly eType m_value;
 
         /// <summary>
-        /// If Type == LocationBlockedByCategory, these are the blocking categories.
-        /// If Randomized or RandomizedFloatItem, these are the categories which allowed randomization.
+        /// The unpacked result type for the test, ignoring the RandomLike bit
         /// </summary>
-        public IEnumerable<string> IntersectingRandCategories { get; init; }
+        public eType Type => m_value & ~eType.Randomlike;
 
         /// <summary>
         /// True if the randomization type is "Randomized"
         /// </summary>
-        public bool IsRandomized => Type == eType.Randomized;
+        public bool IsRandomized => (int)m_value > 1;
 
         /// <summary>
-        /// True if the IsRandomized or IsRandomlike
+        /// True if the randomization type is "Randomlike"
         /// </summary>
-        public bool IsTreatedAsRandom => IsRandomized || IsRandomlike;
+        public bool IsRandomLike => (m_value & eType.Randomlike) == eType.Randomlike;
+
+        /// <summary>
+        /// True if the randomization is either "Randomized" or "Randomlike"
+        /// </summary>
+        public bool IsTreatedAsRandom => IsRandomized || IsRandomLike;
+
+        /// <summary>
+        /// True if this result represents an empty location
+        /// </summary>
+        public bool IsEmptyLocation => Type == eType.RandomizedEmptyLocation;
+
+        /// <summary>
+        /// True if this result represents a floating item
+        /// </summary>
+        public bool IsFloatingItem => Type == eType.RandomizedFloatingItem;
     }
 
     /// <summary>
@@ -523,25 +573,24 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="loc">The location to test</param>
     /// <returns>A RandTest which tells how this location is or is not randomized</returns>
-    public RandTest TestRandomization(LocationOrId loc)
+    public RandTest TestRandomization(Location loc)
     {
-        if (loc.Location.RandData.IsNoneRandomization)
-            return new RandTest() { Type = RandTest.eType.LocationDoesNotSupportRandomization };
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        RandTest.eType result;
 
-        if (loc.Location.RandData.Categories.TryIntersect(RandomizationCategories, out var intersection))
-        {
-            return new RandTest()
-            {
-                Type = RandTest.eType.LocationBlockedByCategory,
-                IntersectingRandCategories = intersection,
-                IsRandomlike = loc.Location.ItemID != 0 && MidManager.GetProcessedGameData().LookupItem(loc.Location.ItemID).RandData.IsRandomLike,
-            };
-        }
+        if (gameData.AnyTagMatches(BlacklistTags, loc))
+            result = RandTest.eType.LocationBlacklisted;
+        else if (!gameData.AllTagsMatch(WhitelistTags, loc))
+            result = RandTest.eType.LocationNotWhitelisted;
+        else if (loc.ItemID.IsNull)
+            return new RandTest(RandTest.eType.RandomizedEmptyLocation);
+        else
+            return TestRandomization(gameData.LookupItem(loc.ItemID), true);
 
-        if (loc.Location.ItemID == 0)
-            return new RandTest() { Type = RandTest.eType.RandomizedEmptyLocation };
-
-        return TestRandomization(MidManager.GetProcessedGameData().LookupItem(loc.Location.ItemID), true);
+        bool isRandomLike = !loc.ItemID.IsNull && gameData.LookupItem(loc.ItemID).RandData.IsRandomLike;
+        if (isRandomLike)
+            result |= RandTest.eType.Randomlike;
+        return new RandTest(result);
     }
 
     /// <summary>
@@ -550,20 +599,23 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="item">The item to test</param>
     /// <param name="hasSourceLocation">True if the item has a source location. Generally, call with hasSourceLocation=false</param>
     /// <returns>A RandTest which tells how this item is or is not randomized</returns>
-    public RandTest TestRandomization(ItemOrId item, bool hasSourceLocation = false)
+    public RandTest TestRandomization(Item item, bool hasSourceLocation = false)
     {
-        if (item.Item.RandData.IsNoneRandomization)
-            return new RandTest() { Type = RandTest.eType.ItemDoesNotSupporRandomization };
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        RandTest.eType result;
 
-        if (!item.Item.RandData.Categories.TryIntersect(RandomizationCategories, out var intersection))
-            return new RandTest() { Type = RandTest.eType.ItemNotAllowedByCategory, IsRandomlike = item.Item.RandData.IsRandomLike };
+        if (gameData.AnyTagMatches(BlacklistTags, item))
+            result = RandTest.eType.ItemBlacklisted;
+        else if (!gameData.AllTagsMatch(WhitelistTags, item))
+            result = RandTest.eType.ItemNotWhitelisted;
+        else if (hasSourceLocation)
+            result = RandTest.eType.Randomized;
+        else
+            result = RandTest.eType.RandomizedFloatingItem;
 
-        return new RandTest()
-        {
-            Type = hasSourceLocation ? RandTest.eType.Randomized : RandTest.eType.RandomizedFloatingItem,
-            IsRandomlike = item.Item.RandData.IsRandomLike,
-            IntersectingRandCategories = intersection
-        };
+        if (item.RandData.IsRandomLike)
+            result |= RandTest.eType.Randomlike;
+        return new RandTest(result);
     }
 
     /// <summary>
@@ -574,28 +626,28 @@ public partial class StateTracker : ArchipelagoFeature
     public void NotifyFoundRegion(string name, PlayerAgent? player)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
-        if (!gameData.RegionLookup.TryGetValue(name, out int region))
+        if (!gameData.TryLookupRegion(name, out KeyedRegion region))
         {   // We'll often find unregistered regions
             if (!FoundUnusedRegions.Add(name))
                 FeatureLogger.Debug($"Ignoring region because it is not registered: {name}");
             return;
         }
 
-        if (!FoundRegions.Add(region))
+        if (!FoundRegions.Add(region.ID))
             return;
-        FeatureLogger.Debug($"Discovered region {region}: {name}");
+        FeatureLogger.Debug($"Discovered region [{region.ID.Value}] {name}");
 
         // Check for auto-discover locations
-        bool isFoundLocation(long locID)
+        bool isFoundLocation(LocationID locID)
         {
             var loc = gameData.LookupLocation(locID);
-            if (!loc.RandData.AutoDiscover) return false;
-            if (FoundLocations.Contains(loc.ID)) return false;
+            if (!loc.RandData.IsAutoDiscovered) return false;
+            if (FoundLocations.Contains(locID)) return false;
             if (loc.OwningRegionIds.Any(r => !FoundRegions.Contains(r))) return false;
             return true;
         }
         NotifyFoundLocations(
-            gameData.LookupRegion(region).ConnectedLocationIds.Where(isFoundLocation).ToArray(),
+            region.Region.ConnectedLocationIds.Where(isFoundLocation).ToArray(),
             player
         );
     }
@@ -605,32 +657,25 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="location">The location which has been checked</param>
     /// <param name="player">The player who found the location, or null if too inconvenient to identify</param>
-    /// <param name="onReloadAction">
-    /// An optional callback which is called when loading a checkpoint.
-    /// This is typically to allow the location to be despawned, etc to help enforce continuity.
-    /// </param>
     /// <param name="force">Intended for debug. If true, forces the locations to be rediscovered, obtaining another copy of their item</param>
     /// <returns>The randomization result of the item. Randomized and randomlike items should be blocked from being picked up</returns>
-    public RandTest NotifyFoundLocation(LocationOrId location, PlayerAgent? player, Action? onReloadAction = null, bool force = false)
+    public RandTest NotifyFoundLocation(LocationID id, PlayerAgent? player, bool force = false)
     {
-        if (onReloadAction != null)
-            FeatureLogger.Warning("onReloadAction is missing!");
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        Location location = gameData.LookupLocation(id);
+        RandTest randomization = TestRandomization(location);
 
-        RandTest randomization = TestRandomization(location.Location);
-
-        if (!FoundLocations.Add(location.Location.ID))
+        if (!FoundLocations.Add(id))
             return randomization;
-        FeatureLogger.Debug($"Discovered Location: {location.Location.Name}");
+        FeatureLogger.Debug($"Discovered Location: [{id.Value}] {gameData.LookupTagDef(location.NameTag).Name}");
 
         if (randomization.IsTreatedAsRandom)
         {
             if (CurrentState.IsFakeConnected)
-                CollectItem(location.Location.ItemID, location.Location.ID, player);
+                CollectItem(location.ItemID, id, player);
             else if (CurrentState.IsConnected)
-                ApSession!.Locations.CompleteLocationChecksAsync(location.Location.ID).ContinueWith(OnLocationChecksCompleted);
+                ApSession!.Locations.CompleteLocationChecksAsync(id.Value).ContinueWith(OnLocationChecksCompleted);
         }
-        else if (randomization.IsRandomlike && location.Location.ItemID != 0)
-            CollectItem(location.Location.ItemID, location.Location.ID);
 
         return randomization;
     }
@@ -640,16 +685,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="ids">IDs of the locations</param>
     /// <param name="player">The player who found the locations, or null if too inconvenient to identify</param>
-    /// <param name="onReloadActions">
-    /// Optional callbacks which are called when loading a checkpoint.
-    /// These typically are to allow the location to be despawned, etc to help enforce continuity.
-    /// </param>
     /// <param name="force">Intended for debug; set to true to force the locations to be rediscovered, obtaining another copy of their items</param>
-    public void NotifyFoundLocations(IEnumerable<long> ids, PlayerAgent? player, IEnumerable<Action>? onReloadActions = null, bool force = false)
+    public void NotifyFoundLocations(IEnumerable<LocationID> ids, PlayerAgent? player, bool force = false)
     {
-        if (onReloadActions != null)
-            FeatureLogger.Warning("onReloadAction is missing!");
-
         Game.Data gameData = MidManager.GetProcessedGameData();
         List<long> networkIds = new();
         foreach (var id in ids)
@@ -659,17 +697,15 @@ public partial class StateTracker : ArchipelagoFeature
 
             if (!FoundLocations.Add(id))
                 continue;
-            FeatureLogger.Debug($"Discovered Location: {loc.Name}");
+            FeatureLogger.Debug($"Discovered Location: [{id.Value}] {gameData.LookupTagDef(loc.NameTag).Name}");
 
             if (randomization.IsTreatedAsRandom)
             {
                 if (CurrentState.IsFakeConnected)
                     CollectItem(loc.ItemID, id, player);
                 else if (CurrentState.IsConnected)
-                    networkIds.Add(id);
+                    networkIds.Add(id.Value);
             }
-            else if (randomization.IsRandomlike && loc.ItemID != 0)
-                CollectItem(loc.ItemID, id);
         }
 
         if (CurrentState.IsConnected && networkIds.Count > 0)
@@ -677,27 +713,51 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// If synced, overwrite the existing rundown list with new ones for the expedition
+    /// Distributes the provided items evenly into the provided location list.
+    /// </summary>
+    /// <param name="locations">The locations to distribute to</param>
+    /// <param name="items">The items to distribute</param>
+    /// <remarks>
+    /// Distributes only as many items as there is space to distribute.
+    /// The locations in the list will be modified, and the stack of items will be modified.
+    /// </remarks>
+    protected void DistributeItems(IReadOnlyList<Location> locations, Queue<ItemID> items)
+    {
+        if (items.Count == 0) return;
+
+        // Using double here because that's what python uses by default
+        double count = 0.2; // .2 instead of 0 because of precision issues
+        double step = (items.Count >= locations.Count) ? 1.0 : (items.Count / (double)locations.Count);
+        for (int i = 0; i < locations.Count; i++)
+        {
+            count += step;
+            if (count >= 1.0)
+            {
+                int index = (i + Math.Abs(unchecked((int)RootSeed))) % locations.Count;
+                if (!locations[index].ItemID.IsNull)
+                    FeatureLogger.Error("Overwriting item during floating items placement!"); // In case there's an error in my math
+                locations[index].ItemID = items.Dequeue();
+                count -= 1.0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// If synced, overwrite the existing rundown list with new ones for the expedition.
     /// </summary>
     /// <exception cref="NotSupportedException">Thrown for several misc edge cases which should never occur</exception>
-    public void TryOverwriteRundowns()
+    protected void TryOverwriteRundowns()
     {
         if (CurrentState.IsDisconnected) return;
 
         // Find all expeditions and create copies to be loaded in
-        var expeditions = ExpeditionNames.Select(n => Plugin.MidManager.LookupExpedition(n)).ToList();
+        Game.Data gameData = MidManager.GetProcessedGameData();
         Queue<ExpeditionInTierData> newExpeditions = new();
 
-        for (int i = 0; i < ExpeditionNames.Count; i++)
+        for (int i = 0; i < Expeditions.Count; i++)
         {
-            if (expeditions[i] == null)
-            {
-                FeatureLogger.Error($"Expedition not found while placing rundowns: {ExpeditionNames[i]}");
-                continue;
-            }
-
-            ExpeditionInTierData newExpedition = expeditions[i]!.Expedition.MemberwiseClone().Cast<ExpeditionInTierData>();
-            newExpedition.Descriptive.Prefix = ExpeditionNames[i];
+            ExpeditionInTierData newExpedition = Expeditions[i]!.Expedition.MemberwiseClone().Cast<ExpeditionInTierData>();
+            newExpedition.Descriptive.Prefix = Expeditions[i].ExpeditionName;
             newExpedition.Descriptive.SkipExpNumberInName = true;
             newExpedition.ExcludeFromMatchmaking = true;
             newExpedition.ExcludeFromProgression = true;
@@ -958,7 +1018,16 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            var repManagers = SNet.Replication.m_replicationManagers;
+            Game.Data data = MidManager.GetProcessedGameData();
+            foreach (var locPair in data.GetAllLocations())
+            {
+                if (locPair.Value.ItemID.IsNull) continue;
+                Item item = data.LookupItem(locPair.Value.ItemID);
+                if (data.TagMatches(data.Tag_LobbySlotUnlocks, item))
+                    FeatureLogger.Warning($"Lobby slot found in {data.LookupTagDef(locPair.Value.NameTag).Name}");
+            }
+
+            //DeathLinkHandler.TryTriggerDeathLink(new AP.BounceFeatures.DeathLink.DeathLink("Kyle", "Killed by a debug event"));
         }
 
         if (!CurrentState.IsConnected)
@@ -974,12 +1043,12 @@ public partial class StateTracker : ArchipelagoFeature
             //  the item was already "collected"
             if (itemInfo.LocationGame == ApSession.ConnectionInfo.Game) // TODO: I don't think this is correct
             {
-                Location location = MidManager.GetProcessedGameData().LookupLocation(itemInfo.LocationId);
+                Location location = MidManager.GetProcessedGameData().LookupLocation(new LocationID(itemInfo.LocationId));
                 if (!TestRandomization(location).IsRandomized)
                     continue;
             }
 
-            CollectItem(itemInfo.ItemId);
+            CollectItem(new ItemID(itemInfo.ItemId));
         }
     }
 
@@ -998,63 +1067,98 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Internal callback for when locations are scouted
     /// </summary>
-    /// <param name="task">The tasked the callback is for</param>
+    /// <param name="task">The task the callback is for</param>
     protected void OnLocationsScouted(Task<Dictionary<long, AP.Models.ScoutedItemInfo>> task)
     {
+        Game.Data gameData = MidManager.GetProcessedGameData();
         if (!task.IsCompletedSuccessfully)
         {
             FeatureLogger.Error("Failed to scout locations! Retrying...");
-            var ids = ExpeditionNames.Select(MidManager.LookupExpedition)
-                .SelectMany(ex => ex?.RegionList ?? Enumerable.Empty<Region>())
-                .SelectMany(r => r.ConnectedLocationIds)
-                .Distinct();
-            ApSession!.Locations.ScoutLocationsAsync(ids.ToArray()).ContinueWith(OnLocationsScouted);
+
+            HashSet<RegionID> reachableRegions = gameData
+                .GetAllRegions()
+                .Where(r => r.Value.Reachable)
+                .Select(r => r.Key)
+                .ToHashSet();
+
+            IEnumerable<KeyValuePair<LocationID, Location>> locations = gameData
+                .GetAllLocations()
+                .Where(l => l.Value.OwningRegionIds.All(reachableRegions.Contains));
+
+            ApSession!.Locations.ScoutLocationsAsync(
+                locations.Select(l => l.Key.Value).ToArray()
+                ).ContinueWith(OnLocationsScouted);
             return;
         }
 
         foreach (var pair in task.Result)
         {
-            Location location = MidManager.GetProcessedGameData().LookupLocation(pair.Key);
+            Location location = gameData.LookupLocation(new LocationID(pair.Key));
             location.ScoutedItem = pair.Value;
-            FeatureLogger.Debug($"Location has been scouted: {location.Name}");
+            FeatureLogger.Debug($"Location has been scouted: { gameData.LookupTagDef(location.NameTag).Name }");
         }
     }
 
-    // Access the list of items
-    public IReadOnlyDictionary<Item, int> CollectedItemCounts
-        => ItemCounts;
+    /// <summary>
+    /// Access the the list of collected items
+    /// </summary>
+    public IReadOnlyDictionary<ItemID, int> CollectedItemCounts => ItemCounts;
 
-    // Check if a location has been collected
-    public bool HasLocation(string name)
-        => HasLocation(MidManager.GetProcessedGameData().LookupLocation(name).ID);
+    /// <summary>
+    /// Check if a specific location has been collected
+    /// </summary>
+    public bool HasLocation(RandomizationTag name)
+    {
+        if (MidManager.GetProcessedGameData().TryLookupLocation(name, out var loc))
+            return HasLocation(loc.ID);
+        return false;
+    }
 
-    // Check if a location has been collected
-    public bool HasLocation(long id)
-        => FoundLocations.Contains(id);
+    /// <summary>
+    /// Check if a specific location has been collected
+    /// </summary>
+    public bool HasLocation(LocationID id) => FoundLocations.Contains(id);
 
-    // Immediately collect an item, bypassing lcoation checks and so forth
-    public void CollectItem(string itemName, long sourceLocationId = 0, PlayerAgent? player = null)
-        => CollectItem(MidManager.GetProcessedGameData().LookupItem(itemName), sourceLocationId, player);
+    /// <summary>
+    /// Immediately collect an item, bypassing lcoation checks and so forth
+    /// </summary>
+    /// <param name="itemName">Name of the item</param>
+    /// <param name="sourceLocationId">ID of the location this item was found in, if found locally (non-randomized)</param>
+    /// <param name="player">The player who found the item, if applicable and convenient to identify</param>
+    public void CollectItem(RandomizationTag itemName, LocationID sourceLocationId = default, PlayerAgent? player = null)
+    {
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        if (gameData.TryLookupItem(itemName, out KeyedItem item))
+            CollectItem(item.ID, sourceLocationId, player);
+        else
+            FeatureLogger.Error($"Failed to find and collect item: {gameData.LookupTagDef(itemName).Name}");
+    }
 
     /// <summary>
     /// Immediately collect an item
     /// Only checks against queued items; all other checks are skipped
     /// </summary>
-    /// <param name="item">The item to collect</param>
-    /// <param name="sourceLocationId">The location to collect the item from, or 0 if there is no such location</param>
-    public void CollectItem(ItemOrId item, long sourceLocationId = 0, PlayerAgent? player = null)
+    /// <param name="id">The item to collect</param>
+    /// <param name="sourceLocationId">ID fo the location this item was found in, if found locally (non-randomized)</param>
+    /// <param name="player">The player who found the item, if applicable and convenient to identify</param>
+    public void CollectItem(ItemID id, LocationID sourceLocationId = default, PlayerAgent? player = null)
     {
-        if (QueuedItemReplacements.TryGetValue(item, out var replacements))
+        Game.Data gameData = MidManager.GetProcessedGameData();
+
+        if (QueuedItemReplacements.TryGetValue(id, out var replacements))
         {
+            if (replacements.Count < 1) 
+                throw new NotSupportedException();
             if (replacements.Count == 1)
-                QueuedItemReplacements.Remove(item);
-            item = replacements.Dequeue();
+                QueuedItemReplacements.Remove(id);
+            id = replacements.Dequeue();
         }
 
-        ItemCounts[item] = ItemCounts.GetValueOrDefault(item, 0) + 1;
-        item.Item.OnItemObtained(this, sourceLocationId, player);
-        FeatureLogger.Debug($"Collecting item: {item.Item.Name}");
-        SendInteraction(pArchipelagoInteraction.eType.CollectItem, item.Item.ID);
+        Item item = gameData.LookupItem(id);
+        FeatureLogger.Debug($"Collecting item [{id.Value}] {gameData.LookupTagDef(item.NameTag).Name}");
+        ItemCounts[id] = ItemCounts.GetValueOrDefault(id, 0) + 1;
+        item.OnItemObtained(this, sourceLocationId, player);
+        SendInteraction(pArchipelagoInteraction.eType.CollectItem, id.Value);
     }
 
     /// <summary>
@@ -1067,7 +1171,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// This is intended for "progressive" items. If you receive an item that depends on another item,
     /// you can immediately swap in for the item it depends on in order to give the player 
     /// </remarks>
-    public void ReplaceItem(Item sourceItem, Item targetItem)
+    public void ReplaceItem(ItemID sourceItem, ItemID targetItem)
     {
         if (QueuedItemReplacements.TryGetValue(targetItem, out var replacements))
             replacements.Enqueue(sourceItem);
@@ -1085,17 +1189,27 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Lose or "uncollect" an item. Not all items support being uncollected
     /// </summary>
-    /// <param name="item">The item to uncollect</param>
-    public void UncollectItem(ItemOrId item)
+    /// <param name="id">The item to uncollect</param>
+    public void UncollectItem(ItemID id)
     {
-        int currentCount = ItemCounts.GetValueOrDefault(item, 0);
+        Item item = MidManager.GetProcessedGameData().LookupItem(id);
+        int currentCount = ItemCounts.GetValueOrDefault(id, 0);
         if (currentCount <= 0)
         {
-            FeatureLogger.Error($"Cannot uncollect item; it is not currently collected! Item: {item.Item.Name}");
+            FeatureLogger.Error($"Cannot uncollect item; it is not currently collected! Item: {MidManager.GetProcessedGameData().LookupTagDef(item.NameTag).Name}");
             return;
         }
-        ItemCounts[item] = currentCount - 1;
-        item.Item.OnItemLost(this);
+        ItemCounts[id] = currentCount - 1;
+        item.OnItemLost(this);
+    }
+
+    public void AddItemToTerminal(Item item)
+    {
+        Game.Data gameData = MidManager.GetProcessedGameData();
+        if (gameData.TryLookupItem(item.NameTag, out KeyedItem pair))
+            AddItemToTerminal(pair.ID);
+        else
+            FeatureLogger.Error($"Failed to add item to terminal: {gameData.LookupTagDef(item.NameTag).Name}");
     }
 
     /// <summary>
@@ -1103,10 +1217,10 @@ public partial class StateTracker : ArchipelagoFeature
     /// The terminal system is cleared each expedition; re-add the item each time if needed.
     /// </summary>
     /// <param name="item">The item to add</param>
-    public void AddItemToTerminal(ItemOrId item)
+    public void AddItemToTerminal(ItemID item)
     {
         // Lazy seed generation
-        System.Random random = new(Tuple.Create(RootSeed, item.Item.ID).GetHashCode());
+        System.Random random = new(Tuple.Create(RootSeed, item).GetHashCode());
         char r() // Picks a random character
         {
             int choice = (int)(36d * random.NextDouble());
@@ -1120,7 +1234,7 @@ public partial class StateTracker : ArchipelagoFeature
             newCode = $"{r()}{r()}{r()}-{r()}{r()}{r()}-{r()}{r()}{r()}";
         } while (ItemsInTerminalSystem.Any(pair => pair.Item2 == newCode));
 
-        ItemsInTerminalSystem.Add(Tuple.Create(item.Item, newCode));
+        ItemsInTerminalSystem.Add(Tuple.Create(item, newCode));
     }
 
     /// <summary>
@@ -1139,10 +1253,14 @@ public partial class StateTracker : ArchipelagoFeature
                 FeatureLogger.Notice($"Started expedition: {expeditionData.ExpeditionName}");
 
             self.ItemsInTerminalSystem.Clear();
+            Game.Data gameData = self.MidManager.GetProcessedGameData();
             if (expeditionData is not null)
             {
-                foreach (var item in self.ItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key, pair.Value)))
+                foreach (var id in self.ItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key, pair.Value)))
+                {
+                    Item item = gameData.LookupItem(id);
                     item.OnStartExpeditionWithItem(self, expeditionData);
+                }
             }
             else
             {

@@ -1,12 +1,12 @@
-﻿using Clonesoft.Json;
-using GameData;
+﻿using GameData;
+using LevelGeneration;
 using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -15,7 +15,22 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class ProcessItemHandler_Tags
+{
+    extension(Game.Data data)
+    {
+        public TagResolver Tag_ProcessItemStartLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Start Locations", "Locations checked by starting picking up the start item for Process Item objectives (if it spawned in the elevator)", gd.Tag_BigPickupLocations));
+
+        public TagResolver Tag_ProcessItemProcessorLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Processor Locations", "Locations containing the processor for a Process Item objective", gd.Tag_Never));
+
+        public TagResolver Tag_ProcessItemProcessorItems
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Processor Items", "Items indicating a Process Items processor is reachable", gd.Tag_Never));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class ProcessItemHandler : ArchipelagoFeature
 {
     public override string Name => "Process Item Handler";
@@ -30,159 +45,151 @@ public class ProcessItemHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    /* TODO:
-     *  Location: Big Pickup not handled here
-     *            Processor auto-discover on zone entry? Or on look-at?
-     *  Item: Big Pickup not handled here
-     *        Cannot receive processor over network. Marker substitution not viable
-     *  Region: Found BigPickup currently not detected
-     *          ProcessedItem detected using OnProcess events
-     */
-
-    private class ProcessItemItemFromStartLocation : Location
+    // Implementation of common static methods for objective handlers
+    private static class This
     {
-        public ProcessItemItemFromStartLocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.ActivateSmallHSU;
 
-        private static RandomizationData s_randData = new()
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
         {
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
-    }
-
-    private class ProcessItemProcessorLocation : Location
-    {
-        public ProcessItemProcessorLocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
-
-        private static RandomizationData s_randData = new()
-        {
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
-    }
-
-    private class ProcessItemProcessorItem : Item
-    {
-        public ProcessItemProcessorItem(string name, Objective.Data data)
-            : base(name)
-        {
-            objective_data = data;
+            CheckIsCorrectObjective(data);
+            ItemDataBlock startItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemFromStart);
+            if (startItem == null)
+                FeatureLogger.Error($"Failed to find start item for objective: {data.ObjectiveName(null)}");
+            ItemDataBlock endItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemAfterActivation);
+            if (endItem == null)
+                return $"Process \"{startItem?.publicName ?? "null!"}\"";
+            else
+                return $"Process \"{startItem?.publicName ?? "null!"}\" into \"{endItem?.publicName ?? "null!"}\"";
         }
 
-        [JsonIgnore]
-        public Objective.Data objective_data { get; set; }
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
 
-        private static RandomizationData s_randData = new()
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
         {
-            Categories = new() { "All", "Objective Items", "Geomorphs", "Item Processors" },
-        };
-        public override RandomizationData RandData => s_randData;
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+
+        // Helper to get the full name for This objective
+        public static string ObjectiveName(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return data.ObjectiveName(ObjectiveSummary(data));
+        }
     }
 
-    private const eWardenObjectiveType ThisObjectiveType
-        = eWardenObjectiveType.ActivateSmallHSU;
-
-    private static string ThisObjectiveSummary(Objective.Data data)
+    // Names of regions for this objective
+    private static class ThisRegions
     {
-        CheckThisIsCorrectObjective(data);
-        ItemDataBlock startItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemFromStart);
-        if (startItem == null)
-            FeatureLogger.Error($"Failed to find start item for objective: {data.ObjectiveName(null)}");
-        ItemDataBlock endItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemAfterActivation);
-        if (endItem == null)
-            return $"Process \"{startItem?.publicName ?? "null!"}\"";
-        else
-            return $"Process \"{startItem?.publicName ?? "null!"}\" into \"{endItem?.publicName ?? "null!"}\"";
+        // Region reached by obtaining the start item for the objective (typically in the elevator)
+        public static string ItemObtained(Objective.Data data)
+            => $"{This.ObjectiveName(data)} Item Obtained";
+
+        // Region reached by processing the item
+        public static string ItemProcessed(Objective.Data data)
+            => $"{This.ObjectiveName(data)} Item Processed";
     }
 
-    private static bool ThisIsCorrectObjective(Objective.Data data)
-        => data.Objective.Type == ThisObjectiveType;
-
-    private static void CheckThisIsCorrectObjective(Objective.Data data)
+    private static class ProcessItem_StartLocation
     {
-        if (!ThisIsCorrectObjective(data))
-            FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ThisObjectiveType)}, got {data.Objective.Type}");
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Start Location", "Location checked by grabbing a particular big pickup", gd.Tag_ProcessItemStartLocations));
+
+        public static LocationData MakeRandData() => new LocationData();
     }
 
-    private static string ThisObjectiveName(Objective.Data data)
+    private static class ProcessItem_ProcessorLocation
     {
-        CheckThisIsCorrectObjective(data);
-        return data.ObjectiveName(ThisObjectiveSummary(data));
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Processor Location", "Location checked by finding a particular processor", gd.Tag_ProcessItemProcessorLocations));
+
+        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
 
-    private static string ThisStartLocationName(Objective.Data data)
-    {   // Note that this item only spawns in the elevator; big pickup distributions are used for non-start spawns
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Start Item (in elevator)";
-    }
-
-    private static string ThisProcessorItemName(Objective.Data data)
+    private class ProcessItem_ProcessorItem : Item
     {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Processor";
+        public ProcessItem_ProcessorItem(Objective.Data data)
+            : base(MakeTag(data), MakeRandData())
+        {
+            ObjectiveData = data;
+        }
+
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Processor Item", "Item indicating a particular processor is reachable", gd.Tag_ProcessItemProcessorItems));
+
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+
+        public Objective.Data ObjectiveData { get; set; }
     }
 
-    private static string ThisProcessorLocationName(Objective.Data data)
+    public static KeyedItem GetProcessorItem(Objective.Data data)
     {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Processor (Location)";
-    }
+        if (data.TryLookupItem(ProcessItem_ProcessorItem.MakeTag(data), out var item))
+            return item;
 
-    private static string ThisItemRegionName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Start Item Retrieved";
-    }
-
-    private static string ThisProcessedRegionName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Item Processed";
+        Item newItem = new ProcessItem_ProcessorItem(data);
+        return new(data.AddItem(newItem), newItem);
     }
 
     // Objective requiring an item be brought to be "processed" and then brought to extraction
     [Objective.Callback]
     public void HandleActivateSmallHSUObjective(Objective.Data data)
     {
-        if (!ThisIsCorrectObjective(data))
+        if (!This.IsCorrectObjective(data))
             return;
 
         // Two-step objective: Find the item, then get to the processor
         // Fun fact: Any item with the correct id can be processed to complete the objective. There's only ever one such item per level, though
 
         // Add the item to the elevator zone, if necessary
+        KeyedItem startItem = BigPickupHandler.GetBigPickupItem(data, data.Objective.ActivateHSU_ItemFromStart);
         if (data.Objective.ActivateHSU_BringItemInElevator)
         {
-            Item item = BigPickupHelper.GetBigPickupItem(data, data.Objective.ActivateHSU_ItemFromStart);
-            data.GetLocation(new ProcessItemItemFromStartLocation(
-                ThisStartLocationName(data),
-                data.GetOrCreateRegion(data.GetLayer(LayerType.Main).FirstZone.ZoneName),
-                item
-            ));
+            RegionList region = data.LookupOrCreateRegion(data.GetLayer(LayerType.Main).FirstZone.ZoneName);
+            data.AddLocation(
+                ProcessItem_StartLocation.MakeTag(data),
+                region,
+                ProcessItem_StartLocation.MakeRandData(),
+                startItem.ID
+            );
         }
 
         // Collected item zone
-        int collectItemRegion = data.GetOrCreateRegion(ThisItemRegionName(data));
-        Path path = data.AddPath(data.ObjectiveStartRegion, collectItemRegion);
-        path.RequiredItem = BigPickupHelper.GetBigPickupItem(data, data.Objective.ActivateHSU_ItemFromStart).Name;
-        path.RequiredItemCount = 1;
+        RegionID collectItemRegion = data.LookupOrCreateRegion(ThisRegions.ItemObtained(data));
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.ObjectiveStartRegion,
+            EndingRegion = collectItemRegion,
+            ReqItem = startItem.PathReqs,
+            ReqCount = 1u,
+        });
 
         // Add the processor to the expedition
-        Item processorItem = data.GetItem(new ProcessItemProcessorItem(ThisProcessorItemName(data), data));
-        data.GetLocation(new ProcessItemProcessorLocation(
-            ThisProcessorLocationName(data),
+        KeyedItem processorItem = GetProcessorItem(data);
+        data.AddLocation(
+            ProcessItem_ProcessorLocation.MakeTag(data),
             data.ObjectiveData.ZonePlacementDatas.SelectMany(data.PlacementsToZoneRegions).Select(info => info.Region).ToList(),
-            processorItem
-        ));
+            ProcessItem_ProcessorLocation.MakeRandData(),
+            processorItem.ID
+        );
 
         // Processed item region
-        string processedItemName = ThisProcessedRegionName(data);
-        int processedItemRegion = data.GetOrCreateRegion(processedItemName);
-        path = data.AddPath(collectItemRegion, processedItemRegion);
-        path.RequiredItem = processorItem.Name;
-        path.RequiredItemCount = 1u;
+        string processedItemName = ThisRegions.ItemProcessed(data);
+        RegionID processedItemRegion = data.LookupOrCreateRegion(processedItemName);
+        data.AddPath(new Path()
+        {
+            StartingRegion = collectItemRegion,
+            EndingRegion = processedItemRegion,
+            ReqItem = processorItem.PathReqs,
+            ReqCount = 1u,
+        });
 
         // Events triggered by initiating processing on the small HSU - both sets are always triggered (I think)
         if (data.Objective.EventsOnActivate.Any())
@@ -191,7 +198,40 @@ public class ProcessItemHandler : ArchipelagoFeature
 
         // Place objective complete item in the post-processing region if the objective can be completed that way
         if (data.Objective.ActivateHSU_ObjectiveCompleteAfterInsertion)
-            SharedObjectiveHandler.AddObjectiveCompleteItem(data, ThisObjectiveSummary(data), processedItemRegion);
+            SharedObjectiveHandler.AddObjectiveCompleteItem(data, processedItemRegion);
+    }
+
+    /// <summary>
+    /// When spawning items in the cargo cage, claim our starting item if it exists
+    /// </summary>
+    [ArchivePatch(typeof(LG_SpawnItemsInCargoCageJob), nameof(LG_SpawnItemsInCargoCageJob.Build))]
+    public static class LG_SpawnItemsInCargoCageJob__Build__Patch
+    {
+        public static void Postfix()
+        {
+            var expeditionData = Expedition.Data.FromCurrentExpedition();
+            var firstData = expeditionData.MainLayer.GetObjectiveDatas().First();
+
+            int count = 0;
+            if (firstData.Objective.GenericItemFromStart != 0) ++count;
+            if (firstData.Objective.Type == eWardenObjectiveType.PowerCellDistribution) 
+                count += firstData.Objective.PowerCellsToDistribute;
+
+            foreach (var data in expeditionData.RealLayers.SelectMany(l => l.GetObjectiveDatas()))
+            {
+                if (!This.IsCorrectObjective(data) || !data.Objective.ActivateHSU_BringItemInElevator)
+                    continue;
+
+                var comp = ElevatorCage.Current.m_cargoCage.m_itemsToMoveToCargo[count].GetComponentInChildren<CarryItemPickup_Core>();
+                if (comp.ItemDataBlock.persistentID != data.Objective.ActivateHSU_ItemFromStart)
+                    FeatureLogger.Warning("Associating wrong item with processor objective starting item!");
+
+                if (data.TryLookupLocation(ProcessItem_StartLocation.MakeTag(data), out var loc))
+                    PickupHelper.AssociateItem(comp, loc.ID);
+                else
+                    FeatureLogger.Error("Failed to create association for process item objective's starting item!");
+            }
+        }
     }
 
 }

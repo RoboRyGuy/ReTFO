@@ -1,6 +1,7 @@
 ﻿using GameData;
 using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -11,7 +12,16 @@ namespace ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class BigPickupZoneDistributionsHandler_Tags
+{
+    extension (Game.Data gameData)
+    {
+        public TagResolver Tag_BigPickupZoneDistributionLocation
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Big Pickup Zone Distribution Location", "Locations filled with misc big pickup items spawned inside a specific zone", gd.Tag_BigPickupLocations));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
 {
     public override string Name => "Big Pickups Zone Distributions";
@@ -28,41 +38,27 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private class BigPickupZoneDistributionLocation : Location
+    private static class BigPickupZoneDistributionLocation
     {
-        public BigPickupZoneDistributionLocation(Zone.Data data, int count, Item? item)
-            : base(MakeName(data, count), data.GetOrCreateRegion(data.ZoneName), item) { }
+        public static TagResolver MakeTag(Zone.Data data, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Big Pickup #{count}", "A big pickup location spawned randomly in a zone", gd.Tag_BigPickupZoneDistributionLocation));
 
-        public static string MakeName(Zone.Data data, int count)
-            => $"{data.ZoneName} Big Pickup #{count}";
-
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData();
     }
 
-    private class BigPickupSpecificDistributionLocation : Location
-    {
-        public BigPickupSpecificDistributionLocation(Zone.Data data, int count, Item? item)
-            : base(MakeName(data, count), data.GetOrCreateRegion(data.ZoneName), item) { }
-
-        public static string MakeName(Zone.Data data, int count)
-            => $"{data.ZoneName} Big Pickup #{count}";
-
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-        };
-        public override RandomizationData RandData => s_randData;
-    }
+    //private static class BigPickupSpecificDistributionLocation
+    //{
+    //    public static TagResolver MakeTag(Zone.Data data, int count)
+    //        => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Specific Big Pickup #{count}", "A big pickup location spawned in on a specific align", gd.Tag_BigPickupZoneDistributionLocation));
+    //
+    //    public static RandomizationData MakeRandData() => new RandomizationData() { IsProgression = true };
+    //}
 
     // Add big pickups in zones which spawn them via big pickup distributions
     [Zone.Callback]
     public void AddBigPickups(Zone.Data data)
     {
-        int region = data.GetOrCreateRegion(data.ZoneName);
+        RegionID region = data.LookupOrCreateRegion(data.ZoneName);
         int count = 0;
 
         uint id = data.Zone?.BigPickupDistributionInZone ?? data.DimensionData?.StaticBigPickupDistributionInZone ?? 0u;
@@ -74,8 +70,13 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
             int index = 0;
             while ((usedWeight + pickups.SpawnData[index].Weight) <= pickups.SpawnsPerZone)
             {
-                Item item = BigPickupHelper.GetBigPickupItem(data, pickups.SpawnData[index].ItemID);
-                data.GetLocation(new BigPickupZoneDistributionLocation(data, ++count, item));
+                KeyedItem item = BigPickupHandler.GetBigPickupItem(data, pickups.SpawnData[index].ItemID);
+                data.AddLocation(
+                    BigPickupZoneDistributionLocation.MakeTag(data, ++count),
+                    region,
+                    BigPickupZoneDistributionLocation.MakeRandData(),
+                    item.ID
+                );
                 usedWeight += pickups.SpawnData[index].Weight;
                 index = (index + 1) % pickups.SpawnData.Count;
             }
@@ -89,34 +90,41 @@ public class BigPickupZoneDistributionsHandler : ArchipelagoFeature
         {
             if (item.WorldEventObjectFilter == null) continue; // R8C1 has some null data for some reason
             else if (item.PickupToSpawn == 0u) continue; // R8C1 has some null data for some reason
-            Item it = BigPickupHelper.GetBigPickupItem(data, item.PickupToSpawn);
-            data.GetLocation(new BigPickupZoneDistributionLocation(data, ++count, it));
+            KeyedItem it = BigPickupHandler.GetBigPickupItem(data, item.PickupToSpawn);
+            data.AddLocation(
+                BigPickupZoneDistributionLocation.MakeTag(data, ++count), 
+                region, 
+                BigPickupZoneDistributionLocation.MakeRandData(),
+                it.ID
+            );
         }
     }
 
-    // Prior to building markers for big pickups, find all pickups associated with zone build data and build associations
+    // Prior to building markers for big pickups, find all pickups associated with zone build data and create associations
     [ArchivePatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildPickupItems))]
     public static class LG_PopulateFunctionMarkersInZoneJob__BuildPickupItems__Patch
     {
         public static void Prefix(LG_PopulateFunctionMarkersInZoneJob __instance)
         {
-            // This build function will be run once for every item in every queue, removing one item at a time
+            // This build function will be run once for every item in the pickups queue, removing one item at a time
             // We only want to update the big pickup id when all big pickups are in the queue; therefore, only if no items have been dequeued
             var queue = __instance.m_distributionData.PickupItems.m_itemQueue;
-            if (queue._head != 0)
+            if (queue._head != 0 || queue.Count == 0)
                 return;
 
             Zone.Data zone = Zone.Data.FromZone(__instance.m_zone);
             int count = 0;
-            for (int i = queue._head; i < queue._tail; i++)
+            foreach (var item in __instance.m_distributionData.PickupItems.m_itemQueue.Iter())
             {
-                var item = __instance.m_distributionData.PickupItems.m_itemQueue._array[i];
-                if (item.m_type == ePickupItemType.BigGenericPickup && item.m_function == ExpeditionFunction.BigPickupItem && item.m_bigPickupData != null)
-                {
-                    string name = BigPickupZoneDistributionLocation.MakeName(zone, ++count);
-                    BigPickupHelper.AssociateDistributionWithLocation(item, zone.LookupLocation(name).ID);
-                    FeatureLogger.Debug($"Created association for location: {name}");
-                }
+                if (item.m_type != ePickupItemType.BigGenericPickup) continue;
+                if (item.m_function != ExpeditionFunction.BigPickupItem) continue;
+                if (item.m_bigPickupData == null) continue;
+
+                RandomizationTag tag = BigPickupZoneDistributionLocation.MakeTag(zone, ++count);
+                if (zone.TryLookupLocation(tag, out var loc))
+                    PickupHelper.AssociateDistributionWithLocation(item, loc.ID);
+                else
+                    FeatureLogger.Error($"Failed to create association for location: {zone.LookupTagDef(loc.Location.NameTag).Name}");
             }
         }
     }

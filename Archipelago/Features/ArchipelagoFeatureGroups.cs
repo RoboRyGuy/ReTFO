@@ -6,6 +6,7 @@ public static class ArchipelagoFeatureGroups
 {
     public const string ArchipelagoFeatureGroupName = "Archipelago";
     public const string VanillaHandlersGroupName    = "Vanilla Handlers";
+    public const string FloatingHandlersGroupName   = "Floating Handlers";
     public const string ZoneHandlersGroupName       = "Zone Handlers";
     public const string TerminalHandlersGroupName   = "Terminal Handlers";
     public const string PickupHandlersGroupName     = "Pickup Handlers";
@@ -19,6 +20,9 @@ public static class ArchipelagoFeatureGroups
 
         public static FeatureGroup VanillaHandlers
             => FeatureGroups.Archipelago.GetOrCreateSubGroup(VanillaHandlersGroupName);
+
+        public static FeatureGroup FloatingHandlers
+            => FeatureGroups.VanillaHandlers.GetOrCreateSubGroup(FloatingHandlersGroupName);
 
         public static FeatureGroup ZoneHandlers
             => FeatureGroups.VanillaHandlers.GetOrCreateSubGroup(ZoneHandlersGroupName);

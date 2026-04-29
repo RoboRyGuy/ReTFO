@@ -1,8 +1,6 @@
-﻿using Clonesoft.Json;
-using ReTFO.Archipelago.FeaturesAPI;
+﻿using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
-using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
@@ -12,7 +10,19 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class ReactorShutdownHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_ReactorShutdownReactorLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Shutdown Reactor Locations", "Locations checked by finding a reactor shutdown reactor", gd.Tag_Never));
+
+        public TagResolver Tag_ReactorShutdownReactorItems
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Shutdown Reactors", "Items representing a reactor used for a reactor shutdown objective", gd.Tag_Never));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class ReactorShutdownHandler : ArchipelagoFeature
 {
     public override string Name => "Reactor Shutdown Handler";
@@ -27,103 +37,99 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    /*  Location: Currently auto-detects reactor on zone entry. Does this need to change?
-     *  Item: Cannot receive reactor over network
-     *  Region: Reactor completion regions detected using OnSolve events
-     */
-
-    private class ReactorShutdownReactorLocation : Location
+    // Implementation of common static methods for objective handlers
+    private static class This
     {
-        public ReactorShutdownReactorLocation(string name, RegionList regions, Item? item = null) 
-            : base(name, regions, item) { }
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.Reactor_Shutdown;
 
-        private static RandomizationData s_randData = new()
-        { 
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return "Reactor Shutdown";
+        }
 
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
+
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
+        {
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+
+        // Helper to get the full name for This objective
+        public static string ObjectiveName(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return data.ObjectiveName(ObjectiveSummary(data));
+        }
+    }
+
+    private static class ThisRegions
+    {
+        // Region reached when a shutdown is successfully completed
+        public static string CompletedShutdown(Objective.Data data, int count)
+            => $"{This.ObjectiveName(data)} Completed {count} Reactor Startup";
+    }
+
+    private static class ReactorShutdownReactorLocation
+    {
+        public static TagResolver MakeTag(Objective.Data data, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor #{count} Location", "A particular reactor location", gd.Tag_ReactorShutdownReactorLocations));
+
+        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
 
     private class ReactorShutdownReactorItem : Item
     {
-        public ReactorShutdownReactorItem(string name, Objective.Data data)
-            : base(name)
+        public ReactorShutdownReactorItem(Objective.Data data)
+            : base(MakeTag(data), MakeRandData())
         {
             ObjectiveData = data;
         }
 
-        [JsonIgnore]
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor", "A particular reactor", gd.Tag_ReactorShutdownReactorItems));
+
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+
         public Objective.Data ObjectiveData { get; set; }
-
-        private static RandomizationData s_randData = new()
-        {
-            Categories = new() { "All", "Objective Items", "Geomorphs", "Reactors" },
-        };
-        public override RandomizationData RandData => s_randData;
     }
 
-    private const eWardenObjectiveType ThisObjectiveType
-        = eWardenObjectiveType.Reactor_Shutdown;
-
-    private static string ThisObjectiveSummary(Objective.Data data)
+    public static KeyedItem GetReactorItem(Objective.Data data)
     {
-        CheckThisIsCorrectObjective(data);
-        return "Reactor Shutdown";
-    }
+        if (data.TryLookupItem(ReactorShutdownReactorItem.MakeTag(data), out var item))
+            return item;
 
-    private static bool ThisIsCorrectObjective(Objective.Data data)
-        => data.Objective.Type == ThisObjectiveType;
-
-    private static void CheckThisIsCorrectObjective(Objective.Data data)
-    {
-        if (!ThisIsCorrectObjective(data))
-            FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ThisObjectiveType)}, got {data.Objective.Type}");
-    }
-
-    private static string ThisObjectiveName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return data.ObjectiveName(ThisObjectiveSummary(data));
-    }
-
-    private static string ThisReactorItemName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Reactor";
-    }
-
-    private static string ThisReactorLocationName(Objective.Data data, int count)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Reactor #{count}";
-    }
-
-    private static string ThisCompleteShutdownRegionName(Objective.Data data, int count)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Completed {count} Reactor Startup";
+        Item newItem = new ReactorShutdownReactorItem(data);
+        return new(data.AddItem(newItem), newItem);
     }
 
     // Objective requiring a single reactor be shut down
     [Objective.Callback]
     public void HandleReactorShutdownObjective(Objective.Data data)
     {
-        if (!ThisIsCorrectObjective(data))
+        if (!This.IsCorrectObjective(data))
             return;
 
         // Reactor region pickup
         // The shutdown can be initiated from any reachable reactor in the list (for some reason)
         int count = 0;
-        Item reactorItem = data.GetItem(new ReactorShutdownReactorItem(ThisReactorItemName(data), data));
+        KeyedItem reactorItem = GetReactorItem(data);
         void addReactor(Zone.Data zone)
         {
             ++count;
-            data.GetLocation(new ReactorShutdownReactorLocation(
-                ThisReactorLocationName(data, count),
-                data.GetOrCreateRegion(zone.ZoneName),
-                reactorItem
-            ));
+            data.AddLocation(
+                ReactorShutdownReactorLocation.MakeTag(data, count),
+                data.LookupOrCreateRegion(zone.ZoneName),
+                ReactorShutdownReactorLocation.MakeRandData(),
+                reactorItem.ID
+            );
         }
 
         foreach (var placement in data.ObjectiveData.ZonePlacementDatas.SelectMany(ps => ps.Iter()))
@@ -131,7 +137,7 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             var targetZone = data.FindZoneByPlacement(placement);
             if (targetZone == null)
             {
-                FeatureLogger.Error($"Failed to find reactor zone by placement: {ThisObjectiveName(data)}");
+                FeatureLogger.Error($"Failed to find reactor zone by placement: {This.ObjectiveName(data)}");
                 continue;
             }
             addReactor(targetZone);
@@ -144,13 +150,13 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             {
                 if (zone.CustomGeo?.Contains("_reactor_", StringComparison.OrdinalIgnoreCase) ?? false)
                 {
-                    FeatureLogger.Debug($"Using geomorph for reactor objective: {ThisObjectiveName(data)}");
+                    FeatureLogger.Debug($"Using geomorph for reactor objective: {This.ObjectiveName(data)}");
                     addReactor(zone);
                     break;
                 }
             }
             if (count == 0)
-                FeatureLogger.Error($"No reactor placements: {ThisObjectiveName(data)}");
+                FeatureLogger.Error($"No reactor placements: {This.ObjectiveName(data)}");
         }
 
         // OnActivateOnSolveItem
@@ -166,17 +172,21 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         while (!eventWrapper.IsDone)
         {
             ++count;
-            string eventName = ThisCompleteShutdownRegionName(data, count);
-            int eventRegion = data.GetOrCreateRegion(eventName);
-            Path path = data.AddPath(data.ObjectiveStartRegion, eventRegion);
-            path.RequiredItem = reactorItem.Name;
-            path.RequiredItemCount = (uint)count;
+            string eventName = ThisRegions.CompletedShutdown(data, count);
+            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            data.AddPath(new Path()
+            {
+                StartingRegion = data.ObjectiveStartRegion,
+                EndingRegion = eventRegion,
+                ReqItem = reactorItem.PathReqs,
+                ReqCount = (uint)count
+            });
             eventWrapper.Process(eventRegion, eventName);
         }
 
         // Objective can be completed after the first reactor
         if (!data.Objective.DoNotSolveObjectiveOnReactorComplete)
-            SharedObjectiveHandler.AddObjectiveCompleteItem(data, ThisObjectiveSummary(data), data.GetOrCreateRegion(ThisCompleteShutdownRegionName(data, 1)));
+            SharedObjectiveHandler.AddObjectiveCompleteItem(data, data.LookupOrCreateRegion(ThisRegions.CompletedShutdown(data, 1)));
     }
 
 }

@@ -5,10 +5,9 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.EventHandlers;
 
-using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class CheckEventRegionsHandler : ArchipelagoFeature
 {
     public override string Name => "Check Event Regions Handler";
@@ -23,7 +22,7 @@ public class CheckEventRegionsHandler : ArchipelagoFeature
     }
 
     [Event.Callback]
-    public static void InsertCheckRegionEvent(Event.Data data)
+    public void InsertCheckRegionEvent(Event.Data data)
     {
         data.Insert(0, EventHelper.CreateCheckRegionEvent(data.EventRegion));
     }

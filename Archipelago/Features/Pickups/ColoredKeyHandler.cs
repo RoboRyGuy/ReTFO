@@ -1,9 +1,8 @@
-﻿
-using Clonesoft.Json;
-using GameData;
+﻿using GameData;
 using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,7 +17,19 @@ namespace ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class ColoredKeyHandler_Tags
+{
+    extension (Game.Data gameData)
+    {
+        public TagResolver Tag_ColoredKeyLocations
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Colored Key Locations", "Locations checked by picking up Colored keys", gd.Tag_SmallPickupLocations));
+
+        public TagResolver Tag_ColoredKeyItems
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Colored Key Items", "The Colored key item itself", gd.Tag_SmallPickupItems));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class ColoredKeyHandler : ArchipelagoFeature
 {
     public override string Name => "Colored Key Handler";
@@ -31,45 +42,38 @@ public class ColoredKeyHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private class ColoredKeyLocation : Location
+    private static class ColoredKeyLocation
     {
-        public ColoredKeyLocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
+        public static TagResolver MakeTag(Zone.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Colored Key Location", "A colored key spawn location", gd.Tag_ColoredKeyLocations));
 
-        private static RandomizationData s_randData = new()
-        {
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData();
     }
 
     private class ColoredKeyItem : Item
     {
         public ColoredKeyItem(Zone.Data data)
-            : base($"{data.ZoneName} Colored Key")
+            : base(MakeTag(data), MakeRandData())
         {
             ZoneData = data;
         }
 
-        [JsonIgnore]
+        public static TagResolver MakeTag(Zone.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Colored Key Item", "A colored key", gd.Tag_ColoredKeyItems));
+
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+
         public Zone.Data ZoneData { get; set; }
 
-        private static RandomizationData s_randData = new()
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
-            IsProgression = true,
-            Categories = { "All", "Small Pickups", "Keys", "Colored Keys" },
-        };
-        public override RandomizationData RandData => s_randData;
-
-        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player)
-        {
-            if (Expedition.Data.FromCurrentExpedition() == ZoneData.ExpeditionData)
+            if (ZoneData.IsCurrentlyInExpedition())
                 stateTracker.AddItemToTerminal(this);
         }
 
         public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
         {
-            if (data == ZoneData.ExpeditionData)
+            if (ZoneData.IsSameExpedition(data))
                 stateTracker.AddItemToTerminal(this);
         }
 
@@ -80,27 +84,22 @@ public class ColoredKeyHandler : ArchipelagoFeature
                 FeatureLogger.Error("Failed to retrieve zone while spawning colored keycard!");
 
             LG_SecurityDoor? sourceDoor = zone?.m_sourceGate?.SpawnedDoor.TryCast<LG_SecurityDoor>();
-            global::Item? item = null;
+            AsyncItemSpawnWrapper? wrapper = new();
             if (sourceDoor == null)
                 FeatureLogger.Error("Failed to identify sec door while spawning colored keycard!");
             else
-                item = ItemSpawnManager.SpawnItem(sourceDoor.m_keyItem.DataBlockID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-
-            KeyItemPickup_Core? keyItem = item?.TryCast<KeyItemPickup_Core>();
-            if (keyItem == null)
             {
-                FeatureLogger.Error("Failed to spawn key item while spawning colored keycard!");
-                stateTracker.AddItemToTerminal(this);
-                yield return () =>
-                {
-                    terminal.AddLine(TerminalLineType.SpinningWaitDone, "Retrieving colored key", 2f);
-                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
-                };
-                yield break;
+                ItemReplicationManager.SpawnItem(
+                    new pItemData() { itemID_gearCRC = sourceDoor.m_keyItem.DataBlockID },
+                    new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
+                    ItemMode.Pickup,
+                    Vector3.zero,
+                    Quaternion.identity,
+                    null,
+                    null
+                );
             }
 
-            // Isolate these so the lambda can capture them
-            var sync = keyItem.m_sync;
             var player = terminal.m_localInteractionSource.Owner;
 
             yield return () =>
@@ -110,7 +109,17 @@ public class ColoredKeyHandler : ArchipelagoFeature
 
             yield return () =>
             {
-                sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
+                KeyItemPickup_Core? keyItem = wrapper.Item?.TryCast<KeyItemPickup_Core>();
+                if (keyItem == null)
+                {
+                    stateTracker.AddItemToTerminal(this);
+                    FeatureLogger.Error("Failed to spawn key item while spawning colored keycard!");
+                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
+                    wrapper.QueueDespawn();
+                    return;
+                }
+
+                keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
                 terminal.AddLine($"Key \"{keyItem.PublicName}\" has been given to {player.NickName}");
             };
         }
@@ -121,27 +130,36 @@ public class ColoredKeyHandler : ArchipelagoFeature
     /// </summary>
     /// <param name="data">The zone the key will unlock</param>
     /// <returns>The colored key item</returns>
-    public static Item GetColoredKeyItem(Zone.Data data)
-        => data.GetItem(new ColoredKeyItem(data));
+    public static KeyedItem GetColoredKeyItem(Zone.Data data)
+    {
+        if (data.TryLookupItem(ColoredKeyItem.MakeTag(data), out var item))
+            return item;
 
-    private static string GetColoredKeyLocationName(Zone.Data data)
-        => $"{data.ZoneName} Colored Key Spawn Location";
+        Item newItem = new ColoredKeyItem(data);
+        return new KeyedItem(data.AddItem(newItem), newItem);
+    }
 
     /// <summary>
     /// Adds colored keys to the world while processing zone data
     /// </summary>
     /// <param name="data">The zone check for colored keys</param>
     [Zone.Callback]
-    public static void AddColoredKeys(Zone.Data data)
+    public void AddColoredKeys(Zone.Data data)
     {
         if (data.Zone == null) return;
         if (data.Zone.ProgressionPuzzleToEnter.PuzzleType != eProgressionPuzzleType.Keycard_SecurityBox) return;
 
-        data.GetLocation(new ColoredKeyLocation(
-            GetColoredKeyLocationName(data),
-            data.PlacementsToZoneRegions(data.Zone.ProgressionPuzzleToEnter.ZonePlacementData).Select(info => info.Region).ToList(),
-            GetColoredKeyItem(data)
-        ));
+        RegionList regions = data.PlacementsToZoneRegions(data.Zone.ProgressionPuzzleToEnter.ZonePlacementData)
+            .Select(i => i.Region)
+            .Distinct()
+            .ToArray();
+
+        data.AddLocation(
+            ColoredKeyLocation.MakeTag(data),
+            regions,
+            ColoredKeyLocation.MakeRandData(),
+            GetColoredKeyItem(data).ID
+        );
     }
 
     /// <summary>
@@ -153,7 +171,10 @@ public class ColoredKeyHandler : ArchipelagoFeature
         public static void Postfix(LG_SecurityDoor __instance, GateKeyItem keyItem)
         {
             Zone.Data zone = Zone.Data.FromZone(__instance.Gate.m_linksTo.m_zone);
-            PickupHelper.AssociateItem(__instance.m_keyItem.keyPickupCore, zone.LookupLocation(GetColoredKeyLocationName(zone)).ID);
+            if (zone.TryLookupLocation(ColoredKeyLocation.MakeTag(zone), out var loc))
+                PickupHelper.AssociateItem(__instance.m_keyItem.keyPickupCore, loc.ID);
+            else
+                FeatureLogger.Error($"Failed to create association for colored key for zone: {zone.ZoneName}");
         }
     }
 

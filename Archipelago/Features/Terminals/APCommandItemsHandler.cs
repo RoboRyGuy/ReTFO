@@ -12,8 +12,9 @@ using TheArchive.Interfaces;
 namespace ReTFO.Archipelago.Features.Terminals;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class APCommandItemsHandler : ArchipelagoFeature
 {
     public override string Name => "AP Item Commands";
@@ -46,7 +47,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
 
     public override void OnDisable()
     {
-        base.OnEnable();
+        base.OnDisable();
         APCommandHandler.UnregisterCommand(m_itemsCommand ??= new());
         APCommandHandler.UnregisterCommand(m_claimCommand ??= new());
         APCommandHandler.UnregisterCommand(m_claimAllCommand ??= new());
@@ -92,7 +93,10 @@ public class APCommandItemsHandler : ArchipelagoFeature
         {
             terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, "Fetching currently available items", ItemsDelay, onWaitDoneSound: TerminalSoundType.Positive);
 
-            var items = Plugin.Get().StateTracker.ItemsInTerminalSystem;
+            StateTracker stateTracker = StateTracker.Get();
+            var items = stateTracker.ItemsInTerminalSystem;
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+
             if (items.Count == 0)
             {
                 terminal.AddLine(string.Empty);
@@ -103,7 +107,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 terminal.AddLine(string.Empty);
                 terminal.AddLine(" <u>ITEM CODE</u>     <u>ITEM NAME</u>", false);
                 foreach (var item in items)
-                    terminal.AddLine($"{item.Item2}   {item.Item1.Name}", false);
+                    terminal.AddLine($"{item.Item2}   {gameData.LookupTagDef(gameData.LookupItem(item.Item1).NameTag).Name}", false);
                 terminal.AddLine(string.Empty);
             }
         }
@@ -124,8 +128,8 @@ public class APCommandItemsHandler : ArchipelagoFeature
 
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
-            Plugin plugin = Plugin.Get();
-            var pair = plugin.StateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0);
+            StateTracker stateTracker = StateTracker.Get();
+            var pair = stateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0);
 
             if (pair == null)
             {
@@ -140,10 +144,10 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 {
                     terminal = terminal.m_command.m_terminal,
                     currentIndex = 0,
-                    claimActions = pair.Item1.OnRetrieveFromTerminalSystem(plugin.StateTracker, terminal).ToList(),
+                    claimActions = stateTracker.MidManager.GetProcessedGameData().LookupItem(pair.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal).ToList(),
                 };
                 terminal.m_command.OnEndOfQueue += helper.thisAction;
-                plugin.StateTracker.ItemsInTerminalSystem.Remove(pair);
+                stateTracker.ItemsInTerminalSystem.Remove(pair);
             }
         }
     }
@@ -164,9 +168,10 @@ public class APCommandItemsHandler : ArchipelagoFeature
 
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
-            Plugin plugin = Plugin.Get();
-            bool predicate(Tuple<Item, string> pair) => param2 == null ? true : pair.Item1.Name.Contains(param2, StringComparison.OrdinalIgnoreCase);
-            var pairs = plugin.StateTracker.ItemsInTerminalSystem.Where(predicate).ToList();
+            StateTracker stateTracker = StateTracker.Get();
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+            bool predicate(Tuple<ItemID, string> pair) => param2 == null ? true : gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2, StringComparison.OrdinalIgnoreCase);
+            var pairs = stateTracker.ItemsInTerminalSystem.Where(predicate).ToList();
             string firstMessage = (param2 == null || param2.Trim().Length == 0)
                 ? "Preparing all items to be claimed"
                 : "Collecting items to be claimed using filter " + param2.ToUpper();
@@ -187,10 +192,10 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 {
                     terminal = terminal,
                     currentIndex = 0,
-                    claimActions = pairs.SelectMany(p => p.Item1.OnRetrieveFromTerminalSystem(plugin.StateTracker, terminal)).ToList(),
+                    claimActions = pairs.SelectMany(p => gameData.LookupItem(p.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal)).ToList(),
                 };
                 terminal.m_command.OnEndOfQueue += helper.thisAction;
-                plugin.StateTracker.ItemsInTerminalSystem.RemoveAll(predicate);
+                stateTracker.ItemsInTerminalSystem.RemoveAll(predicate);
             }
         }
     }
@@ -241,8 +246,4 @@ public class APCommandItemsHandler : ArchipelagoFeature
             __state = null;
         }
     }
-
-
-
-
 }

@@ -10,7 +10,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class APCommandHandler : ArchipelagoFeature
 {
     public override string Name => "AP Command";
@@ -144,15 +144,16 @@ public class APCommandHandler : ArchipelagoFeature
             __instance.ResetLinesSinceCommand();
             __instance.AddOutput(__instance.NewLineStart() + inputLine, false);
 
-            string subCommandName = param1.ToUpper();
+            string subCommandName = param1?.ToUpper() ?? string.Empty;
             if (m_subCommands.TryGetValue(subCommandName, out var subCommand))
             {
                 subCommand.Execute(__instance.m_terminal, inputLine, subCommandName, param2);
             }
             else
             {
-                __instance.AddOutput($"<#F00>Subcommmand not recognized: {subCommandName}</color>");
-                __instance.AddOutput("Use the command AP HELP for more info");
+                if (subCommandName.Length > 0)
+                    __instance.AddOutput($"<#F00>Sub-commmand not recognized: {subCommandName}</color>");
+                __instance.AddOutput("Use the command <#FF0>AP HELP</color> to see a list of commands.");
             }
             return false;
         }

@@ -11,7 +11,7 @@ namespace ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class UseTerminalHandler : ArchipelagoFeature
 {
     public override string Name => "Terminal Region Handler";
@@ -27,20 +27,23 @@ public class UseTerminalHandler : ArchipelagoFeature
 
     // Add terminals (and paths to them) to zones
     [Terminal.Callback]
-    public static void AddTerminalRegions(Terminal.Data data)
+    public void AddTerminalRegions(Terminal.Data data)
     {
-        Path path = data.AddPath(
-            data.GetOrCreateRegion(data.ZoneName),
-            data.GetOrCreateRegion(data.TerminalName)
-        );
+        Path path = new()
+        {
+            StartingRegion = data.LookupOrCreateRegion(data.ZoneName),
+            EndingRegion = data.LookupOrCreateRegion(data.TerminalName)
+        };
 
         // Note the .Count > 0 check; this is to account for R8A2, which has the locked secret terminal
         // The thought is "if this password is impossible to find in-level, it must be readily available"
         if (data.TerminalStartingStateData.PasswordProtected && data.TerminalStartingStateData.TerminalZoneSelectionDatas.Count > 0)
         {
-            path.CategoryItem = TerminalPasswordHandler.GetTerminalPasswordPartItem(data, 1).Categories[0];
-            path.CategoryItemCount = (uint)data.TerminalStartingStateData.PasswordPartCount;
+            path.ReqItem = TerminalPasswordHandler.GetTerminalPasswordPartItem(data, 1).PathReqs;
+            path.ReqCount = (uint)data.TerminalStartingStateData.PasswordPartCount;
         }
+
+        data.AddPath(path);
     }
 
     // Detect when a terminal is interacted with
@@ -51,10 +54,12 @@ public class UseTerminalHandler : ArchipelagoFeature
         {
             if (__instance.IsPasswordProtected) return;
 
-            Terminal.Data? terminalData = Terminal.Data.FromTerminal(__instance);
+            var result = Terminal.Data.FromTerminal(__instance);
+            Terminal.Data? terminalData = result.Data;
             if (terminalData == null)
             {
-                FeatureLogger.Warning("Entered unknown terminal. Is this a reactor terminal?");
+                if (!result.IsReactorTerminal)
+                    FeatureLogger.Error("Entered unknown terminal!");
                 return;
             }
 
@@ -62,16 +67,6 @@ public class UseTerminalHandler : ArchipelagoFeature
                 terminalData.TerminalName,
                 __instance.m_syncedInteractionSource
             );
-        }
-    }
-
-    // Retry discovering the terminal when the password is entered
-    [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.TryUnlockingTerminal))]
-    public static class LG_ComputerTerminalCommandInterpreter__TryUnlockingTerminal__Patch
-    {
-        public static void Postfix(LG_ComputerTerminalCommandInterpreter __instance)
-        {
-            LG_ComputerTerminal__OnInteract__Patch.Postfix(__instance.m_terminal);
         }
     }
 }

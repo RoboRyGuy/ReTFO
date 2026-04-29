@@ -1,13 +1,14 @@
-﻿
-using LevelGeneration;
+﻿using LevelGeneration;
+using Player;
+using ReTFO.Archipelago.Features;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
-using Player;
-using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Diagnostics.CodeAnalysis;
 
 /// <summary>
 /// Represents an item in GTFO. Some examples include:
@@ -16,64 +17,54 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 ///   <item>"Extraction Reachable" (an event item)</item>
 ///   <item>Objective items - ie generators or a central gen cluster</item>
 /// </list>
+/// Items do not necessarily support randomization; some items are purely event items which
+///  are used to perform pathing logic, while others may simply be unimeplemented.
 /// </summary>
-public abstract class Item
+public class Item
 {
-    /// <summary>
-    /// Helper for handling string lists using implicit conversions
-    /// </summary>
-    public struct CategoryList
-    {
-        public CategoryList() => Categories = new(0);
-        public List<string> Categories { get; init; }
-        public static implicit operator CategoryList(string category)
-            => new CategoryList() { Categories = new(1) { category } };
-        public static implicit operator CategoryList(List<string> categories)
-            => new CategoryList() { Categories = categories };
-        public static implicit operator List<string>(CategoryList categoryList)
-            => categoryList.Categories;
-    }
-
     /// <summary>
     /// Construct an abstract item from a name and categories
     /// </summary>
-    /// <param name="name">The name of the item</param>
-    public Item(string name)
+    /// <param name="nameTag">The main tag for the item. Must be unique</param>
+    /// <param name="randData">Data used by this item for randomization</param>
+    public Item(RandomizationTag nameTag, ItemData randData)
     {
-        Name = name;
+        NameTag = nameTag;
+        RandData = randData;
     }
 
     /// <summary>
-    /// Name of this item. Names must be unique per item.
+    /// Identifying tag used by this item
     /// </summary>
-    public string Name { get; set; }
+    public RandomizationTag NameTag { get; init; }
 
     /// <summary>
-    /// ID of this item. This will be assigned when the item is registered.
+    /// Optional secondary tag for this item.
     /// </summary>
-    public long ID { get; set; } = 0L;
+    public RandomizationTag Tag2 { get; init; } = new();
 
     /// <summary>
-    /// Helper for visualizing in debugger
+    /// Optional tertiary tag for this item.
     /// </summary>
-    /// <returns></returns>
-    public override string ToString() => Name;
-
-    // === Virtuals for item categorization and randomization =================
+    public RandomizationTag Tag3 { get; init; } = new();
 
     /// <summary>
-    /// Categories used by this item. Only use these categories where absolutely necessary.
-    /// Categories are typically used only if you need a bunch of an item, and you need unique data to
-    ///  perform OnCollect or similar calls for each item. For an example, see <see cref="Features.Terminals.TerminalPasswordHandler"/>
+    /// Randomization data associated with this item.
     /// </summary>
-    public virtual List<string> Categories => new(0);
+    public ItemData RandData { get; init; }
 
     /// <summary>
-    /// Randomization data used to determine when / how the item is randomized.
+    /// How this item should be represented when a path uses it as a requirement.
+    /// Override this if you need the item to use a category instead.
     /// </summary>
-    public abstract RandomizationData RandData { get; }
+    public virtual Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Item, NameTag);
 
-    // === Virtuals for handling Item being obtained ==========================
+    /// <summary>
+    /// Implicit conversion helper using PathReqs virtual property to perform the conversion
+    /// </summary>
+    public static implicit operator Path.RequiredItem(Item self) => self.PathReqs;
+
+    // === Virtuals for handling randomization events =============================================
 
     /// <summary>
     /// Called immediately when the item is obtained.
@@ -86,7 +77,7 @@ public abstract class Item
     /// The sourceLocationId is supplied during <see cref="StateTracker.eState.FakeConnect"/>, where it can be used for debug.
     /// Otherwise, it is supplied when the item is not randomized but is randomlike.
     /// </remarks>
-    public virtual void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player) { }
+    public virtual void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player) { }
 
     /// <summary>
     /// Called immediately when the item is lost - Items can only be lost by a call to "uncollect".
@@ -118,5 +109,263 @@ public abstract class Item
     /// </remarks>
     public virtual IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Simple wrapper around a long to help identify it as an ItemID, usable
+///  for looking up an Item instance in GameData.
+/// </summary>
+public struct ItemID : INullable, IIndex, IComparable<ItemID>, IEquatable<ItemID>
+{
+    public ItemID() { }
+    public ItemID(long value) => Value = value;
+    public readonly long Value = 0;
+
+    public bool IsNull => Value == 0;
+    public int AsIndex { get => checked((int)Value) - 1; init => Value = value + 1; }
+    public int CompareTo(ItemID other) => Value.CompareTo(other.Value);
+    public bool Equals(ItemID other) => Value.Equals(other.Value);
+    public override bool Equals([NotNullWhen(true)] object? obj) => obj is ItemID id && Equals(id);
+    public override int GetHashCode() => Value.GetHashCode();
+}
+
+/// <summary>
+/// A Item with an ID associated with it
+/// </summary>
+public struct KeyedItem : INullable
+{
+    /// <summary>
+    /// Create a deafult, null KeyedItem
+    /// </summary>
+    public KeyedItem()
+    {
+        ID = new();
+        Item = null!; // Todo: Class default item?
+    }
+
+    /// <summary>
+    /// Create a keyed item with the given item and ID
+    /// </summary>
+    public KeyedItem(ItemID id, Item item)
+    {
+        ID = id;
+        Item = item;
+    }
+
+    /// <summary>
+    /// Unique ID of the Item. IDs range from 1 to 2^53-1.
+    /// </summary>
+    public readonly ItemID ID;
+    
+    /// <summary>
+    /// The Item object with the given ID
+    /// </summary>
+    public readonly Item Item;
+
+    /// <summary>
+    /// True if the item is null, false otherwise
+    /// </summary>
+    public bool IsNull => ID.IsNull;
+
+    /// <inheritdoc cref="Item.NameTag"/>
+    public RandomizationTag Name => Item.NameTag;
+
+    /// <inheritdoc cref="Item.RandData"/>
+    public ItemData RandData => Item.RandData;
+
+    /// <inheritdoc cref="Item.PathReqs"/>
+    public Path.RequiredItem PathReqs => Item.PathReqs;
+
+    /// <inheritdoc cref="Item.OnItemObtained(StateTracker, long, PlayerAgent?)"/>
+    public void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player) { }
+
+    /// <inheritdoc cref="Item.OnItemLost(StateTracker)"/>
+    public void OnItemLost(StateTracker stateTracker) { }
+
+    /// <inheritdoc cref="Item.OnStartExpeditionWithItem(StateTracker, Expedition.Data)"/>
+    public void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data) { }
+
+    /// <inheritdoc cref="Item.OnRetrieveFromTerminalSystem(StateTracker, LG_ComputerTerminal)"/>
+    public IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Simple wrapper around some enum values
+/// </summary>
+public struct ItemData
+{
+    /// <summary>
+    /// Enum values used by this data. Note that, where applicable, these correspond to 
+    ///  archipelago's item classifications
+    /// </summary>
+    public enum eType
+    {
+        /// <summary>
+        /// No value
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Any item that can possibly be required for progression
+        /// </summary>
+        Progression = 1 << 0,
+
+        /// <summary>
+        /// Any item deemed "useful". When combined with progression,
+        /// it indicates a particular useful progression item
+        /// </summary>
+        Useful = 1 << 1,
+
+        /// <summary>
+        /// A standard or trash item
+        /// </summary>
+        Filler = 1 << 2,
+
+        /// <summary>
+        /// An item which has a negative impact on the player
+        /// </summary>
+        Trap = 1 << 3,
+
+        /// <summary>
+        /// If set, Archipelago will avoid moving this item to an earlier sphere.
+        /// Typically set on bountiful progression items (like money or tokens)
+        ///  to prevent the early game being flooded with boring items
+        /// </summary>
+        SkipBalancing = 1 << 4,
+
+        /// <summary>
+        /// Denote a progression item which should not be placed on priority locations
+        /// </summary>
+        Deprioritized = 1 << 5,
+
+        /// <summary>
+        /// Random-like items will behave as randomized even if not actually randomized. This
+        ///  means being collected into the pool and having OnItemCollected, etc called when
+        ///  their location is found.
+        /// </summary>
+        RandomLike = 1 << 6,
+
+        /// <summary>
+        /// If the item is randomized, <see cref="Item.OnItemLost(StateTracker)"/> will be called 
+        ///  at the start of the session so the floating item can prep the world.
+        /// </summary>
+        LoseOnStart = 1 << 7,
+    }
+
+    /// <summary>
+    /// Construct default item data
+    /// </summary>
+    public ItemData() { }
+
+    /// <summary>
+    /// Stored enum value
+    /// </summary>
+    private readonly eType m_value = eType.None;
+
+    /// <summary>
+    /// Set or write the IsProgression bit
+    /// </summary>
+    public bool IsProgression
+    {
+        get => (m_value & eType.Progression) != 0;
+        init
+        {
+            if (value) m_value |= eType.Progression;
+            else m_value &= ~eType.Progression;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the IsUseful bit
+    /// </summary>
+    public bool IsUseful
+    {
+        get => (m_value & eType.Useful) != 0;
+        init
+        {
+            if (value) m_value |= eType.Useful;
+            else m_value &= ~eType.Useful;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the IsFiller bit
+    /// </summary>
+    public bool IsFiller
+    {
+        get => (m_value & eType.Filler) != 0;
+        init
+        {
+            if (value) m_value |= eType.Filler;
+            else m_value &= ~eType.Filler;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the IsTrapbit
+    /// </summary>
+    public bool IsTrap
+    {
+        get => (m_value & eType.Trap) != 0;
+        init
+        {
+            if (value) m_value |= eType.Trap;
+            else m_value &= ~eType.Trap;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the DoSkipBalancing
+    /// </summary>
+    public bool DoSkipBalancing
+    {
+        get => (m_value & eType.SkipBalancing) != 0;
+        init
+        {
+            if (value) m_value |= eType.SkipBalancing;
+            else m_value &= ~eType.SkipBalancing;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the IsDeprioritized bit
+    /// </summary>
+    public bool IsDeprioritized
+    {
+        get => (m_value & eType.Deprioritized) != 0;
+        init
+        {
+            if (value) m_value |= eType.Deprioritized;
+            else m_value &= ~eType.Deprioritized;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the DoLoseOnStart bit
+    /// </summary>
+    public bool DoLoseOnStart
+    {
+        get => (m_value & eType.LoseOnStart) != 0;
+        init
+        {
+            if (value) m_value |= eType.LoseOnStart;
+            else m_value &= ~eType.LoseOnStart;
+        }
+    }
+
+    /// <summary>
+    /// Set or write the IsRandomLike bit
+    /// </summary>
+    public bool IsRandomLike
+    {
+        get => (m_value & eType.RandomLike) != 0;
+        init
+        {
+            if (value) m_value |= eType.RandomLike;
+            else m_value &= ~eType.RandomLike;
+        }
+    }
+
 
 }

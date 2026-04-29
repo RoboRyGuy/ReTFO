@@ -9,7 +9,7 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class ClearAPathHandler : ArchipelagoFeature
 {
     public override string Name => "Clear a Path Handler";
@@ -24,57 +24,67 @@ public class ClearAPathHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    /*
-     * TODO:
-     *  Region: Currently not detected; no activate or solve events to use
-     */
 
-    private const eWardenObjectiveType ThisObjectiveType
-        = eWardenObjectiveType.ClearAPath;
-
-    private static string ThisObjectiveSummary(Objective.Data data)
+    // Implementation of common static methods for objective handlers
+    private static class This
     {
-        CheckThisIsCorrectObjective(data);
-        return "Clear a Path";
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.ClearAPath;
+
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return "Clear a Path";
+        }
+
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
+
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
+        {
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+
+        // Helper to get the full name for This objective
+        public static string ObjectiveName(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return data.ObjectiveName(ObjectiveSummary(data));
+        }
     }
 
-    private static bool ThisIsCorrectObjective(Objective.Data data)
-        => data.Objective.Type == ThisObjectiveType;
-
-    private static void CheckThisIsCorrectObjective(Objective.Data data)
+    // Names of regions for this objective
+    private static class ThisRegions
     {
-        if (!ThisIsCorrectObjective(data))
-            FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ThisObjectiveType)}, got {data.Objective.Type}");
-    }
-
-    private static string ThisObjectiveName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return data.ObjectiveName(ThisObjectiveSummary(data));
-    }
-
-    private static string ThisRegionName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Path Cleared";
+        // Region reached when extraction is reached
+        public static string PathCleared(Objective.Data data)
+            => $"{This.ObjectiveName(data)} Path Cleared";
     }
 
     // Objective requiring a player to enter the extraction zone. Assumes (requires?) forward extraction
     [Objective.Callback]
     public void HandleClearAPathObjective(Objective.Data data)
     {
-        if (!ThisIsCorrectObjective(data))
+        if (!This.IsCorrectObjective(data))
             return;
 
         // This objective is immediately completed upon reaching extraction
         // We could place the ObjectiveComplete item in the extraction zone, but I feel this method is more reliable and clearer
-        string objectiveCompleteName = ThisRegionName(data);
-        int objectiveCompleteRegion = data.GetOrCreateRegion(objectiveCompleteName);
-        Path path = data.AddPath(data.ObjectiveStartRegion, objectiveCompleteRegion);
-        path.RequiredItem = ExtractionHandler.GetExtractionReachableItem(data).Name;
-        path.RequiredItemCount = 1;
-
-        SharedObjectiveHandler.AddObjectiveCompleteItem(data, ThisObjectiveSummary(data), objectiveCompleteRegion);
+        string objectiveCompleteName = ThisRegions.PathCleared(data);
+        RegionID objectiveCompleteRegion = data.LookupOrCreateRegion(objectiveCompleteName);
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.ObjectiveStartRegion,
+            EndingRegion = objectiveCompleteRegion,
+            ReqItem = ExtractionHandler.GetExtractionReachableItem(data).PathReqs,
+            ReqCount = 1u,
+        });
+        SharedObjectiveHandler.AddObjectiveCompleteItem(data, objectiveCompleteRegion);
 
         // No OnActivate or OnSolve events for this objective
     }

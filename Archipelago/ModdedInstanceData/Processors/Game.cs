@@ -1,10 +1,9 @@
-﻿
-using Clonesoft.Json;
-using ReTFO.Archipelago.FeaturesAPI;
+﻿using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Reflection;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -13,470 +12,548 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 public static class Game
 {
     /// <summary>
-    /// Interface class used by all processors allowing them to be added to Game.Data.
-    /// Note that despite the name starting with an I, this actually a class due to technical restraints
+    /// Data for specifically for and about this game. The base data class, which is also where we store all our generated data.
     /// </summary>
-    public abstract class IProcessor
+    public class Data
     {
         /// <summary>
-        /// Shared non-generic base for Callback
+        /// Simple reference type to accelerate copying Game.Data and decrease each copy's size
         /// </summary>
-        public abstract class CallbackBase : Attribute 
+        private class StorageType
         {
-            public abstract Type DataType { get; }
-            public abstract Type DelegateType { get; }
+            public bool IsComplete { get; set; } = false;
+            public MidManager Manager { get; init; } = new();
+            public Dictionary<string, Expedition.Data> ExpeditionLookup { get; init; } = new();
+            public List<Region> RegionList { get; init; } = new();
+            public Dictionary<string, RegionID> RegionLookup { get; init; } = new();
+            public List<ReadOnlyPath> PathList { get; init; } = new();
+            public List<RandomizationTagDefinition> TagDefinitions { get; init; } = new();
+            public Dictionary<string, RandomizationTag> TagLookup { get; init; } = new();
+            public List<Location> LocationList { get; init; } = new();
+            public Dictionary<RandomizationTag, LocationID> LocationLookup { get; init; } = new();
+            public List<Item> ItemList { get; init; } = new();
+            public Dictionary<RandomizationTag, ItemID> ItemLookup { get; init; } = new();
+            public List<ItemID> FloatingItems { get; init; } = new();
         }
 
         /// <summary>
-        /// Register a callback to this processor's event
+        /// Default constructor makes all-new data
         /// </summary>
-        /// <param name="callback">The callback to register</param>
-        public abstract void UntypedRegisterCallback(Delegate callback);
-
-        /// <summary>
-        /// Unregister a callback to this processor's event
-        /// </summary>
-        /// <param name="callback">The callback to unregister</param>
-        public abstract void UntypedUnregisterCallback(Delegate callback);
-    }
-
-    /// <summary>
-    /// Generic implemenetation of IProcessor allowing it to be cast type-safely
-    /// Note that despite the name starting with an I, this actually a class due to technical restraints
-    /// </summary>
-    /// <typeparam name="TData">The type of data which will be passed to the processing event</typeparam>
-    public abstract class IProcessor<TData> : IProcessor where TData : class
-    {
-        /// <summary>
-        /// Attribute used to mark static functions which should autoregister to this processor
-        /// </summary>
-        [AttributeUsage(AttributeTargets.Method)]
-        public class Callback : CallbackBase 
+        public Data(MidManager manager) 
         {
-            public override Type DataType => typeof(TData);
-            public override Type DelegateType => typeof(Delegate);
-        }
-
-        /// <summary>
-        /// Delegate type for the event
-        /// </summary>
-        /// <param name="data">The data to be passed to delegates registered to the processing event</param>
-        public delegate void Delegate(TData data);
-
-        /// <summary>
-        /// Register a callback to this processor's event
-        /// </summary>
-        /// <param name="callback">The callback to register</param>
-        public abstract void RegisterCallback(Delegate callback);
-
-        public override void UntypedRegisterCallback(System.Delegate callback)
-        {
-            if (callback is Delegate del)
-                RegisterCallback(del);
-            else
-                FeatureLogger.Error("Failed to register callback; callback is of wrong delegate type");
-        }
-
-        /// <summary>
-        /// Unregister a callback to this processor's event
-        /// </summary>
-        /// <param name="callback">The callback to unregister</param>
-        public abstract void UnregisterCallback(Delegate callback);
-
-        public override void UntypedUnregisterCallback(System.Delegate callback)
-        {
-            if (callback is Delegate del)
-                UnregisterCallback(del);
-            else
-                FeatureLogger.Error("Failed to unregister callback; callback is of wrong delegate type");
-        }
-
-        /// <summary>
-        /// Allow anyone to to invoke processing
-        /// </summary>
-        /// <param name="data">The data to invoke processing on</param>
-        public abstract void Process(TData data);
-
-        /// <summary>
-        /// Registers static callabacks marked with the Callback attribute to this event
-        /// A helper method intended for use by inherited classes in their constructors
-        /// </summary>
-        protected virtual void RegisterStaticCallbacks()
-        {
-            BindingFlags bf = BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly;
-
-            var methods = AppDomain.CurrentDomain
-                .GetAssemblies()
-                .SelectMany(a =>
-                {
-                    try
-                    {
-                        return a.GetTypes();
-                    }
-                    catch (ReflectionTypeLoadException e)
-                    {
-                        return e.Types.OfType<Type>();
-                    }
-                }).SelectMany(t => t.GetMethods(bf))
-                .Where(m => m.CustomAttributes.Any(a => a.AttributeType.IsAssignableTo(typeof(Callback))));
-
-            foreach (var method in methods)
+            // The first region must always be the Menu region
+            Storage = new()
             {
-                Delegate? del = Delegate.CreateDelegate(typeof(Delegate), method) as Delegate;
-                if (del == null)
-                {
-                    FeatureLogger.Warning($"Failed to register callback {method.DeclaringType?.FullName}.{method.Name} to event; failed to convert to delegate type");
-                    continue;
-                }
-                RegisterCallback(del);
+                Manager = manager
+            };
+
+            LookupOrCreateRegion(MenuRegionName);
+        }
+
+        /// <summary>
+        /// Copy constructor copies an existing data
+        /// </summary>
+        public Data(Data other)
+        {
+            Storage = other.Storage;
+        }
+
+        private StorageType Storage { get; init; }
+        public bool IsComplete { get => Storage.IsComplete; set => Storage.IsComplete = value; }
+        public MidManager Manager => Storage.Manager;
+        private Dictionary<string, Expedition.Data> ExpeditionLookup => Storage.ExpeditionLookup;
+        private List<Region> RegionList => Storage.RegionList;
+        private Dictionary<string, RegionID> RegionLookup => Storage.RegionLookup;
+        private List<ReadOnlyPath> PathList => Storage.PathList;
+        // No dedicated path lookup; use each region's paths list to find relevant paths
+        private List<RandomizationTagDefinition> TagDefinitions => Storage.TagDefinitions;
+        private Dictionary<string, RandomizationTag> TagLookup => Storage.TagLookup;
+        private List<Location> LocationList => Storage.LocationList;
+        private Dictionary<RandomizationTag, LocationID> LocationLookup => Storage.LocationLookup;
+        private List<Item> ItemList => Storage.ItemList;
+        private Dictionary<RandomizationTag, ItemID> ItemLookup => Storage.ItemLookup;
+        private List<ItemID> FloatingItems => Storage.FloatingItems;
+
+        /// <summary>
+        /// Attempt to register the given expedition data under the provided expedition name.
+        /// </summary>
+        /// <param name="name">The name of the expedition, typically in short form. IE: R1A1</param>
+        /// <param name="data">The data for the expedition.</param>
+        /// <returns>True if successful, false otherwise (the name is already taken)</returns>
+        public bool TryRegisterExpedition(string name, Expedition.Data data)
+            => ExpeditionLookup.TryAdd(name, data);
+
+        /// <summary>
+        /// Attempt to look up expedition data by name
+        /// </summary>
+        /// <param name="name">The name of the expedition</param>
+        /// <param name="data">The data for the expedition</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryLookupExpedition(string name, [NotNullWhen(true)] out Expedition.Data? data)
+            => ExpeditionLookup.TryGetValue(name, out data);
+
+        /// <summary>
+        /// Attempts to retrieve a tag by name and parent. On fail, instead creates a new tag.
+        /// </summary>
+        /// <param name="tagName">The tag's name</param>
+        /// <param name="tagDesc">The tag's description</param>
+        /// <param name="parentResolver">A function which can get the parent of the tag</param>
+        /// <returns>The desired tag</returns>
+        public RandomizationTag LookupOrCreateTag(string tagName, string tagDesc, Func<Game.Data, RandomizationTag>? parentResolver)
+        {
+            if (!TagLookup.TryGetValue(tagName, out RandomizationTag result))
+            {   // Invoke parent resolver first, since it'll likely add new tags and change this tag's index
+                RandomizationTag parent = parentResolver?.Invoke(this) ?? new();
+                result = new() { AsIndex = TagDefinitions.Count };
+                TagDefinitions.Add(new(tagName, tagDesc, parent));
+                TagLookup.Add(tagName, result);
             }
-        }
-    }
-
-    /// <summary>
-    /// Interface class passed to Game.Event giving acess to common (shared) processing data
-    /// </summary>
-    public abstract class Data
-    {
-        // Minimal interface implementation //
-
-        /// <summary>
-        /// The Processors registered to this Game.Data
-        /// </summary>
-        [JsonIgnore]
-        public abstract Dictionary<Type, IProcessor> Processors { get; }
-
-        /// <summary>
-        /// List of registered regions
-        /// </summary>
-        public abstract List<Region> RegionList { get; }
-
-        /// <summary>
-        /// Region lookup to quickly retrieve regions by name
-        /// </summary>
-        [JsonIgnore]
-        public abstract Dictionary<string, int> RegionLookup { get; }
-
-        /// <summary>
-        /// List of registered locations
-        /// </summary>
-        public abstract List<Location> LocationList { get; }
-
-        /// <summary>
-        /// Location lookup to quickly retrieve locations by name
-        /// </summary>
-        [JsonIgnore]
-        public abstract Dictionary<string, Location> LocationLookup { get; }
-
-        /// <summary>
-        /// List of registered items
-        /// </summary>
-        public abstract List<Item> ItemList { get; }
-
-        /// <summary>
-        /// List of "floating" items, which are not assigned to a location
-        /// This list can contain duplicates, and references the items from ItemList
-        /// </summary>
-        public abstract List<long> FloatingItemIds { get; }
-
-        /// <summary>
-        /// Item lookup to quickly retrieve items by name
-        /// </summary>
-        [JsonIgnore]
-        public abstract Dictionary<string, Item> ItemLookup { get; }
-
-        /// <summary>
-        /// Register a processor. Logs a warning if a processor of the given type is already registerd
-        /// </summary>
-        /// <typeparam name="TData">The data type of the processor being registered</typeparam>
-        /// <param name="processor">The processor to register</param>
-        public void RegisterProcessor<TData>(IProcessor<TData> processor) where TData : class
-        {
-            if (!Processors.TryAdd(typeof(TData), processor))
-                FeatureLogger.Error($"Attempted to overwrite existing processor type: {typeof(IProcessor<TData>).FullName}");
+            return result;
         }
 
         /// <summary>
-        /// Get a processor for a specific type of data
+        /// Gets a collection of all tags and their definitions
         /// </summary>
-        /// <typeparam name="TData">The type of data the processor is for</typeparam>
-        /// <returns>The Typed processor</returns>
-        /// <exception cref="NotSupportedException">An incorrectly-registered processor exists in the entry occupied by the requested TData</exception>
-        /// <exception cref="KeyNotFoundException">The desired processor was not found</exception>
-        public IProcessor<TData> GetProcessor<TData>() where TData : class
-        {
-            if (!Processors.TryGetValue(typeof(TData), out var processor))
-                throw new KeyNotFoundException($"Game.Data does not have a processor for: {typeof(TData).FullName}");
+        public IReadOnlyDictionary<RandomizationTag, RandomizationTagDefinition> GetAllTags()
+            => new ReadOnlyListDict<RandomizationTag, RandomizationTagDefinition>(TagDefinitions);
 
-            if (processor is IProcessor<TData> typedProcessor)
-                return typedProcessor;
-            else
+        /// <summary>
+        /// Attempt to look up a randomization tag with the provided name and parent
+        /// </summary>
+        /// <param name="tagName">The name of the tag</param>
+        /// <param name="existingTag">The found tag, if successful; a null tag otherwise</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryLookupTag(string tagName, out RandomizationTag existingTag)
+            => TagLookup.TryGetValue(tagName, out existingTag);
+
+        /// <summary>
+        /// Look up the definition for a tag
+        /// </summary>
+        /// <param name="tag">The tag to look up</param>
+        /// <returns>The definitino of the tag</returns>
+        public RandomizationTagDefinition LookupTagDef(RandomizationTag tag)
+            => TagDefinitions[tag.AsIndex];
+
+        /// <summary>
+        /// Test if a tag matches against another tag
+        /// </summary>
+        /// <param name="parent">The parent tag to match against</param>
+        /// <param name="child">The child tag to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool TagMatches(RandomizationTag parent, RandomizationTag child)
+        {
+            // Null tags are invalid for this test
+            if (parent.IsNull) throw new ArgumentNullException(nameof(parent));
+            if (child.IsNull) throw new ArgumentNullException(nameof(child));
+
+            do
             {
-                throw new NotSupportedException(
-                    $"Game.Data Processor type incorrectly registered; expected type is {typeof(IProcessor<TData>).FullName}, but actual type is {processor.GetType().FullName}"
-                );
-            }
+                if (parent.Equals(child)) return true;
+                child = TagDefinitions[child.AsIndex].Parent;
+            } while (!child.IsNull);
+            return false;
         }
 
         /// <summary>
-        /// Get a processor for a specific type of data, without type safety
+        /// Test if one tag matches against any location tag
         /// </summary>
-        /// <param name="tData">The type of the data the processor processes</param>
-        /// <returns>the processpr</returns>
-        public IProcessor GetProcessor(Type tData)
-        {
-            if (!Processors.TryGetValue(tData, out var processor))
-                throw new KeyNotFoundException($"Game.Data does not have a processor for: {tData.FullName}");
+        /// <param name="parent">The parent tag to match against</param>
+        /// <param name="loc">The location to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool TagMatches(RandomizationTag parent, Location loc)
+            => TagMatches(parent, loc.NameTag)
+            || (!loc.Tag2.IsNull && TagMatches(parent, loc.Tag2))
+            || (!loc.Tag3.IsNull && TagMatches(parent, loc.Tag3));
 
-            var desiredType = typeof(IProcessor<>).MakeGenericType(new Type[] { tData });
-            if (processor.GetType().IsAssignableTo(desiredType))
-                return processor;
-            else
+        /// <summary>
+        /// Test if one tag matches against any item tag
+        /// </summary>
+        /// <param name="parent">The parent tag to match against</param>
+        /// <param name="item">The item to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool TagMatches(RandomizationTag parent, Item item)
+            => TagMatches(parent, item.NameTag)
+            || (!item.Tag2.IsNull && TagMatches(parent, item.Tag2))
+            || (!item.Tag3.IsNull && TagMatches(parent, item.Tag3));
+
+        /// <summary>
+        /// Test if a tag matches against a collection of tags. Ideally, the collection is a HashSet or similar
+        /// </summary>
+        /// <param name="parents">The parent tag to match against</param>
+        /// <param name="child">The child tag to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool TagMatches(ICollection<RandomizationTag> parents, RandomizationTag child)
+        {
+            if (child.IsNull) throw new ArgumentNullException(nameof(child));
+            if (parents.Count == 0) return false;
+            if (parents.Count == 1) return TagMatches(parents.First(), child);
+
+            do
             {
-                throw new NotSupportedException(
-                    $"Game.Data Processor type incorrectly registered; expected type is {desiredType.FullName}, but actual type is {processor.GetType().FullName}"
-                );
-            }
+                if (parents.Contains(child)) return true;
+                child = TagDefinitions[child.AsIndex].Parent;
+            } while (!child.IsNull);
+            return false;
         }
 
         /// <summary>
-        /// Get a region ID. Create a new region if necessary
+        /// Test if any tag in a location matches against a collection of tags.
         /// </summary>
-        /// <param name="regionName">The name of th region to get an ID of</param>
-        /// <returns>The region with the given ID</returns>
-        public int GetOrCreateRegion(string regionName)
+        /// <param name="parents">The parent tag to match against</param>
+        /// <param name="loc">The location to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool AnyTagMatches(ICollection<RandomizationTag> parents, Location loc)
         {
-            int id;
-            if (!RegionLookup.TryGetValue(regionName, out id))
+            if (parents.Count == 0) return false;
+            if (parents.Count == 1) return TagMatches(parents.First(), loc);
+            return TagMatches(parents, loc.NameTag)
+                || (!loc.Tag2.IsNull && TagMatches(parents, loc.Tag2))
+                || (!loc.Tag3.IsNull && TagMatches(parents, loc.Tag3));
+        }
+
+        /// <summary>
+        /// Test if all tags in the location match against a collection of tags
+        /// </summary>
+        /// <param name="parents">The parent tag to match against</param>
+        /// <param name="loc">The location to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool AllTagsMatch(ICollection<RandomizationTag> parents, Location loc)
+        {
+            if (parents.Count == 0) return false;
+            return TagMatches(parents, loc.NameTag)
+                && (loc.Tag2.IsNull || TagMatches(parents, loc.Tag2))
+                && (loc.Tag3.IsNull || TagMatches(parents, loc.Tag3));
+        }
+
+        /// <summary>
+        /// Test if any tag in an item matches against a collection of tags.
+        /// </summary>
+        /// <param name="parents">The parent tag to match against</param>
+        /// <param name="item">The item to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool AnyTagMatches(ICollection<RandomizationTag> parents, Item item)
+        {
+            if (parents.Count == 0) return false;
+            if (parents.Count == 1) return TagMatches(parents.First(), item);
+            return TagMatches(parents, item.NameTag)
+                || (!item.Tag2.IsNull && TagMatches(parents, item.Tag2))
+                || (!item.Tag3.IsNull && TagMatches(parents, item.Tag3));
+        }
+
+        /// <summary>
+        /// Test if all tags in the item match against a collection of tags
+        /// </summary>
+        /// <param name="parents">The parent tag to match against</param>
+        /// <param name="item">The item to test</param>
+        /// <returns>True if the tags match, false otherwise</returns>
+        public bool AllTagsMatch(ICollection<RandomizationTag> parents, Item item)
+        {
+            if (parents.Count == 0) return false;
+            return TagMatches(parents, item.NameTag)
+                && (item.Tag2.IsNull || TagMatches(parents, item.Tag2))
+                && (item.Tag3.IsNull || TagMatches(parents, item.Tag3));
+        }
+
+        /// <summary>
+        /// Lookup a RegionID; create the region if necessary
+        /// </summary>
+        /// <param name="regionName">The name of the region to get an ID of</param>
+        /// <returns>The ID of the region</returns>
+        public RegionID LookupOrCreateRegion(string regionName)
+        {
+            if (!RegionLookup.TryGetValue(regionName, out RegionID region))
             {
-                id = RegionList.Count;
-                RegionLookup[regionName] = id;
+                region = new RegionID() { AsIndex = RegionList.Count };
                 RegionList.Add(new Region(regionName));
+                RegionLookup.Add(regionName, region);
             }
+            return region;
+        }
+
+        /// <summary>
+        /// Get all registered regions
+        /// </summary>
+        public IReadOnlyDictionary<RegionID, Region> GetAllRegions()
+            => new ReadOnlyListDict<RegionID, Region>(RegionList);
+
+        /// <summary>
+        /// Try to look up a region by name
+        /// </summary>
+        /// <param name="regionName">The name of the region to look up</param>
+        /// <param name="region">The found region, or null if no region is found</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryLookupRegion(string regionName, out KeyedRegion region)
+        {
+            if (RegionLookup.TryGetValue(regionName, out RegionID regionID))
+            {
+                region = new(regionID, LookupRegion(regionID));
+                return true;
+            }
+            else
+            {
+                region = new();
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get a region by ID
+        /// </summary>
+        /// <param name="id">The ID of the region</param>
+        /// <returns>The region</returns>
+        public ReadOnlyRegion LookupRegion(RegionID id)
+            => LookupRegionProtected(id);
+
+        public Region LookupRegionProtected(RegionID id)
+            => RegionList[id.AsIndex];
+
+        /// <summary>
+        /// Set a particular region's reachable status
+        /// </summary>
+        /// <param name="id">ID of the region</param>
+        /// <param name="isReachable">The new value for the region's reachable value</param>
+        public void SetRegionReachable(RegionID id, bool isReachable)
+        {
+            int index = id.AsIndex;
+            if (index < 0 || index >= RegionList.Count)
+                throw new ArgumentException("Attempted to set reachability for a region which does not exist");
+
+            Span<Region> regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(RegionList);
+            regions[id.AsIndex].Reachable = isReachable;
+        }
+
+        /// <summary>
+        /// Add a new path.
+        /// </summary>
+        /// <param name="path">The path to add</param>
+        /// <returns>The ID of the newly-added path</returns>
+        public PathID AddPath(ReadOnlyPath path)
+        {
+            if (path.StartingRegion.IsNull)
+                throw new ArgumentNullException("Cannot add path; starting region is null!");
+
+            if (path.EndingRegion.IsNull)
+                throw new ArgumentNullException("Cannot add path; ending region is null!");
+
+            PathID id = new() { AsIndex = PathList.Count };
+            PathList.Add(path);
+            LookupRegionProtected(path.StartingRegion).AddPath(id);
             return id;
         }
 
         /// <summary>
-        /// Lookup a region by name
-        /// </summary>
-        /// <param name="name">The namne of the region to lookup</param>
-        /// <returns>The Region with the given name</returns>
-        /// <exception cref="NullReferenceException">Name is null</exception>
-        /// <exception cref="KeyNotFoundException">There is no region with the given name</exception>
-        public Region LookupRegion(string name)
-            => LookupRegion(RegionLookup[name]);
-
-        /// <summary>
-        /// Lookup a region by ID
-        /// </summary>
-        /// <param name="id">The ID of the region to lookup</param>
-        /// <returns>The Region with the given ID</returns>
-        /// <exception cref="ArgumentOutOfRangeException">There is no region with the given ID</exception>
-        public Region LookupRegion(int id)
-            => RegionList[id];
-
-        /// <summary>
-        /// Create and add a new path
-        /// </summary>
-        /// <param name="start">ID of the starting region</param>
-        /// <param name="end">ID of the ending region</param>
-        /// <returns>The newly-created path</returns>
-        public Path AddPath(int start, int end)
-        {
-            Path path = new(start, end);
-            Region region = LookupRegion(start);
-            region.ConnectedPaths.Add(path);
-            return path;
-        }
-
-        /// <summary>
-        /// Lookup a path based on start and end region. 
+        /// Try to look up a path based on its start and end regions. 
         /// </summary>
         /// <param name="start">The ID of the starting region</param>
         /// <param name="end">The ID of the ending region</param>
-        /// <returns>The path</returns>
-        public Path LookupPath(int start, int end)
+        /// <param name="path">The path which was found, null otherwise</param>
+        /// <returns>True if succesful, false otherwise</returns>
+        /// <remarks>
+        /// Multiple paths can exist between any given start and end region. This outputs the first matching path.
+        /// </remarks>
+        public bool TryLookupPath(RegionID start, RegionID end, out ReadOnlyPath path)
         {
-            Region region = LookupRegion(start);
-            return region.ConnectedPaths.First(r => r.StartingRegion == start && r.EndingRegion == end);
+            ReadOnlyRegion region = LookupRegion(start);
+            path = region.ConnectedPaths
+                .Select(LookupPath)
+                .FirstOrDefault(p => p.EndingRegion.Equals(end));
+            return !path.IsNull;
         }
 
         /// <summary>
-        /// Try to add a location. Logs an error if a location with that name already exists, returning the existing location
+        /// Set the required item count for a particular path
+        /// </summary>
+        /// <param name="id">The path to modify</param>
+        /// <param name="newCount">The new count</param>
+        /// <remarks>
+        /// Used primarily during graph traversal to update direct requirements
+        /// </remarks>
+        public void SetPathReqCount(PathID id, uint newCount)
+        {
+            Path newPath = PathList[id.AsIndex].MakeMutable();
+            newPath.ReqCount = newCount;
+            PathList[id.AsIndex] = newPath;
+        }
+
+        /// <summary>
+        /// Get a path by ID
+        /// </summary>
+        /// <param name="id">The ID of the path</param>
+        /// <returns>The found path object</returns>
+        public ReadOnlyPath LookupPath(PathID id)
+            => PathList[id.AsIndex];
+
+        /// <summary>
+        /// Shortcut to create a new base Location object and add it
+        /// </summary>
+        /// <param name="nameTag">Name tag for the location</param>
+        /// <param name="regions">Regions the location can be found in</param>
+        /// <param name="randData">Rnadomization data for the location</param>
+        /// <returns>The new location's ID, or a null ID if it failed</returns>
+        public LocationID AddLocation(RandomizationTag nameTag, RegionList regions, LocationData randData)
+            => AddLocation(nameTag, regions, randData, new ItemID());
+
+        /// <inheritdoc cref="AddLocation(RandomizationTag, Model.RegionList, LocationData)"/>
+        /// <param name="item">ID of the item in this location, or a null ID for no item</param>
+        public LocationID AddLocation(RandomizationTag nameTag, RegionList regions, LocationData randData, ItemID item)
+            => AddLocation(new Location(nameTag, regions, randData) { ItemID = item });
+
+        /// <summary>
+        /// Try to add a location.
         /// </summary>
         /// <param name="location">The location to add</param>
-        /// <returns>Either the new location if added successfully, or the existing location if one exists</returns>
-        public virtual T AddLocation<T>(T location)
-            where T : Location
+        /// <returns>The ID of the newly-added location, or a null ID if the location name is taken</returns>
+        public LocationID AddLocation(Location location)
         {
-            if (LocationLookup.TryGetValue(location.Name, out var oldLocation))
+            if (LocationLookup.ContainsKey(location.NameTag))
             {
-                FeatureLogger.Error($"Failed to add duplicate location: {location.Name}");
-                return (oldLocation as T)!;
+                FeatureLogger.Error($"Failed to add new location: {LookupTagDef(location.NameTag).Name}");
+                return new();
+            }
+
+            LocationID id = new() { AsIndex = LocationList.Count };
+            LocationList.Add(location);
+            LocationLookup.Add(location.NameTag, id);
+
+            if (location.OwningRegionIds.Distinct().Count() != location.OwningRegionIds.Length)
+                FeatureLogger.Error($"Location is contained in the same region multiple times: {LookupTagDef(location.NameTag).Name}");
+
+            foreach (var regionId in location.OwningRegionIds)
+                RegionList[regionId.AsIndex].AddLocation(id);
+
+            return id;
+        }
+
+        /// <summary>
+        /// Get all locations currently registered
+        /// </summary>
+        public IReadOnlyDictionary<LocationID, Location> GetAllLocations()
+            => new ReadOnlyListDict<LocationID, Location>(LocationList);
+
+        /// <summary>
+        /// Attempt to lookup a location by NameTag
+        /// </summary>
+        /// <param name="nameTag">The NameTag of the location</param>
+        /// <param name="location">The found location</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryLookupLocation(RandomizationTag nameTag, out KeyedLocation location)
+        {
+            if (LocationLookup.TryGetValue(nameTag, out LocationID id))
+            {
+                location = new(id, LookupLocation(id));
+                return true;
             }
             else
             {
-                location.ID = LocationList.Count + 1;
-                LocationLookup[location.Name] = location;
-                LocationList.Add(location);
-
-                if (location.OwningRegionIds.Count == 0)
-                    FeatureLogger.Error($"Location is unreachable; not connected to any regions: {location.Name}");
-                foreach (var regionId in location.OwningRegionIds)
-                    LookupRegion(regionId).ConnectedLocationIds.Add(location.ID);
-                return location;
+                location = new();
+                return false;
             }
         }
 
         /// <summary>
-        /// Try to get a location matching the provided location's name. If no such location exists, the provided location
-        ///  is registered and returned instead.
+        /// Lookup a location by ID
         /// </summary>
-        /// <param name="location">The location to compare to and potentially register</param>
-        /// <returns>The registered location</returns>
-        public virtual T GetLocation<T>(T location)
-            where T : Location
-        {
-            if (LocationLookup.TryGetValue(location.Name, out var oldLocation))
-                return (oldLocation as T)!;
-            else
-            {
-                location.ID = LocationList.Count + 1;
-                LocationLookup[location.Name] = location;
-                LocationList.Add(location);
-
-                if (location.OwningRegionIds.Count == 0)
-                    FeatureLogger.Error($"Location is unreachable; not connected to any regions: {location.Name}");
-                foreach (var regionId in location.OwningRegionIds)
-                    LookupRegion(regionId).ConnectedLocationIds.Add(location.ID);
-                return location;
-            }
-        }
+        /// <param name="id">The ID of the location to be looked up</param>
+        /// <returns>The found location</returns>
+        /// <remarks>If this Game.Data provided the ID, the location is guaranteed to exist</remarks>
+        public Location LookupLocation(LocationID id)
+            => LocationList[id.AsIndex];
 
         /// <summary>
-        /// Fetch a location by name
+        /// Attempts to register a new item.
         /// </summary>
-        /// <param name="name">The nameof the location</param>
-        /// <returns>The location</returns>
-        /// <exception cref="NullReferenceException">If name is null</exception>
-        /// <exception cref="KeyNotFoundException">If there is no location with that name</exception>
-        public Location LookupLocation(string name)
-            => LocationLookup[name];
-
-        /// <summary>
-        /// Fetch a location by ID
-        /// </summary>
-        /// <param name="id">ID of the location</param>
-        /// <returns>The location</returns>
-        /// <exception cref="ArgumentOutOfRangeException">There is no such location with that ID</exception>
-        public Location LookupLocation(long id)
-        {
-            if (id <= 0 || id > LocationList.Count)
-                FeatureLogger.Error("Bad ID during location lookup");
-            return checked(LocationList[(int)(id - 1)]);
-        }
-
-        /// <summary>
-        /// Attempts to register @item and return it. If an item with the same name is already registered, logs an error and returns that one instead
-        /// </summary>
-        /// <typeparam name="TItem">The type of item to add</typeparam>
         /// <param name="item">The item to add</param>
-        /// <returns>The newly-added item (the same as the input), or the existing item if one with the same name already exists</returns>
-        public TItem AddItem<TItem>(TItem item)
-            where TItem : Item
+        /// <returns>The ID of the newly-added item</returns>
+        public ItemID AddItem(Item item)
         {
-            if (ItemLookup.TryGetValue(item.Name, out var actual))
+            if (item.NameTag.IsNull)
+                throw new ArgumentNullException("Cannot register an item with a null name tag!");
+
+            if (ItemLookup.ContainsKey(item.NameTag))
             {
-                FeatureLogger.Error($"Item {item.Name} is already registered");
-                if (actual is TItem typedItem)
-                    return typedItem;
-                FeatureLogger.Error($"Item {item.Name} is already registered as a different item type");
-                return item;
+                string name = TagDefinitions[item.NameTag.AsIndex].Name;
+                throw new ArgumentException($"An item with the NameTag {name} is already registered!");
             }
 
-            item.ID = ItemList.Count + 1;
-            ItemLookup[item.Name] = item;
+            ItemID id = new() { AsIndex = ItemList.Count };
             ItemList.Add(item);
-            return item;
+            ItemLookup.Add(item.NameTag, id);
+            return id;
         }
 
         /// <summary>
-        /// Attempts to register an item and return it. If an item with the same name is already registered and it is the right type, returns that one instead
+        /// Gets all registered items
         /// </summary>
-        /// <typeparam name="TItem">The type of the item being registered</typeparam>
-        /// <param name="item">The item to register</param>
-        /// <returns>The registered item; this is the input if no existing item was found, or an existing item if it exists</returns>
-        public TItem GetItem<TItem>(TItem item)
-            where TItem : Item
-        {
-            Item? actual;
-            if (ItemLookup.TryGetValue(item.Name, out actual))
-            {
-                if (actual is TItem typedItem)
-                    return typedItem;
-                FeatureLogger.Error($"Item {item.Name} is already registered as a different item type");
-                return item;
-            }
+        public IReadOnlyDictionary<ItemID, Item> GetAllItems()
+            => new ReadOnlyListDict<ItemID, Item>(ItemList);
 
-            item.ID = ItemList.Count + 1;
-            ItemLookup[item.Name] = item;
-            ItemList.Add(item);
-            return item;
+        /// <summary>
+        /// Attempt to lookup an item by name.
+        /// </summary>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryLookupItem(RandomizationTag name, out KeyedItem item)
+        {
+            if (ItemLookup.TryGetValue(name, out ItemID id))
+            {
+                item = new(id, LookupItem(id));
+                return true;
+
+            }
+            else
+            {
+                item = new();
+                return false;
+            }
         }
 
         /// <summary>
-        /// Adds an item as a floating item, meaning it will be given a random empty location during randomization
-        /// Floating items must still be registered, ie via AddItem or GetItem
-        /// </summary>
-        /// <param name="item">The item to add. This item must be registered</param>
-        public void AddFloatingItem(Item item)
-            => FloatingItemIds.Add(GetItem(item).ID);
-
-        /// <summary>
-        /// Fetch an item by name
+        /// Lookup an item by ID
         /// </summary>
         /// <param name="name">The name of the item</param>
         /// <returns>The item</returns>
-        /// <exception cref="NullReferenceException">If name is null</exception>
-        /// <exception cref="KeyNotFoundException">If no item is registered for the given name</exception>
-        public Item LookupItem(string name)
-            => ItemLookup[name];
+        public Item LookupItem(ItemID id)
+            => ItemList[id.AsIndex];
 
         /// <summary>
-        /// Fetch an item by id
+        /// Adds an item as a floating item, which can be randomized to any empty location.
         /// </summary>
-        /// <param name="id">The ID of the item</param>
-        /// <returns>The item</returns>
-        /// <exception cref="ArgumentOutOfRangeException">No such item with the given ID exists</exception>
-        public Item LookupItem(long id)
-        {
-            if (id <= 0 || id > ItemList.Count)
-                FeatureLogger.Error("Bad ID during item lookup");
-            return checked(ItemList[(int)(id - 1)]);
-        }
+        /// <param name="id">The ID of the item to add</param>
+        public void AddFloatingItem(ItemID id)
+            => FloatingItems.Add(id);
 
         /// <summary>
-        /// String value to be used for items which do not exist.
-        /// Typically used by Paths which are blocked and not unblockable.
+        /// Get all registered floating item IDs
         /// </summary>
-        [JsonIgnore]
-        public virtual string NotAnItem => "NotAnItem";
+        public IReadOnlyCollection<ItemID> GetAllFloatingItemIds() => FloatingItems;
 
         /// <summary>
         /// Name of the very first region in the game.
         /// </summary>
-        [JsonIgnore]
-        public virtual string MenuRegionName => "Menu";
+        public const string s_menuRegionName = "Menu";
+
+        /// <inheritdoc cref="s_menuRegionName"/>
+        public string MenuRegionName => s_menuRegionName;
+
+        /// <summary>
+        /// The menu region itself
+        /// </summary>
+        public RegionID MenuRegion => LookupOrCreateRegion(MenuRegionName);
+
+        /// <summary>
+        /// A path requirement which is impossible to satisfy, for blocking paths so that they
+        ///  require their alternate item to traverse.
+        /// </summary>
+        public Path.RequiredItem RequiresAltItemReq => new(Path.RequiredItem.eType.Item, this.Tag_Never);
 
         /// <summary>
         /// Used as input to UnstuffPlacements
         /// </summary>
-        public struct RegionInfo
+        public struct RegionInfo : IEquatable<RegionInfo>
         {
             /// <summary>
             /// Index of a region
             /// </summary>
-            public int Region;
+            public RegionID Region;
 
             /// <summary>
             /// If the region is "bad", or difficult to access.
@@ -484,7 +561,8 @@ public static class Game
             /// </summary>
             public bool IsBad;
 
-            public override bool Equals(object? obj) => obj is RegionInfo info && Region == info.Region;
+            public override bool Equals(object? obj) => obj is RegionInfo info && Region.Equals(info);
+            public bool Equals(RegionInfo info) => Region.Equals(info.Region);
             public static bool operator ==(RegionInfo left, RegionInfo right) => left.Equals(right);
             public static bool operator !=(RegionInfo left, RegionInfo right) => !left.Equals(right);
             public override int GetHashCode() => Region.GetHashCode();
@@ -509,7 +587,7 @@ public static class Game
         ///  that the first uplink is possible by merit of the fact only one uplink can require the password terminal.
         ///  It is able to create exactly one placement requiring that terminal and the rest discluding it.
         /// </remarks>
-        public IEnumerable<List<int>> UnstuffPlacements(IEnumerable<IEnumerable<RegionInfo>> placements, int neededCount)
+        public IEnumerable<List<RegionID>> UnstuffPlacements(IEnumerable<IEnumerable<RegionInfo>> placements, int neededCount)
         {
             if (neededCount == 0) yield break;
             else if (!placements.Any())
@@ -550,82 +628,47 @@ public static class Game
 
                 // All placements include all "good" regions and 1 bad region
                 foreach (var badRegion in badRegions)
-                    yield return new List<int>(group.Key.Append(badRegion).Select(info => info.Region));
+                    yield return new List<RegionID>(group.Key.Append(badRegion).Select(info => info.Region));
 
                 // Fill out the remaining required spots with only the good regions
                 while (count-- > 0)
                     yield return group.Key.Select(info => info.Region).ToList();
             }
         }
-    }
-
-    /// <summary>
-    /// Minimal concrete implementation of Data
-    /// </summary>
-    protected class BaseData : Data
-    {
-        /// <summary>
-        /// Standard constructor
-        /// </summary>
-        public BaseData()
-        {
-            processors = new();
-            regionList = new();
-            regionLookup = new();
-            locationList = new();
-            locationLookup = new();
-            itemList = new();
-            itemLookup = new();
-            floatingItemIds = new();
-        }
 
         /// <summary>
-        /// Copy constructor
+        /// Called when processing is done to trim all lists, arrays, etc
         /// </summary>
-        /// <param name="source">The Game.Data to copy</param>
-        public BaseData(BaseData source)
+        public void CleanUp()
         {
-            processors = source.processors;
-            regionList = source.regionList;
-            regionLookup = source.regionLookup;
-            locationList = source.locationList;
-            locationLookup = source.locationLookup;
-            itemList = source.itemList;
-            itemLookup = source.itemLookup;
-            floatingItemIds = source.floatingItemIds;
+            ExpeditionLookup.TrimExcess();
+            RegionList.TrimExcess();
+            RegionLookup.TrimExcess();
+            PathList.TrimExcess();
+            TagDefinitions.TrimExcess();
+            TagLookup.TrimExcess();
+            LocationList.TrimExcess();
+            LocationLookup.TrimExcess();
+            ItemList.TrimExcess();
+            ItemLookup.TrimExcess();
+            FloatingItems.TrimExcess();
+
+            foreach (var region in RegionList)
+                region.CleanUp();
         }
 
-        // Concretes
-        private readonly Dictionary<Type, IProcessor> processors;
-        private readonly List<Region> regionList;
-        private readonly Dictionary<string, int> regionLookup;
-        private readonly List<Location> locationList;
-        private readonly Dictionary<string, Location> locationLookup;
-        private readonly List<Item> itemList;
-        private readonly Dictionary<string, Item> itemLookup;
-        private readonly List<long> floatingItemIds;
-
-        // Interface implementation
-        public override Dictionary<Type, IProcessor> Processors => processors;
-        public override List<Region> RegionList => regionList;
-        public override Dictionary<string, int> RegionLookup => regionLookup;
-        public override List<Location> LocationList => locationList;
-        public override Dictionary<string, Location> LocationLookup => locationLookup;
-        public override List<Item> ItemList => itemList;
-        public override Dictionary<string, Item> ItemLookup => itemLookup;
-        public override List<long> FloatingItemIds => floatingItemIds;
     }
 
     /// <summary>
     /// Attribute used to mark static functions which should autoregister to this processor
     /// </summary>
     [AttributeUsage(AttributeTargets.Method)]
-    public class Callback : Game.IProcessor<Data>.Callback { }
+    public class Callback : MidManager.Processor<Data>.Callback { }
 
     /// <summary>
     /// Actual class wrapping an event processing instance
     /// </summary>
-    public class Processor : Game.IProcessor<Data>
+    public class Processor : MidManager.Processor<Data>
     {
         public Processor()
             => RegisterStaticCallbacks();
@@ -642,20 +685,12 @@ public static class Game
             => Event?.Invoke(data);
     }
 
-    /// <summary>
-    /// Allow the creation of game data. This is typically only called by MidManager, which is where data should be obtained from
-    /// </summary>
-    /// <returns></returns>
-    public static Game.Data MakeData()
-        => new BaseData();
-
-
     extension(Game.Data gameData)
     {
         /// <summary>
         /// Get the Game.Data processor from an instance of Game.Data
         /// </summary>
         public Processor GameProcessor
-            => (Processor)gameData.GetProcessor<Data>();
+            => (Processor)gameData.Manager.GetProcessor<Data>();
     }
 }

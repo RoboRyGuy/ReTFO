@@ -13,25 +13,75 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 public static class Event
 {
     // Interface class passed to processing giving access to necessary data
-    public abstract class Data : Layer.Data, IList<WardenObjectiveEventData>
+    public class Data : Layer.Data, IList<WardenObjectiveEventData>
     {
-        // Minimal interface implementation
-        public abstract Layer.Data LayerData { get; }
-        public abstract int EventRegion { get; }
-        public abstract string EventName { get; }
-        protected abstract Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData>? RawEvents { get; }
-        public abstract int EventStart { get; protected set; }
-        public abstract int EventCount { get; protected set; }
+        /// <summary>
+        /// Region the event occurs in
+        /// </summary>
+        public RegionID EventRegion { get; private init; }
 
-        // Granting access to events via an enumerator
+        /// <summary>
+        /// Unique name for the event
+        /// </summary>
+        public string EventName { get; private init; }
+
+        /// <summary>
+        /// Raw list of events
+        /// </summary>
+        protected Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData>? RawEvents { get; private init; }
+        
+        /// <summary>
+        /// Index of the first event in the list
+        /// </summary>
+        public int EventStart { get; protected set; }
+
+        /// <summary>
+        /// How many events are being processed, starting with EventStart
+        /// </summary>
+        public int EventCount { get; protected set; }
+
+        /// <summary>
+        /// Construct a new data with the given parameters
+        /// </summary>
+        public Data(
+            Layer.Data data,
+            RegionID eventRegion, 
+            string eventName,
+            Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> rawEvents,
+            int eventStart = 0,
+            int eventCount = -1
+        ) 
+            : base(data)
+        {
+            EventRegion = eventRegion;
+            EventName = eventName;
+            RawEvents = rawEvents;
+            EventStart = eventStart;
+            EventCount = eventCount == -1 ? rawEvents.Count - eventStart : eventCount;
+        }
+
+        /// <summary>
+        /// Copy constructor
+        /// </summary>
+        public Data(Event.Data other)
+            : base(other as Layer.Data)
+        {
+            EventRegion = other.EventRegion;
+            EventName = other.EventName;
+            RawEvents = other.RawEvents;
+            EventStart = other.EventStart;
+            EventCount = other.EventCount;
+        }
+
+
+        /// <summary>
+        /// Grants access to events via an enumerator
+        /// </summary>
         public IEnumerable<WardenObjectiveEventData> Events
             => Enumerable.Range(EventStart, EventCount).Select(i => RawEvents![i]);
 
-        // Implementing Layer.Data
-        public override Expedition.Data ExpeditionData => LayerData.ExpeditionData;
-        public override LayerType LayerType => LayerData.LayerType;
-
         // Implementing IList<WardenObjectiveEventData> - Used to give access to the event set currently being processed
+        #region IList<WardenObjectiveEventData>
         public int Count => EventCount;
         public bool IsReadOnly => false;
         public WardenObjectiveEventData this[int index]
@@ -103,65 +153,18 @@ public static class Event
 
         IEnumerator IEnumerable.GetEnumerator()
             => GetEnumerator();
+        #endregion
     }
 
-    // Minimal concrete implementation of Data
-    protected class BaseData : Data
-    {
-        // Standard constructor
-        public BaseData(Layer.Data layerData, int eventRegion, string eventName, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> rawEvents, int eventStart, int eventCount)
-        {
-            this.layerData = layerData;
-            this.eventRegion = eventRegion;
-            this.eventName = eventName;
-            this.rawEvents = rawEvents;
-            this.eventStart = eventStart;
-            this.eventCount = eventCount;
-        }
-
-        // Quick constructor for processing full lists
-        public BaseData(Layer.Data layerData, int eventRegion, string eventName, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> rawEvents)
-        {
-            this.layerData = layerData;
-            this.eventRegion = eventRegion;
-            this.eventName = eventName;
-            this.rawEvents = rawEvents;
-            this.eventStart = 0;
-            this.eventCount = rawEvents.Count;
-        }
-
-        // Copy constructor
-        public BaseData(BaseData source)
-        {
-            layerData = source.layerData;
-            rawEvents = source.rawEvents;
-            eventStart = source.eventStart;
-            eventCount = source.eventCount;
-            eventRegion = source.eventRegion;
-            eventName = source.eventName;
-        }
-
-        // Concretes
-        private readonly Layer.Data layerData;
-        private readonly Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> rawEvents;
-        private int eventStart;
-        private int eventCount;
-        private int eventRegion;
-        private string eventName;
-
-        // Interface implementation
-        public override Layer.Data LayerData => layerData;
-        protected override Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> RawEvents => rawEvents;
-        public override int EventStart { get => eventStart; protected set => eventStart = value; }
-        public override int EventCount { get => eventCount; protected set => eventCount = value; }
-        public override int EventRegion => eventRegion;
-        public override string EventName => eventName;
-    }
-
-    // Wraps a list of events and breaks processing down with respect to event breaks
+    /// <summary>
+    /// Wrapper around a list of events for repeated processing using event breaks.
+    /// Used to break event lists into separate event processing instances, 
+    /// </summary>
     public class Wrapper
     {
-        // Standard constructor
+        /// <summary>
+        /// Standard constructor
+        /// </summary>
         public Wrapper(Layer.Data layerData, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
         {
             this.layerData = layerData;
@@ -171,7 +174,9 @@ public static class Event
             Step();
         }
 
-        // Copy constructor
+        /// <summary>
+        /// Copy constructor
+        /// </summary>
         public Wrapper(Wrapper source)
         {
             layerData = source.layerData;
@@ -180,16 +185,20 @@ public static class Event
             eventCount = source.eventCount;
         }
 
-        // Concretes
         private readonly Layer.Data layerData;
         private readonly Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events;
         private int eventStart;
         private int eventCount;
 
-        // True if all event sets have been processed. By design, an empty list is considered to have 1 event set with no events
+        /// <summary>
+        /// True if all event sets have been processed. By design, an empty list is considered to have 1 event set with no events
+        /// </summary>
         public bool IsDone => eventStart > events.Count;
 
-        // Sets up the next event set, discarding the current one
+        /// <summary>
+        /// Sets up the next event set, discarding the current one
+        /// </summary>
+        /// <param name="errorIfHasEvents">If true, log an error if skipping processing of any events</param>
         public void Step(bool errorIfHasEvents = false)
         {
             if (errorIfHasEvents && eventCount > 0)
@@ -203,15 +212,20 @@ public static class Event
             }
         }
 
-        // Process the current set of events; create a new set if necessary
-        public void Process(int eventRegion, string eventSource, bool extendIfNecessary = false)
+        /// <summary>
+        /// Process the current set of events; optionally create a new set if necessary
+        /// </summary>
+        /// <param name="eventRegion">Region the events occur in</param>
+        /// <param name="eventSource">Unique name for the event source</param>
+        /// <param name="extendIfNecessary">If true and at the end of the event list, extend the list using an event break</param>
+        public void Process(RegionID eventRegion, string eventSource, bool extendIfNecessary = false)
         {
             if (IsDone)
             {
                 if (!extendIfNecessary) return;
                 events.Add(new WardenObjectiveEventData() { Type = eWardenObjectiveEventType.EventBreak });
             }
-            Data data = new BaseData(layerData, eventRegion, eventSource, events, eventStart, eventCount);
+            Data data = new Data(layerData, eventRegion, eventSource, events, eventStart, eventCount);
             layerData.EventProcessor.Process(data);
             eventStart = data.EventStart;
             eventCount = data.EventCount;
@@ -222,10 +236,10 @@ public static class Event
 
     // Attribute used to mark static functions which should autoregister to this processor
     [AttributeUsage(AttributeTargets.Method)]
-    public class Callback : Game.IProcessor<Data>.Callback { }
+    public class Callback : MidManager.Processor<Data>.Callback { }
 
     // Actual class wrapping an event processing instance
-    public class Processor : Game.IProcessor<Data>
+    public class Processor : MidManager.Processor<Data>
     {
         // Public constructor which automatically registers callbacks using helper
         public Processor()
@@ -246,27 +260,33 @@ public static class Event
     extension(Game.Data gameData)
     {
         public Processor EventProcessor
-            => (Processor)gameData.GetProcessor<Data>();
+            => (Processor)gameData.Manager.GetProcessor<Data>();
     }
 
     extension(Layer.Data layerData)
     {
-        // Wrap any list of events for processing with respct to event breaks
+        /// <summary>
+        /// Wrap any list of events for processing with respct to event breaks
+        /// </summary>
         public Wrapper WrapEvents(Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
             => new Wrapper(layerData, events);
 
-        // Quickly process a full list of events
-        public Data ProcessEvents(int eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
+        /// <summary>
+        /// Quickly process a full list of events. Return the processed data
+        /// </summary>
+        public Data ProcessEvents(RegionID eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
         {
-            Data data = new BaseData(layerData, eventRegion, eventSource, events);
+            Data data = new Data(layerData, eventRegion, eventSource, events);
             layerData.EventProcessor.Process(data);
             return data;
         }
 
-        // Process a custom list of events
-        public Data ProcessEvents(int eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events, int eventStart, int eventCount)
+        /// <summary>
+        /// Process a custom list of events
+        /// </summary>
+        public Data ProcessEvents(RegionID eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events, int eventStart, int eventCount)
         {
-            Data data = new BaseData(layerData, eventRegion, eventSource, events, eventStart, eventCount);
+            Data data = new Data(layerData, eventRegion, eventSource, events, eventStart, eventCount);
             layerData.EventProcessor.Process(data);
             return data;
         }
@@ -274,11 +294,20 @@ public static class Event
 
     extension(Objective.Data objectiveData)
     {
-        // Wrap EventsOnActivate
+        /// <summary>
+        /// Wrap EventsOnActivate
+        /// </summary>
         public Wrapper WrapOnActivateEvents()
             => objectiveData.WrapEvents(objectiveData.Objective.EventsOnActivate ??= new(1));
 
-        // Wrap EventsOnActivate; if OnActivateOnSolve is false, make it true and clear the event list
+        /// <summary>
+        /// Wrap EventsOnActivate; if OnActivateOnSolve is false, make it true and clear the event list.
+        /// </summary>
+        /// <remarks>
+        /// This is to be used on objectives that use OnActivateOnSolveItem. This will ensure EventsOnActivate is
+        ///  run for those events; the existing list is cleared first to ensure no side effects occur.
+        /// Not all objectives respect OnActivateOnSolve; using this on those events could cause problems.
+        /// </remarks>
         public Wrapper MakeOrWrapOnSolveEvents()
         {
             if (!objectiveData.Objective.OnActivateOnSolveItem)

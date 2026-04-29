@@ -1,10 +1,9 @@
-﻿using Clonesoft.Json;
-using GameData;
-using Il2CppInterop.Runtime.Injection;
+﻿using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections;
 using ReTFO.Archipelago.Utilities;
+using System.Runtime.CompilerServices;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -14,7 +13,31 @@ namespace ReTFO.Archipelago.Features.EventHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Runtime.CompilerServices;
+
+public static class EventHelper_Tags
+{
+    extension (Game.Data gameData)
+    {
+        /// <summary>
+        /// Parent tag for all event items
+        /// </summary>
+        public TagResolver Tag_EventItems
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Event Items", "Items corresponding to in-game events", gd.Tag_AllItems));
+
+        /// <summary>
+        /// Parent tag for all event locations
+        /// </summary>
+        public TagResolver Tag_EventLocations
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Event Locations", "Locations found by triggering particular events", gd.Tag_AllLocations));
+
+        /// <summary>
+        /// Tag for a particular event type
+        /// </summary>
+        /// <param name="type">The type of event the tag is for</param>
+        public TagResolver Tag_EventLocation_ByType(eWardenObjectiveEventType type)
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag($"Event Locations for {Enum.GetName(type)} Event", "Locations found by triggering a particular event type", gd.Tag_EventLocations));
+    }
+}
 
 [EnableFeatureByDefault, InjectToIl2Cpp]
 public class EventHelper : ArchipelagoFeature
@@ -31,25 +54,21 @@ public class EventHelper : ArchipelagoFeature
 
     private class EventLocation : Location
     {
-        public EventLocation(Event.Data data, WardenObjectiveEventData sourceEvent, int count, Item item)
-            : base($"{data.EventName} {Enum.GetName(sourceEvent.Type)} #{count}", data.EventRegion, item)
+        public EventLocation(Event.Data data, WardenObjectiveEventData sourceEvent, int count)
+            : base(MakeTag(data, sourceEvent, count), data.EventRegion, MakeRandData())
         {
             SourceEvent = sourceEvent;
         }
 
+        public static TagResolver MakeTag(Event.Data data, WardenObjectiveEventData sourceEvent, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.EventName} {Enum.GetName(sourceEvent.Type)} #{count}", "A particular event instance", gd.Tag_EventLocation_ByType(sourceEvent.Type)));
+
+        public static LocationData MakeRandData() => new LocationData();
+
         /// <summary>
         /// Original event data for this location
         /// </summary>
-        [JsonIgnore]
         public WardenObjectiveEventData SourceEvent { get; init; }
-
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-            Categories = new() { "NoEvents" }
-        };
-
-        public override RandomizationData RandData => s_randData;
     }
 
     // Event type which causes a notification to the StateTracker for a region being found
@@ -83,11 +102,11 @@ public class EventHelper : ArchipelagoFeature
     /// </summary>
     /// <param name="regionId">ID of the region to check</param>
     /// <returns>A new CheckRegion event</returns>
-    public static WardenObjectiveEventData CreateCheckRegionEvent(int regionId)
+    public static WardenObjectiveEventData CreateCheckRegionEvent(RegionID regionId)
     {
         WardenObjectiveEventData e = MakeBlankEvent();
         e.Type = CheckRegionEventType;
-        e.EnemyID = BitConverter.ToUInt32(BitConverter.GetBytes(regionId));
+        e.EnemyID = BitConverter.ToUInt32(BitConverter.GetBytes(regionId.Value));
         return e;
     }
 
@@ -101,10 +120,14 @@ public class EventHelper : ArchipelagoFeature
     /// This ensures that if an event type occurs more than once it's still treated as a distinct event.
     /// </param>
     /// <param name="item">The item associated with the location</param>
-    public static void ConvertToCheckLocationEvent(Event.Data data, WardenObjectiveEventData e, int count, Item item)
+    public static void ConvertToCheckLocationEvent(Event.Data data, WardenObjectiveEventData e, int count, ItemID item)
     {
-        Location loc = data.AddLocation(new EventLocation(data, e.MemberwiseClone().Cast<WardenObjectiveEventData>(), count, item));
-        var bytes = BitConverter.GetBytes(loc.ID);
+        Location loc = new EventLocation(data, e.MemberwiseClone().Cast<WardenObjectiveEventData>(), count);
+        loc.ItemID = item;
+        LocationID id = data.AddLocation(loc);
+        if (id.IsNull) return;
+
+        var bytes = BitConverter.GetBytes((long)id.Value);
         e.Type = CheckLocationEventType;
         e.EnemyID = BitConverter.ToUInt32(bytes, 0);
         e.FogSetting = BitConverter.ToUInt32(bytes, 4);
@@ -151,8 +174,8 @@ public class EventHelper : ArchipelagoFeature
             {
                 action = () =>
                 {
-                    int id = BitConverter.ToInt32(BitConverter.GetBytes(inputEvent.EnemyID));
-                    Plugin.Get().StateTracker.NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().RegionList[id].Name, null);
+                    RegionID id = new(BitConverter.ToInt32(BitConverter.GetBytes(inputEvent.EnemyID)));
+                    Plugin.Get().StateTracker.NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
                 };
             }
             else if (eData.Type == CheckLocationEventType)
@@ -160,7 +183,7 @@ public class EventHelper : ArchipelagoFeature
                 byte[] bytes = new byte[8];
                 BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
                 BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
-                long id = BitConverter.ToInt64(bytes);
+                LocationID id = new(BitConverter.ToInt64(bytes));
 
                 StateTracker stateTracker = StateTracker.Get();
                 action = () =>
@@ -175,7 +198,7 @@ public class EventHelper : ArchipelagoFeature
                     if (loc is EventLocation eLoc)
                         eData = eLoc.SourceEvent;
                     else
-                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{loc.ID}] {loc.Name}");
+                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.Value}] {StateTracker.Get().MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
                     return true;
                 }
             }

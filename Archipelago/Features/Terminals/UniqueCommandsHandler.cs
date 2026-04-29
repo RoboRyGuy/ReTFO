@@ -11,7 +11,7 @@ namespace ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class UniqueCommandsHandler : ArchipelagoFeature
 {
     public override string Name => "Unique Command Handler";
@@ -26,17 +26,22 @@ public class UniqueCommandsHandler : ArchipelagoFeature
     }
 
     // TODO: Unique commands sometimes need to be activated via another event
+    //       They can be enabled and disabled, which could cause complications in modded rundowns
 
     // Triggers event processing for when unique commands are triggered
     [Terminal.Callback]
-    public static void AddUniqueCommandEvents(Terminal.Data data)
+    public void AddUniqueCommandEvents(Terminal.Data data)
     {
         foreach (var command in data.TerminalUniqueCommands)
         {
             string name = GetUniqueCommandRegionName(data, command);
-            int commandRegion = data.GetOrCreateRegion(name);
+            RegionID commandRegion = data.LookupOrCreateRegion(name);
             data.ProcessEvents(commandRegion, name, command.CommandEvents ??= new(1));
-            data.AddPath(data.GetOrCreateRegion(data.TerminalName), commandRegion);
+            data.AddPath(new Path()
+            {
+                StartingRegion = data.LookupOrCreateRegion(data.TerminalName),
+                EndingRegion = commandRegion,
+            });
         }
     }
 
@@ -47,16 +52,17 @@ public class UniqueCommandsHandler : ArchipelagoFeature
         {
             if (!__runOriginal) return;
 
-            Plugin plugin = Plugin.Get();
-            Terminal.Data? terminal = Terminal.Data.FromTerminal(__instance.m_terminal);
+            var result = Terminal.Data.FromTerminal(__instance.m_terminal);
+            Terminal.Data? terminal = result.Data;
             if (terminal == null)
             {
-                FeatureLogger.Error("Null terminal data for unique command detection! Is this a reactor terminal?");
+                if (!result.IsReactorTerminal)
+                    FeatureLogger.Error("Null terminal data for unique command detection!");
                 return;
             }
 
             if (cmd >= TERM_Command.UniqueCommand1 && cmd <= TERM_Command.UniqueCommand5)
-                plugin.StateTracker.NotifyFoundRegion(
+                StateTracker.Get().NotifyFoundRegion(
                     GetUniqueCommandRegionName(terminal, terminal.TerminalUniqueCommands[(int)cmd - (int)TERM_Command.UniqueCommand1]),
                     __instance.m_terminal.m_syncedInteractionSource
                 );

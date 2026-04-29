@@ -2,6 +2,7 @@
 using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
+using System;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
@@ -13,8 +14,17 @@ namespace ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+public static class ProgressionCellHandler_Tags
+{
+    extension (Game.Data gameData)
+    {
+        public TagResolver Tag_ProgressionCellSpawnLocations
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Progression Cell Locations", "Locations checked by picking up cells specifically spawned by the game's progression puzzle system.", gd.Tag_BigPickupLocations));
+    }
+}
+
 // Small handler specifically for identifying cells spawned for progression puzzles
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class ProgressionCellHandler : ArchipelagoFeature
 {
     public override string Name => "Progression Cell Handler";
@@ -30,34 +40,30 @@ public class ProgressionCellHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private class ProgressionCellLocation : Location
+    private static class ProgressionCellLocation
     {
-        public ProgressionCellLocation(Zone.Data data, int count, RegionList regions, Item? item)
-            : base(MakeName(data, count), regions, item) { }
+        public static TagResolver MakeTag(Zone.Data data, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Progression Cell #{count} Spawn", "Progression cell spawn location", gd.Tag_ProgressionCellSpawnLocations));
 
-        public static string MakeName(Zone.Data data, int count)
-            => $"{data.ZoneName} Progression Cell #{count} (Location)";
-
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData();
     }
 
     [Zone.Callback]
-    public static void AddProgressionCells(Zone.Data data)
+    public void AddProgressionCells(Zone.Data data)
     {
         if ((data.Zone?.ProgressionPuzzleToEnter.PuzzleType ?? eProgressionPuzzleType.None) != eProgressionPuzzleType.PowerGenerator_And_PowerCell)
             return;
 
-        var cellItem = BigPickupHelper.GetBigPickupItem(data, BigPickupHelper.CellItemID);
-        var placement = data.PlacementsToZoneRegions(data.Zone!.ProgressionPuzzleToEnter.ZonePlacementData).Select(i => i.Region).ToList();
+        var cellItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID);
+        var placement = data.PlacementsToZoneRegions(data.Zone!.ProgressionPuzzleToEnter.ZonePlacementData).Select(i => i.Region).Distinct().ToArray();
         for (int count = 1; count <= data.Zone.ProgressionPuzzleToEnter.PlacementCount; count++)
         {
-            data.GetLocation(new ProgressionCellLocation(
-                data, count, placement, cellItem
-            ));
+            data.AddLocation(
+                ProgressionCellLocation.MakeTag(data, count),
+                placement,
+                ProgressionCellLocation.MakeRandData(),
+                cellItem.ID
+            );
         }
     }
 
@@ -70,14 +76,14 @@ public class ProgressionCellHandler : ArchipelagoFeature
             var queuedJobs = LG_Factory.Current.m_batches[(int)LG_Factory.BatchName.Distribution].Jobs;
             Layer.Data layerData = Layer.Data.FromLayer(__instance.m_layer);
 
-            // Not sure why, but dimensions with no layout can inherit zone datas - this then causes problems
+            // Not sure why, but dimensions with no layout can "inherit" zone datas - this then causes problems
             if (layerData.LayoutID == 0)
                 return;
 
             var queuedCells = __instance.m_layer.m_buildData.m_zoneBuildDatas
                 .Where(z => z.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
                 .Select(z => layerData.FindZoneByIndex(z.LocalIndex))
-                .SelectMany(z => Enumerable.Range(1, z.Zone!.ProgressionPuzzleToEnter.PlacementCount).Select(i => ProgressionCellLocation.MakeName(z, i)))
+                .SelectMany(z => Enumerable.Range(1, z.Zone!.ProgressionPuzzleToEnter.PlacementCount).Select(i => Tuple.Create(z, i)))
                 .GetEnumerator();
 
             foreach (var job in queuedJobs)
@@ -89,12 +95,16 @@ public class ProgressionCellHandler : ArchipelagoFeature
                 if (dist.m_bigPickupDistributionData != null) continue; // Placed by big pickup distirbutions during static zone creation
 
                 // We expect this distribution to be a progression cell
-                if (dist.m_genericItemId != BigPickupHelper.CellItemID)
+                if (dist.m_genericItemId != BigPickupHandler.CellItemID)
                     FeatureLogger.Error("Expected distribution to be a cell, but it wasn't!");
                 else if (queuedCells.MoveNext())
                 {
-                    BigPickupHelper.AssociateDistributionWithLocation(dist, layerData.LookupLocation(queuedCells.Current).ID);
-                    FeatureLogger.Debug($"Created association for Progression Cell: {queuedCells.Current}");
+                    if (!layerData.TryLookupLocation(ProgressionCellLocation.MakeTag(queuedCells.Current.Item1, queuedCells.Current.Item2), out var loc))
+                    {
+                        FeatureLogger.Error($"Failed to create association for progression cell #{queuedCells.Current.Item2} in zone: {queuedCells.Current.Item1.ZoneName}");
+                        continue;
+                    }
+                    PickupHelper.AssociateDistributionWithLocation(dist, loc.ID);
                 }
                 else
                     FeatureLogger.Error("Had more cells than progression puzzle cells!");

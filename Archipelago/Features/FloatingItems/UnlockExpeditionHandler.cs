@@ -1,5 +1,4 @@
-﻿using Clonesoft.Json;
-using GameData;
+﻿using GameData;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -10,10 +9,19 @@ using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
-namespace ReTFO.Archipelago.Features;
+namespace ReTFO.Archipelago.Features.FloatingItems;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+
+public static class UnlockExpeditionHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_ExpeditionUnlocks
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Expedition Unlock Items", "Items which trigger expeditions to be unlocked", gd.Tag_OptionalItems));
+    }
+}
 
 // Handles the UnlockExpedition item, and the path between menu and the expedition's first zone
 [EnableFeatureByDefault]
@@ -22,15 +30,13 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     public override string Name => "Unlock Expedition Handler";
     public override string Description 
         => "Locks expeditions and adds floating expedition unlock items which unlock them";
-    public override FeatureGroup Group => FeatureGroups.Archipelago;
+    public override FeatureGroup Group => FeatureGroups.FloatingHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
     {
         get => m_featureLogger ?? Plugin.Get().Logger;
         set => m_featureLogger = value;
     }
-
-    public const string ExpeditionUnlocksCat = "Expedition Unlocks";
 
     private static IEnumerable<ExpeditionInTierData> UnpackRundown(RundownDataBlock rundown)
     {
@@ -42,46 +48,23 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     }
 
     private static IEnumerable<ExpeditionInTierData> GetActiveExpeditions()
-        => Globals.Global.ActiveRundownIds.Select(RundownDataBlock.GetBlock).SelectMany(UnpackRundown);
-
-    // Lock all expeditions and only unlock ones we have the item for
-    public override void OnEnable()
-    {
-        foreach (var expedition in GetActiveExpeditions())
-            expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
-
-        var stateTracker = StateTracker.Get();
-        foreach (var pair in stateTracker.CollectedItemCounts)
-            if (pair.Key is ExpeditionUnlockItem unlockItem) unlockItem.OnItemObtained(stateTracker, 0);
-    }
-
-    // Unlock all expeditions
-    public override void OnDisable()
-    {
-        foreach (var expedition in GetActiveExpeditions())
-            expedition.Accessibility = eExpeditionAccessibility.AlwaysAllow;
-    }
+        => Globals.Global.ActiveRundownIds?.Select(RundownDataBlock.GetBlock).SelectMany(UnpackRundown) ?? Enumerable.Empty<ExpeditionInTierData>();
 
     private class ExpeditionUnlockItem : Item
     {
         public ExpeditionUnlockItem(Expedition.Data expedition)
-            : base($"Expedition {expedition.ExpeditionName} Unlock")
+            : base(MakeTag(expedition), MakeRandData())
         {
             ExpeditionData = expedition;
-            m_randData = new RandomizationData()
-            {
-                IsProgression = true,
-                DoUncollectOnRandom = true,
-                Categories = new() { expedition.ExpeditionName, $"{expedition.ExpeditionName} Start Items", ExpeditionUnlocksCat }
-            };
+            Tag2 = expedition.Tag_UnlockItems_ByExpedition; // Requires the relevant expedition to be part of the rando
         }
 
-        [JsonIgnore]
-        public Expedition.Data ExpeditionData { get; set; }
+        public static TagResolver MakeTag(Expedition.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", gd.Tag_ExpeditionUnlocks));
 
-        [JsonIgnore]
-        private RandomizationData m_randData;
-        public override RandomizationData RandData => m_randData;
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, DoLoseOnStart = true };
+
+        public Expedition.Data ExpeditionData { get; set; }
 
         private ExpeditionInTierData FindExpedition()
         {
@@ -91,7 +74,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             throw new NotSupportedException();
         }
 
-        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player = null)
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
         {
             if (ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled)
                 FindExpedition().Accessibility = eExpeditionAccessibility.AlwaysAllow;
@@ -104,22 +87,28 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         }
     }
 
-    public static Item GetExpeditionUnlockItem(Expedition.Data data)
-        => data.GetItem(new ExpeditionUnlockItem(data));
+    public static KeyedItem GetExpeditionUnlockItem(Expedition.Data data)
+    {
+        if (data.TryLookupItem(ExpeditionUnlockItem.MakeTag(data), out var item))
+            return item;
+
+        Item newItem = new ExpeditionUnlockItem(data);
+        return new(data.AddItem(newItem), newItem);
+    }
 
     [Expedition.Callback]
-    public static void AddExpeditionUnlock(Expedition.Data data)
+    public void AddExpeditionUnlock(Expedition.Data data)
     {
-        Item reqItem = GetExpeditionUnlockItem(data);
-
-        Path path = data.AddPath(
-            data.GetOrCreateRegion(data.MenuRegionName),
-            data.GetOrCreateRegion(data.MainLayer.FirstZone.ZoneName)
-        );
-        path.RequiredItem = reqItem.Name;
-        path.RequiredItemCount = 1u;
-
-        data.AddFloatingItem(reqItem);
+        KeyedItem reqItem = GetExpeditionUnlockItem(data);
+        data.AddFloatingItem(reqItem.ID);
+        data.AddPath(new Path()
+        {
+            Name = $"{data.ExpeditionName} Expdition Unlock",
+            StartingRegion = data.MenuRegion,
+            EndingRegion = data.StartingRegion,
+            ReqItem = reqItem.PathReqs,
+            ReqCount = 1u,
+        });
     }
 
 }

@@ -1,4 +1,5 @@
-﻿using ReTFO.Archipelago.FeaturesAPI;
+﻿using GameData;
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
@@ -10,11 +11,10 @@ using EventList = Il2CppSystem.Collections.Generic.List<GameData.WardenObjective
 
 namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
-using GameData;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class TriggerEventsHandler : ArchipelagoFeature
 {
     public override string Name => "Trigger Events Handler";
@@ -39,7 +39,7 @@ public class TriggerEventsHandler : ArchipelagoFeature
     };
 
     [Zone.Callback]
-    public static void AddTriggerEvents(Zone.Data data)
+    public void AddTriggerEvents(Zone.Data data)
     {
         // I know these statements can be condensed, but the compiler gives warnings about null references if I don't check each explicitly
         if (data.Zone == null) return;
@@ -78,8 +78,11 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 // Process the events
                 // Note: Skipping/ignoring event breaks, since how would those work here?
                 string eventName = $"{sourceZone.ZoneName} OnTrigger ({trigger})";
-                int eventRegion = data.GetOrCreateRegion(eventName);
-                Path path = data.AddPath(data.GetOrCreateRegion(sourceZone.ZoneName), eventRegion);
+                RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+                data.AddPath(new Path() {
+                    StartingRegion = data.LookupOrCreateRegion(sourceZone.ZoneName), 
+                    EndingRegion = eventRegion
+                });
                 Event.Data eventData = data.ProcessEvents(eventRegion, eventName, fauxList, eventStart, eventEnd - eventStart);
 
                 // Update based on entries added/removed

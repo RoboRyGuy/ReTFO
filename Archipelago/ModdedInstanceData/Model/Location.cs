@@ -1,7 +1,7 @@
-﻿
-using Archipelago.MultiClient.Net.Models;
-using Clonesoft.Json;
-using System.Collections.Generic;
+﻿using Archipelago.MultiClient.Net.Models;
+using ReTFO.Archipelago.Utilities;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
@@ -16,57 +16,234 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 /// In GTFO, locations are considered reachable if and only if all regions they can be located in are reachable.
 /// Note that in actual gameplay, it is still possible to reach locations without access to all possible regions.
 /// </summary>
-public abstract class Location
+public class Location
 {
     /// <summary>
     /// Standard constructor
     /// </summary>
-    /// <param name="name">Name of the location</param>
-    /// <param name="id">ID of the location. The first ID is 1</param>
+    /// <param name="nameTag">Name of the location</param>
     /// <param name="regions">
     /// The regions the location can be found in. 
     /// Archipelago will require all listed regions be reachable for this location to be reachable.
     /// </param>
-    /// <param name="item">The item in this location, if there is one</param>
-    public Location(string name, RegionList regions, Item? item = null)
+    /// <param name="randData">The data used to randomize this location</param>
+    public Location(RandomizationTag nameTag, RegionList regions, LocationData randData)
     {
-        Name = name;
+        NameTag = nameTag;
         OwningRegionIds = regions;
-        ItemID = item?.ID ?? 0L;
+        RandData = randData;
     }
 
     /// <summary>
-    /// Unique name of the location, used to identify it.
+    /// Identifying tag used by this locations
     /// </summary>
-    public string Name { get; set; }
+    public RandomizationTag NameTag { get; init; }
 
     /// <summary>
-    /// Unique ID of the location. IDs range from 1 to 2^53-1.
-    /// The ID of the location will be set when it is registered.
+    /// Optional secondary tag for this location.
     /// </summary>
-    public long ID { get; set; }
+    public RandomizationTag Tag2 { get; init; }
+
+    /// <summary>
+    /// Optional tertiary tag for this location.
+    /// </summary>
+    public RandomizationTag Tag3 { get; init; }
 
     /// <summary>
     /// Regions this location can be in.
     /// </summary>
-    public List<int> OwningRegionIds { get; init; } = new(1);
+    public RegionID[] OwningRegionIds { get; init; }
 
     /// <summary>
     /// Item typically located in this location. 
     /// If 0, this location will be a candidate for floating items.
     /// </summary>
-    public long ItemID { get; set; } = 0;
+    public ItemID ItemID { get; set; } = new();
 
     /// <summary>
-    /// The randomization data to use for this location.
+    /// The data to use for this location.
     /// </summary>
-    public abstract RandomizationData RandData { get; }
+    public LocationData RandData { get; init; }
 
     /// <summary>
     /// Scouted location retrieved from archipelago during play. 
     /// Locations are scouted on session start. This will be null if the item is not randomized.
     /// </summary>
     public ScoutedItemInfo? ScoutedItem { get; set; } = null;
+}
 
-    public override string ToString() => Name;
+/// <summary>
+/// Simple wrapper around a long to help identify it as a LocationID, usable
+///  for looking up a Location instance in GameData.
+/// </summary>
+public struct LocationID : INullable, IIndex, IComparable<LocationID>, IEquatable<LocationID>
+{
+    public LocationID() { }
+    public LocationID(long value) => Value = value;
+    public readonly long Value = 0;
+
+    public bool IsNull => Value == 0;
+    public int AsIndex { get => checked((int)Value) - 1; init => Value = value + 1; }
+    public int CompareTo(LocationID other) => Value.CompareTo(other.Value);
+    public bool Equals(LocationID other) => Value.Equals(other.Value);
+    public override bool Equals([NotNullWhen(true)] object? obj) => obj is LocationID id && Equals(id);
+    public override int GetHashCode() => Value.GetHashCode();
+}
+
+/// <summary>
+/// A Location with an ID associated with it
+/// </summary>
+public struct KeyedLocation : INullable
+{
+    /// <summary>
+    /// Create a new null KeyedLocation
+    /// </summary>
+    public KeyedLocation()
+    {
+        ID = new();
+        Location = null!;
+    }
+
+    /// <summary>
+    /// Create a new KeyedLocation with the given location and ID
+    /// </summary>
+    public KeyedLocation(LocationID id, Location location)
+    {
+        ID = id;
+        Location = location;
+    }
+
+    /// <summary>
+    /// Unique ID of the Location. IDs range from 1 to 2^53-1.
+    /// </summary>
+    public LocationID ID { get; init; }
+
+    /// <summary>
+    /// True if null (contains no location)
+    /// </summary>
+    public bool IsNull => ID.IsNull;
+
+    /// <summary>
+    /// The location object with the given ID
+    /// </summary>
+    public Location Location { get; init; }
+
+    // Below are helper for accessing data in the location
+
+    /// <inheritdoc cref="Location.NameTag"/>
+    public RandomizationTag NameTag => Location.NameTag;
+
+    /// <inheritdoc cref="Location.OwningRegionIds"/>
+    public RegionID[] OwningRegionIds => Location.OwningRegionIds;
+
+    /// <inheritdoc cref="Location.ItemID"/>
+    public ItemID ItemID => Location.ItemID;
+
+    /// <inheritdoc cref="Location.RandData"/>
+    public LocationData Data => Location.RandData;
+
+    /// <inheritdoc cref="Location.ScoutedItem"/>
+    public ScoutedItemInfo? ScoutedItem => ScoutedItem;
+}
+
+/// <summary>
+/// Simple wrapper around some enum values
+/// </summary>
+public struct LocationData
+{ 
+    /// <summary>
+    /// Enum values used by this data
+    /// </summary>
+    public enum eType
+    {
+        /// <summary>
+        /// Mask used to filter to the priority mode of the location
+        /// </summary>
+        PriorityMask = 0x03,
+
+        /// <summary>
+        /// Default priority used by most locations; can contain any item
+        /// </summary>
+        Default = 0,
+
+        /// <summary>
+        /// Prioritized locations will always be filled; first with progression items, then with other items as needed. 
+        /// Usually there are enough progression items to guarantee a progression item fills the spot.
+        /// </summary>
+        Priority = 1,
+
+        /// <summary>
+        /// Exluded locations will never contain progression items; when GTFO is filling empty locations,
+        /// excluded locations will be filled only with filler items.
+        /// </summary>
+        Excluded = 2,
+
+        /// <summary>
+        /// Same as exluded, but when GTFO is filling empty locations this will prefer trap items.
+        /// </summary>
+        Trap = 3,
+
+        /// <summary>
+        /// If this bit is set, the location will be automatically discovered when all its containing regions
+        /// are discovered. Note that not all regions are discoverable, as not all regions have associated checks
+        /// which will notify StateTracker that they are found.
+        /// </summary>
+        AutoDiscover = 1 << 2,
+    }
+
+    /// <summary>
+    /// Construct default location data
+    /// </summary>
+    public LocationData() { }
+
+    /// <summary>
+    /// The stored location data
+    /// </summary>
+    private readonly eType m_value = eType.Default;
+
+    /// <summary>
+    /// Extract or write the priority mode for this data
+    /// </summary>
+    public eType PriorityMode
+    {
+        get => m_value & eType.PriorityMask;
+        init  
+        {
+            if (value != (value & eType.PriorityMask)) throw new ArgumentException("Must assign a priority type to Priority mode!");
+            m_value = value | (m_value & ~eType.PriorityMask);
+        }
+    }
+
+    /// <summary>
+    /// True if this location's progression priority is default
+    /// </summary>
+    public bool IsDefault => PriorityMode == eType.Default;
+
+    /// <summary>
+    /// True if this location's progression priority is 'Priority'
+    /// </summary>
+    public bool IsPriority => PriorityMode == eType.Priority;
+
+    /// <summary>
+    /// True if this location is excluded from progression items
+    /// </summary>
+    public bool IsExcluded => PriorityMode == eType.Excluded;
+
+    /// <summary>
+    /// True if this location is to be treated as a trap placement
+    /// </summary>
+    public bool IsTrap => PriorityMode == eType.Trap;
+
+    /// <summary>
+    /// Extract or write the AutoDiscover mode for this data
+    /// </summary>
+    public bool IsAutoDiscovered
+    {
+        get => (m_value & eType.AutoDiscover) != 0;
+        init
+        {
+            if (value) m_value |= eType.AutoDiscover;
+            else m_value &= ~eType.AutoDiscover;
+        }
+    }
 }

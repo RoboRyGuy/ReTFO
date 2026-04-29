@@ -1,7 +1,6 @@
-﻿
-using Clonesoft.Json;
-using GameData;
+﻿using GameData;
 using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -15,11 +14,22 @@ using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
-using Player;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class BulkheadKeyHandler_Tags
+{
+    extension (Game.Data gameData)
+    {
+        public TagResolver Tag_BulkheadKeyLocations
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Bulkhead Key Locations", "Locations checked by picking up bulkhead keys", gd.Tag_SmallPickupLocations));
+
+        public TagResolver Tag_BulkheadKeyItems
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Bulkhead Key Items", "The bulkhead key item itself", gd.Tag_SmallPickupItems));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class BulkheadKeyHandler : ArchipelagoFeature
 {
     public override string Name => "Bulkhead Key Handler";
@@ -35,20 +45,12 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     /// <summary>
     /// Location class representing a bulkhead key spawn
     /// </summary>
-    private class BulkheadKeyLocation : Location
+    private static class BulkheadKeyLocation
     {
-        public BulkheadKeyLocation(Layer.Data data, int count, RegionList regions, Item? item)
-            : base(MakeName(data, count), regions, item)
-        { }
+        public static TagResolver MakeTag(Layer.Data data, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Bulkhead Key Spawn #{count}", "A bulkhead key spawn location", gd.Tag_BulkheadKeyLocations));
 
-        public static string MakeName(Layer.Data data, int count)
-            => $"{data.LayerName} Bulkhead Key Spawn #{count}";
-
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData();
     }
 
     /// <summary>
@@ -57,43 +59,50 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     private class BulkheadKeyItem : Item
     {
         public BulkheadKeyItem(Expedition.Data data)
-            : base($"{data.ExpeditionName} Bulkhead Key")
+            : base(MakeTag(data), MakeRandData())
         {
             ExpeditionData = data;
         }
 
-        [JsonIgnore]
-        public Expedition.Data ExpeditionData { get; set; }
+        public static TagResolver MakeTag(Expedition.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Bulkhead Key Item", "A bulkhead key for a particular expedition", gd.Tag_BulkheadKeyItems));
 
-        private static RandomizationData s_randData = new()
-        {
-            IsProgression = true,
-            IsRandomLike = true,
-            Categories = new() { "All", "Small Pickups", "Keys", "Bulkheads", "Bulkhead Keys" },
-        };
-        public override RandomizationData RandData => s_randData;
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsRandomLike = true };
+
+        public Expedition.Data ExpeditionData { get; set; }
 
         // Not sure how to check this at runtime except maybe by name? Not worth it
         const uint BULKHEAD_KEY_ID = 146u;
 
-        public override void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player = null)
+        private AsyncItemSpawnWrapper SpawnItemAsync()
+        {
+            AsyncItemSpawnWrapper wrapper = new();
+            ItemReplicationManager.SpawnItem(
+                new pItemData() { itemID_gearCRC = BULKHEAD_KEY_ID },
+                new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
+                ItemMode.Pickup,
+                Vector3.zero,
+                Quaternion.identity,
+                null,
+                null
+            );
+            return wrapper;
+        }
+
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
         {
             // If the bulkhead key is not randomized, we want to try and give it directly to the player who found it
-            if (Expedition.Data.FromCurrentExpedition() == ExpeditionData)
+            if (ExpeditionData.IsCurrentlyInExpedition())
             {
                 if (!stateTracker.TestRandomization(this, true).IsRandomized && player != null)
                 {
-                    global::Item? item = ItemSpawnManager.SpawnItem(BULKHEAD_KEY_ID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-                    KeyItemPickup_Core? keyItem = item?.TryCast<KeyItemPickup_Core>();
-                    if (keyItem == null)
+                    var wrapper = SpawnItemAsync();
+                    wrapper.OnItemSpawned += (item, _) => 
                     {
-                        FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard! Item added to terminal.");
-                    }
-                    else
-                    {
+                        KeyItemPickup_Core keyItem = item.Cast<KeyItemPickup_Core>();
                         keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player.Owner);
-                        return;
-                    }
+                    };
+                    return;
                 }
                 stateTracker.AddItemToTerminal(this);
             }
@@ -101,28 +110,14 @@ public class BulkheadKeyHandler : ArchipelagoFeature
 
         public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
         {
-            if (data == ExpeditionData)
+            if (ExpeditionData.IsSameExpedition(data))
                 stateTracker.AddItemToTerminal(this);
         }
 
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
-            global::Item? item = ItemSpawnManager.SpawnItem(BULKHEAD_KEY_ID, ItemMode.Pickup, Vector3.zero, Quaternion.identity);
-            KeyItemPickup_Core? keyItem = item?.TryCast<KeyItemPickup_Core>();
-            if (keyItem == null)
-            {
-                FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard!");
-                stateTracker.AddItemToTerminal(this);
-                yield return () =>
-                {
-                    terminal.AddLine(TerminalLineType.SpinningWaitDone, "Retrieving colored key", 2f);
-                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
-                };
-                yield break;
-            }
-
             // Isolate these so the lambda can capture them
-            var sync = keyItem.m_sync;
+            var wrapper = SpawnItemAsync();
             var player = terminal.m_localInteractionSource.Owner;
 
             yield return () =>
@@ -132,7 +127,17 @@ public class BulkheadKeyHandler : ArchipelagoFeature
 
             yield return () =>
             {
-                sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
+                KeyItemPickup_Core? keyItem = wrapper.Item?.TryCast<KeyItemPickup_Core>();
+                if (keyItem == null)
+                {
+                    stateTracker.AddItemToTerminal(this);
+                    wrapper.QueueDespawn();
+                    FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard!");
+                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
+                    return;
+                }
+
+                keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
                 terminal.AddLine($"Key \"{keyItem.PublicName}\" has been given to {player.NickName}");
             };
         }
@@ -143,27 +148,34 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     /// </summary>
     /// <param name="data">The expedition to get the key for</param>
     /// <returns>The shared bulkhead key item</returns>
-    public static Item GetBulkheadKeyItem(Expedition.Data data)
-        => data.GetItem(new BulkheadKeyItem(data));
+    public static KeyedItem GetBulkheadKeyItem(Expedition.Data data)
+    {
+        if (data.TryLookupItem(BulkheadKeyItem.MakeTag(data), out var item))
+            return item;
+
+        Item newItem = new BulkheadKeyItem(data);
+        return new KeyedItem(data.AddItem(newItem), newItem);
+    }
 
     // Add bulkhead keys from layer data
     [Layer.Callback]
-    public static void AddBulkheadKeys(Layer.Data data)
+    public void AddBulkheadKeys(Layer.Data data)
     {
         if (data.LayerDatas == null) return;
 
-        Item item = GetBulkheadKeyItem(data);
+        KeyedItem item = GetBulkheadKeyItem(data);
         for (int i = 0; i < data.LayerDatas.BulkheadKeyPlacements.Count; i++)
         {
             // R7C3 Main and R5C1 secondary both have an empty placement (for some reason)
             if (!data.LayerDatas.BulkheadKeyPlacements[i].Any())
                 continue;
 
-            data.GetLocation(new BulkheadKeyLocation(
-                data, i + 1,
-                data.PlacementsToZoneRegions(data.LayerDatas.BulkheadKeyPlacements[i]).Select(info => info.Region).ToList(),
-                item
-            ));
+            data.AddLocation(
+                BulkheadKeyLocation.MakeTag(data, i + 1),
+                data.PlacementsToZoneRegions(data.LayerDatas.BulkheadKeyPlacements[i]).Select(info => info.Region).Distinct().ToArray(),
+                BulkheadKeyLocation.MakeRandData(),
+                item.ID
+            );
         }
     }
 
@@ -183,10 +195,10 @@ public class BulkheadKeyHandler : ArchipelagoFeature
             {
                 if (__instance.m_layer.m_buildData.m_layerGameData.BulkheadKeyPlacements[i].Any(p => p.Pointer == placementData.Pointer))
                 {
-                    PickupHelper.AssociateItem(
-                        keyItem.keyPickupCore, 
-                        layerData.LookupLocation(BulkheadKeyLocation.MakeName(layerData, i + 1)).ID
-                    );
+                    if (layerData.TryLookupLocation(BulkheadKeyLocation.MakeTag(layerData, i + 1), out var loc))
+                        PickupHelper.AssociateItem(keyItem.keyPickupCore, loc.ID);
+                    else
+                        FeatureLogger.Error($"Failed to create association for bulkhead key location in layer: {layerData.LayerName}");
                     return;
                 }
             }

@@ -1,5 +1,6 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using CellMenu;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -7,14 +8,18 @@ using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Utilities;
+using SNetwork;
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using TheArchive;
 using TheArchive.Interfaces;
+using UnityEngine;
 
 namespace ReTFO.Archipelago;
+
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
@@ -64,6 +69,7 @@ public class Plugin : BasePlugin
         var types = Assembly.GetExecutingAssembly().GetTypes();
         InjectRecursive(types);
         PatchRecursive(types);
+        AddProcessors(MidManager);
 
         Log.LogInfo($"{GUID} is loaded!");
     }
@@ -102,6 +108,27 @@ public class Plugin : BasePlugin
         }
     }
 
+    public static void AddProcessors(MidManager midManager)
+    {
+        var expeditionProcessor = new Expedition.Processor().SubscribedTo(midManager.GetProcessor<Game.Data>());
+        midManager.RegisterProcessor(expeditionProcessor);
+
+        var layerProcessor = new Layer.Processor().SubscribedTo(expeditionProcessor);
+        midManager.RegisterProcessor(layerProcessor);
+
+        var zoneProcessor = new Zone.Processor().SubscribedTo(layerProcessor);
+        midManager.RegisterProcessor(zoneProcessor);
+
+        var terminalProcessor = new Terminal.Processor().SubscribedTo(zoneProcessor);
+        midManager.RegisterProcessor(terminalProcessor);
+
+        var objectiveProcessor = new Objective.Processor().SubscribedTo(layerProcessor);
+        midManager.RegisterProcessor(objectiveProcessor);
+
+        var eventProcessor = new Event.Processor();
+        midManager.RegisterProcessor(eventProcessor);
+    }
+
     // --------------------------------------------------------------------------------------------
 
     private ArchipelagoArchiveModule? m_archiveModule = null;
@@ -128,7 +155,27 @@ public class Plugin : BasePlugin
     public MidManager MidManager 
     { 
         get => m_midManager;
-        protected set => m_midManager = value; 
+        protected set => m_midManager = value;
     }
 
+    [HarmonyPatch(typeof(SNet_Replication), nameof(SNet_Replication.RecallBytes))]
+    [HarmonyPrefix]
+    public static void PreRecallBytes(SNet_Replication __instance, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> bytes, uint size)
+    {
+
+    }
+
+    [HarmonyPatch(typeof(PlayerChatManager), nameof(PlayerChatManager.Log))]
+    [HarmonyPostfix]
+    public static void PostLog()
+    {
+        FeatureLogger.Notice("Made a log!");
+    }
+
+    [HarmonyPatch(typeof(PlayerChatManager), nameof(PlayerChatManager.WantToSentTextMessage))]
+    [HarmonyPostfix]
+    public static void PostSent()
+    {
+        FeatureLogger.Notice("Sent a chat message!");
+    }
 }

@@ -6,12 +6,12 @@ using System.Linq;
 namespace ReTFO.Archipelago.Utilities;
 
 // Custom formatting for lists to make them (more) inline
-public sealed class ListConverer<T> : JsonConverter
+public sealed class ListConverter<T> : JsonConverter
 {
     public override bool CanRead => false;
     public override bool CanWrite => true;
 
-    public ListConverer(int maxPerLine = 20)
+    public ListConverter(int maxPerLine = 20)
     {
         MaxPerLine = maxPerLine;
     }

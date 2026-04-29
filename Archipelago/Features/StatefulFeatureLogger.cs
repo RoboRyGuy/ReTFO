@@ -1,5 +1,6 @@
 ﻿using HarmonyLib;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 using System;
 using System.Collections.Generic;
@@ -71,7 +72,7 @@ public class StatefulFeatureLogger : Feature
             IEnumerable<MethodBase> result = type.GetNestedTypes().SelectMany(t => GetMethodsRecursive(t, featureType));
             if (featureType != null)
             {
-                var callbacks = type.GetMethods(bf).Where(m => m.CustomAttributes.Any(ca => ca.AttributeType.IsAssignableTo(typeof(Game.IProcessor.CallbackBase))));
+                var callbacks = type.GetMethods(bf).Where(m => m.CustomAttributes.Any(ca => ca.AttributeType.IsAssignableTo(typeof(MidManager.Processor.CallbackBase))));
                 var patches = type.GetNestedTypes()
                     .Where(t => t.CustomAttributes.Any(ca => ca.AttributeType.IsAssignableTo(typeof(ArchivePatch))))
                     .SelectMany(t => t.GetMethods(bf));

@@ -12,7 +12,7 @@ namespace ReTFO.Archipelago.Features.ZoneHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class ZoneEventsHandler : ArchipelagoFeature
 {
     public override string Name => "Zone Events Handler";
@@ -36,9 +36,9 @@ public class ZoneEventsHandler : ArchipelagoFeature
 
     // Triggers some important zone events that don't really have a home elsewhere
     [Zone.Callback]
-    public static void AddZoneEvents(Zone.Data data)
+    public void AddZoneEvents(Zone.Data data)
     {
-        int region = data.GetOrCreateRegion(data.ZoneName);
+        RegionID region = data.LookupOrCreateRegion(data.ZoneName);
         if (data.Zone != null)
         {
             Tuple<string, EventList?>[] pairs =
@@ -55,8 +55,11 @@ public class ZoneEventsHandler : ArchipelagoFeature
             {
                 if (pair.Item2.Any())
                 {
-                    int eventRegion = data.GetOrCreateRegion(pair.Item1);
-                    data.AddPath(region, eventRegion);
+                    RegionID eventRegion = data.LookupOrCreateRegion(pair.Item1);
+                    data.AddPath(new Path() {
+                        StartingRegion = region, 
+                        EndingRegion = eventRegion
+                    });
                     data.ProcessEvents(eventRegion, pair.Item1, pair.Item2!);
                 }
             }
@@ -64,8 +67,12 @@ public class ZoneEventsHandler : ArchipelagoFeature
         else if (data.DimensionData != null && data.DimensionData.EventsOnBossDeath.Any())
         {   // Only event of note in dimension data is OnBossDeath
             string eventName = $"{data.ZoneName} OnBossDeath";
-            int eventRegion = data.GetOrCreateRegion(eventName);
-            data.AddPath(region, eventRegion);
+            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            data.AddPath(new Path()
+            {
+                StartingRegion = region, 
+                EndingRegion = eventRegion
+            });
             // TODO: Item detecting a boss being spawned?
             data.ProcessEvents(eventRegion, eventName, data.DimensionData.EventsOnBossDeath);
         }

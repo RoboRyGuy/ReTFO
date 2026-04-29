@@ -4,10 +4,6 @@ using HarmonyLib;
 using Il2CppInterop.Runtime;
 using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using TheArchive.Features.Dev;
 using UnityEngine;
 
 namespace ReTFO.Archipelago.Patches;

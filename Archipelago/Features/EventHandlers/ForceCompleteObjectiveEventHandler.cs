@@ -1,6 +1,7 @@
 ﻿using GameData;
 using ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.FeaturesAPI;
+using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
@@ -10,7 +11,7 @@ namespace ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class ForceCompleteObjectiveEventHandler : ArchipelagoFeature
 {
     public override string Name => "Force Complete Objective Event Handler";
@@ -25,7 +26,7 @@ public class ForceCompleteObjectiveEventHandler : ArchipelagoFeature
     }
 
     [Event.Callback]
-    public static void ProcessForceCompleteEvents(Event.Data data)
+    public void ProcessForceCompleteEvents(Event.Data data)
     {
         int count = 0;
         foreach (var e in data)
@@ -36,8 +37,8 @@ public class ForceCompleteObjectiveEventHandler : ArchipelagoFeature
             ++count;
 
             Layer.Data layer = data.GetLayer(e.Layer);
-            Item item = SharedObjectiveHandler.GetCompleteObjectiveItem(layer);
-            EventHelper.ConvertToCheckLocationEvent(data, e, count, item);
+            KeyedItem item = SharedObjectiveHandler.GetCompleteObjectiveItem(layer.GetObjectiveDatas().First());
+            EventHelper.ConvertToCheckLocationEvent(data, e, count, item.ID);
         }
     }
 

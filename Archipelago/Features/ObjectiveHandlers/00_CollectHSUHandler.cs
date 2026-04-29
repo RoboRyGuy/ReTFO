@@ -1,9 +1,12 @@
-﻿using Clonesoft.Json;
+﻿using LevelGeneration;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -12,7 +15,19 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class CollectHSUHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_HSUScanLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("HSU Scan Locations", "Locations checked by starting HSU scans", gd.Tag_AllLocations));
+
+        public TagResolver Tag_HSUScanItems
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("HSU Scan Items", "Items which start HSU scans", gd.Tag_AllItems));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class CollectHSUHandler : ArchipelagoFeature
 {
     public override string Name => "Collect HSU Handler";
@@ -27,108 +42,188 @@ public class CollectHSUHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    /* TODO:
-     *  Location: Detect HSU scan start/complete
-     *  Item: Add ability to receive item over network
-     *  Region: Currently detected using OnSolve events
-     */
-
-    private class CollectHSULocation : Location
+    // Implementation of common static methods for objective handlers
+    private static class This
     {
-        public CollectHSULocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.HSU_FindTakeSample;
 
-        private static RandomizationData s_randData = new()
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
         {
-            AutoDiscover = true,
-        };
-        public override RandomizationData RandData => s_randData;
+            CheckIsCorrectObjective(data);
+            return "Collect HSU";
+        }
+
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
+
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
+        {
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+
+        // Helper to get the full name for This objective
+        public static string ObjectiveName(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return data.ObjectiveName(ObjectiveSummary(data));
+        }
     }
 
-    private class CollectHSUItem : Item
+    // Names of regions for this objective
+    private static class ThisRegions
     {
-        public CollectHSUItem(string name, Objective.Data data)
-            : base(name)
+        // Region reached by starting the HSU scan
+        public static string ScanStartedRegion(Objective.Data data)
+            => $"{This.ObjectiveName(data)} HSU Scan Started";
+
+        // Region reached by completing the HSU scan
+        public static string ScanCompletedRegion(Objective.Data data)
+            => $"{This.ObjectiveName(data)} HSU Scan Completed";
+    }
+
+    // Location representing an HSU scan being started
+    private static class CollectHSU_ScanLocation
+    {
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} HSU Scan Location", "Location checked by starting a particular HSU scan", gd.Tag_HSUScanLocations));
+
+        public static LocationData MakeRandData() => new LocationData() { };
+    }
+
+    // Item representing an HSU scan being started
+    private class CollectHSU_ScanItem : Item
+    {
+        public CollectHSU_ScanItem(Objective.Data data)
+            : base(MakeTag(data), MakeRandData())
         {
             ObjectiveData = data;
         }
+        
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} HSU Scan", "Item which triggers a particular HSU scan", gd.Tag_HSUScanItems));
 
-        [JsonIgnore]
-        public Objective.Data ObjectiveData { get; set; }
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
-        private static RandomizationData s_randData = new()
+        public Objective.Data ObjectiveData;
+
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
-            Categories = { "All", "Objective Items", "Scans", "DNA Samples" },
-        };
-        public override RandomizationData RandData => s_randData;
+            if (ObjectiveData.IsCurrentlyInExpedition())
+                stateTracker.AddItemToTerminal(this);
+        }
+
+        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
+        {
+            if (ObjectiveData.IsSameExpedition(data))
+                stateTracker.AddItemToTerminal(this);
+        }
+
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        {
+            yield return () =>
+            {
+                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Initiating HSU Scan", 2f);
+                terminal.AddLine($"Scan will start in 3 seconds. Enjoy :)");
+            };
+
+            yield return () =>
+            {
+                var obj = ObjectiveData.GetWardenObjective().Cast<WO_HSUFindTakeSample>();
+                obj.m_hsu.m_puzzle.AttemptInteract(ChainedPuzzles.eChainedPuzzleInteraction.Activate);
+            };
+        }
     }
 
-    private const eWardenObjectiveType ThisObjectiveType
-        = eWardenObjectiveType.HSU_FindTakeSample;
-
-    private static string ThisObjectiveSummary(Objective.Data data)
+    public static KeyedItem GetHSUScanItem(Objective.Data data)
     {
-        CheckThisIsCorrectObjective(data);
-        return "Collect HSU";
-    }
+        if (data.TryLookupItem(CollectHSU_ScanItem.MakeTag(data), out var item))
+            return item;
 
-    private static bool ThisIsCorrectObjective(Objective.Data data)
-        => data.Objective.Type == ThisObjectiveType;
-
-    private static void CheckThisIsCorrectObjective(Objective.Data data)
-    {
-        if (!ThisIsCorrectObjective(data))
-            FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ThisObjectiveType)}, got {data.Objective.Type}");
-    }
-
-    private static string ThisObjectiveName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return data.ObjectiveName(ThisObjectiveSummary(data));
-    }
-
-    private static string ThisItemName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} HSU DNA Sample";
-    }
-
-    private static string ThisLocationName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} HSU";
-    }
-
-    private static string ThisRegionName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Sample Collected";
+        Item newItem = new CollectHSU_ScanItem(data);
+        return new(data.AddItem(newItem), newItem);
     }
 
     [Objective.Callback]
     public void HandleCollectHSUSample(Objective.Data data)
     {
-        if (!ThisIsCorrectObjective(data)) return;
+        if (!This.IsCorrectObjective(data)) return;
 
-        // Add HSU item to expedition
-        var hsuItem = data.GetItem(new CollectHSUItem(ThisItemName(data), data));
-        data.GetLocation(new CollectHSULocation(
-            ThisLocationName(data),
-            data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas[0]).Select(info => info.Region).ToList(),
-            hsuItem
-        ));
+        // Starting and completing the HSU scan
+        RegionList hsuRegions = data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas[0]).Select(info => info.Region).ToList();
+        KeyedItem scanItem = GetHSUScanItem(data);
+        data.AddLocation(
+            CollectHSU_ScanLocation.MakeTag(data),
+            hsuRegions,
+            CollectHSU_ScanLocation.MakeRandData(),
+            scanItem.ID
+        );
 
-        // Region representing the objective being completed
-        string regionName = ThisRegionName(data);
-        int region = data.GetOrCreateRegion(regionName);
-        Path path = data.AddPath(data.ObjectiveStartRegion, region);
-        path.RequiredItem = hsuItem.Name;
-        path.RequiredItemCount = 1;
+        // Scan start region
+        string scanStartedRegionName = ThisRegions.ScanStartedRegion(data);
+        RegionID scanStartedRegion = data.LookupOrCreateRegion(scanStartedRegionName);
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.ObjectiveStartRegion,
+            EndingRegion = scanStartedRegion,
+            ReqItem = scanItem.PathReqs,
+            ReqCount = 1u
+        });
 
-        data.MakeOrWrapOnSolveEvents()
-            .Process(region, regionName);
+        // Events triggered by starting the scan
+        data.MakeOrWrapOnSolveEvents().Process(scanStartedRegion, scanStartedRegionName);
 
-        SharedObjectiveHandler.AddObjectiveCompleteItem(data, ThisObjectiveSummary(data), region);
+        // Scan completed region
+        string scanCompletedRegionName = ThisRegions.ScanCompletedRegion(data);
+        RegionID scanCompletedRegion = data.LookupOrCreateRegion(scanCompletedRegionName);
+        data.AddPath(new Path()
+        {
+            StartingRegion = scanStartedRegion,
+            EndingRegion = scanCompletedRegion,
+        });
+
+        // Place the objective completion here, too
+        SharedObjectiveHandler.AddObjectiveCompleteItem(data, scanCompletedRegion);
+    }
+
+    /// <summary>
+    /// When the HSU's puzzle is set up, sweep in and overwrite the scan trigger
+    /// </summary>
+    [ArchivePatch(typeof(LG_HSU.LG_HSUScannerJob), nameof(LG_HSU.LG_HSUScannerJob.Build))]
+    public static class OnHSUSetup
+    {
+        public static void Postfix(LG_HSU.LG_HSUScannerJob __instance)
+        {
+            if (!__instance.m_hsu.m_isWardenObjective) return;
+
+            Objective.Data data = Expedition.Data.FromCurrentExpedition()
+                .GetLayer(__instance.m_hsu.OriginLayer)
+                .GetObjectiveDatas()
+                .ElementAt(__instance.m_hsu.WardenObjectiveChainIndex);
+
+            if (!data.TryLookupLocation(CollectHSU_ScanLocation.MakeTag(data), out var loc))
+            {
+                FeatureLogger.Error("Failed to find HSU Scan Location while creating associations.");
+                return;
+            }
+
+            LocationID id = loc.ID; // Isolate for the lambda
+            void OnInteract(PlayerAgent player)
+            {
+                if (!StateTracker.Get().NotifyFoundLocation(id, player).IsTreatedAsRandom)
+                    __instance.m_hsu._Setup_b__14_2(player); // I'm guessing this is the lambda it usually gives the interact
+            }
+
+            __instance.m_hsu.m_pickupSampleInteraction.OnInteractionTriggered 
+                = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<PlayerAgent>>(
+                    new Action<PlayerAgent>(OnInteract)
+            );
+        }
     }
 
 }

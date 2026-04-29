@@ -14,27 +14,63 @@ using RegionInfo = ReTFO.Archipelago.ModdedInstanceData.Processors.Game.Data.Reg
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+using ReTFO.Archipelago.ModdedInstanceData.Model;
+
 public static class Terminal
 {
-    // Interface class passed to processing giving access to necessary data
-    public abstract class Data : Zone.Data
+    /// <summary>
+    /// Data class passed to processing
+    /// </summary>
+    public class Data : Zone.Data
     {
-        // Minimal interface implementation
-        public abstract Zone.Data ZoneData { get; }
-        public abstract int TerminalIndex { get; }
+        /// <summary>
+        /// Create a new terminal data
+        /// </summary>
+        /// <param name="data">The zone containing the terminal</param>
+        /// <param name="terminalIndex">The index of the terminal; a negative index is for specific terminal placements</param>
+        public Data(Zone.Data data, int terminalIndex)
+            : base(data)
+        {
+            TerminalIndex = terminalIndex;
+        }
 
-        // Names
-        public virtual string TerminalName
+        /// <summary>
+        /// Copy constructor
+        /// </summary>
+        public Data(Terminal.Data other)
+            : base(other as Zone.Data)
+        {
+            TerminalIndex = other.TerminalIndex;
+        }
+
+        /// <summary>
+        /// Index of this terminal in the zone. 
+        /// A negative index is for specific terminal placements. (-1 => specific terminal 0, etc)
+        /// </summary>
+        public int TerminalIndex { get; private init; }
+
+        /// <summary>
+        /// Name uniquely identifying this terminal
+        /// </summary>
+        public string TerminalName
            => IsStandardTerminal ? $"{ZoneName} Terminal #{TerminalIndex + 1}"
             : IsSpecificTerminal ? $"{ZoneName} Terminal ({SpecificTerminalData.WorldEventObjectFilter})"
             : throw new NotImplementedException();
 
-        // Useful helpers
+        /// <summary>
+        /// True if this is a standard terminal
+        /// </summary>
         public bool IsStandardTerminal => TerminalIndex >= 0;
+
+        /// <summary>
+        /// True if this is a specific terminal (placed on a specific align)
+        /// </summary>
         public bool IsSpecificTerminal => TerminalIndex < 0;
 
-        // Standard terminal data for this terminal. Throws if this is not a standard terminal
-        public virtual TerminalPlacementData StandardTerminalData
+        /// <summary>
+        /// Standard terminal data for this terminal. Throws if this is not a standard terminal
+        /// </summary>
+        public TerminalPlacementData StandardTerminalData
         {
             get
             {
@@ -50,8 +86,10 @@ public static class Terminal
             }
         }
 
-        // Specific terminal data for this terminal. Throws if this is not a specific terminal 
-        public virtual SpecificTerminalSpawnData SpecificTerminalData
+        /// <summary>
+        /// Specific terminal data for this terminal. Throws if this is not a specific terminal 
+        /// </summary>
+        public SpecificTerminalSpawnData SpecificTerminalData
         {
             get
             {
@@ -67,19 +105,25 @@ public static class Terminal
             }
         }
 
-        // Starting state data for this terminal
+        /// <summary>
+        /// Starting state data for this terminal
+        /// </summary>
         public virtual TerminalStartStateData TerminalStartingStateData
            => IsStandardTerminal ? StandardTerminalData.StartingStateData
             : IsSpecificTerminal ? SpecificTerminalData.StartingStateData
             : throw new NotImplementedException();
 
-        // Unique command list for this terminal
+        /// <summary>
+        /// Unique command list for this terminal
+        /// </summary>
         public virtual Il2CppSystem.Collections.Generic.List<CustomTerminalCommand> TerminalUniqueCommands
            => IsStandardTerminal ? StandardTerminalData.UniqueCommands
             : IsSpecificTerminal ? SpecificTerminalData.UniqueCommands
             : throw new NotImplementedException();
 
-        // Local logs included in this terminal
+        /// <summary>
+        /// Local logs included in this terminal
+        /// </summary>
         public virtual Il2CppSystem.Collections.Generic.List<TerminalLogFileData> TerminalLocalLogs
            => IsStandardTerminal ? StandardTerminalData.LocalLogFiles
             : IsSpecificTerminal ? SpecificTerminalData.LocalLogFiles
@@ -90,49 +134,26 @@ public static class Terminal
         /// </summary>
         /// <param name="terminal">The terminal to get data for</param>
         /// <returns>
-        /// The terminal data, or null if this terminal has no data.
-        /// Some terminals are not spawned by GameData (for example, reactor terminals) and as such have no data.
+        /// The IdentifyTerminalResult for this terminal, which either has data
+        ///  or states the terminal is a reactor. Reactor terminals have no data.
         /// </returns>
-        public static Terminal.Data? FromTerminal(LG_ComputerTerminal terminal)
+        public static IdentifyingLogHandler.IdentifyTerminalResult FromTerminal(LG_ComputerTerminal terminal)
             => IdentifyingLogHandler.RetrieveDataFromLog(terminal);
 
-        // Implementing Zone.Data
-        public override Layer.Data LayerData => ZoneData.LayerData;
-        public override ExpeditionZoneData? Zone => ZoneData.Zone;
-    }
-
-    // Minimal concrete implementation of Data
-    protected class BaseData : Data
-    {
-        // Standard constructor
-        public BaseData(Zone.Data zoneData, int terminalIndex)
-        {
-            this.zoneData = zoneData;
-            this.terminalIndex = terminalIndex;
-        }
-
-        // Copy constructor
-        public BaseData(BaseData source)
-        {
-            zoneData = source.zoneData;
-            terminalIndex = source.terminalIndex;
-        }
-
-        // Concretes
-        private readonly Zone.Data zoneData;
-        private readonly int terminalIndex;
-
-        // Interface implementation
-        public override Zone.Data ZoneData => zoneData;
-        public override int TerminalIndex => terminalIndex;
+        /// <summary>
+        /// A potentially expensive operation which attempts to get the spawned terminal instance.
+        /// Returns null on fail; assumes the correct expedition is loaded.
+        /// </summary>
+        public LG_ComputerTerminal? GetLG_Terminal()
+            => GetLG_Zone()?.TerminalsSpawnedInZone?.FirstOrDefault(t => (FromTerminal(t).Data?.TerminalIndex ?? 0) == TerminalIndex);
     }
 
     // Attribute used to mark static functions which should autoregister to this processor
     [AttributeUsage(AttributeTargets.Method)]
-    public class Callback : Game.IProcessor<Data>.Callback { }
+    public class Callback : MidManager.Processor<Data>.Callback { }
 
     // Actual class wrapping an event processing instance
-    public class Processor : Game.IProcessor<Data>
+    public class Processor : MidManager.Processor<Data>
     {
         public Processor()
             => RegisterStaticCallbacks();
@@ -149,7 +170,7 @@ public static class Terminal
             => Event?.Invoke(data);
 
         // Helper so this can be created inline and also be registered to a zone processor
-        public Processor SubscribedTo(Zone.Processor owner)
+        public Processor SubscribedTo(MidManager.Processor<Zone.Data> owner)
         {
             owner.RegisterCallback(OnProcessZone);
             return this;
@@ -159,43 +180,59 @@ public static class Terminal
         protected void OnProcessZone(Zone.Data data)
         {
             foreach (var index in data.TerminalIndicies)
-                Process(new BaseData(data, index));
+                Process(new Data(data, index));
         }
     }
 
     extension(Layer.Data layerData)
     {
-        // Find a terminal given a terminal placement
+        /// <summary>
+        /// Find a terminal given a terminal placement
+        /// </summary>
+        /// <param name="placement"></param>
+        /// <returns></returns>
         public Data FindTerminalByPlacement(TerminalZoneSelectionData placement)
-            => new BaseData(layerData.FindZoneByIndex(placement.LocalIndex), placement.TerminalIndex);
+            => new Data(layerData.FindZoneByIndex(placement.LocalIndex), placement.TerminalIndex);
 
-        // Convert a list of terminal selection lists into terminal regions
+        /// <summary>
+        /// Convert a list of terminal selection lists into terminal regions
+        /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToTerminalRegions(Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.List<TerminalZoneSelectionData>> placements)
             => placements.Select(ps => ps.Select(p => layerData.FindZoneByIndex(p.LocalIndex).GetTerminal(p.TerminalIndex))
-                .Select(t => new RegionInfo() { Region = layerData.GetOrCreateRegion(t.TerminalName), IsBad = t.TerminalStartingStateData.PasswordProtected }));
+                .Select(t => new RegionInfo() { Region = layerData.LookupOrCreateRegion(t.TerminalName), IsBad = t.TerminalStartingStateData.PasswordProtected }));
 
-        // Convert a list of placement lists into terminal regions
+        /// <summary>
+        /// Convert a list of placement lists into terminal regions
+        /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToTerminalRegions(DoublePlacementList placements)
             => layerData.PlacementsToTerminalRegions(placements.Iter());
 
-        // Convert an enumerable of placement lists into terminal regions
+        /// <summary>
+        /// Convert an enumerable of placement lists into terminal regions
+        /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToTerminalRegions(IEnumerable<PlacementList> placements)
             => placements.Select(ps => layerData.PlacementsToTerminalRegions(ps));
 
-        // Convert a list of placements into terminal regions
+        /// <summary>
+        /// Convert a list of placements into terminal regions
+        /// </summary>
         public IEnumerable<RegionInfo> PlacementsToTerminalRegions(PlacementList placements)
             => layerData.PlacementsToTerminalRegions(placements.Iter());
 
-        // Convert an enumerable of placements into terminal regions
+        /// <summary>
+        /// Convert an enumerable of placements into terminal regions
+        /// </summary>
         public IEnumerable<RegionInfo> PlacementsToTerminalRegions(IEnumerable<ZonePlacementData> placements)
             => placements.SelectMany(p => layerData.PlacementToTerminalRegions(p));
 
-        // Convert a single placement into a list of terminal regions
+        /// <summary>
+        /// Convert a single placement into a list of terminal regions
+        /// </summary>
         public IEnumerable<RegionInfo> PlacementToTerminalRegions(ZonePlacementData placement)
         {
             return layerData.FindZoneByPlacement(placement).TerminalDatas.Select(t => new RegionInfo()
             {
-                Region = layerData.GetOrCreateRegion(t.TerminalName),
+                Region = layerData.LookupOrCreateRegion(t.TerminalName),
                 IsBad = t.TerminalStartingStateData.PasswordProtected,
             });
         }
@@ -204,7 +241,7 @@ public static class Terminal
     extension(Game.Data gameData)
     {
         public Processor TerminalProcessor
-            => (Processor)gameData.GetProcessor<Data>();
+            => (Processor)gameData.Manager.GetProcessor<Data>();
     }
 
     extension(Zone.Data zoneData)
@@ -227,7 +264,7 @@ public static class Terminal
 
         // Get all terminal datas for this zone
         public IEnumerable<Data> TerminalDatas
-            => zoneData.TerminalIndicies.Select(i => new BaseData(zoneData, i));
+            => zoneData.TerminalIndicies.Select(i => new Data(zoneData, i));
 
         // Get a specific terminal data for this zone
         public Data GetTerminal(int index)
@@ -237,14 +274,14 @@ public static class Terminal
                 FeatureLogger.Error($"Terminal index {index} does not exist in zone: {zoneData.ZoneName}");
                 index = 0;
             }
-            return new BaseData(zoneData, index);
+            return new Data(zoneData, index);
         }
     }
 
     extension(Objective.Data objectiveData)
     {
         // Make and unstuff terminal region sets for an objective
-        public IEnumerable<List<int>> ObjectiveToTerminalRegionSets(int count)
+        public IEnumerable<List<RegionID>> ObjectiveToTerminalRegionSets(int count)
             => objectiveData.UnstuffPlacements(objectiveData.PlacementsToTerminalRegions(objectiveData.ObjectiveData.ZonePlacementDatas), count);
     }
 }

@@ -10,11 +10,19 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
 
-using PlayFab;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class APCommandExtractHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_TerminalExtractLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Terminal Extract Locations", "Empty locations checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_AllLocations));
+    }
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class APCommandExtractHandler : ArchipelagoFeature
 {
     public override string Name => "AP Extract Command";
@@ -43,32 +51,25 @@ public class APCommandExtractHandler : ArchipelagoFeature
 
     public override void OnDisable()
     {
-        base.OnEnable();
+        base.OnDisable();
         APCommandHandler.UnregisterCommand(m_extractCommand ??= new());
         APCommandHandler.UnregisterCommand(m_releaseCommand ??= new());
     }
 
-    private class TerminalExtractReleaseLocation : Location
+    private static class TerminalExtractReleaseLocation
     {
-        public TerminalExtractReleaseLocation(Terminal.Data data, int count)
-            : base(MakeName(data, count), data.GetOrCreateRegion(data.TerminalName), null) { }
+        public static TagResolver MakeTag(Terminal.Data data, int count)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Extract Location #{count}", "A location checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_TerminalExtractLocations));
 
-        public static string MakeName(Terminal.Data data, int count)
-            => $"{data.TerminalName} Generic Location #{count}";
-
-        private static RandomizationData s_randData = new()
-        {
-            IsUseful = true,
-        };
-        public override RandomizationData RandData => s_randData;
+        public static LocationData MakeRandData() => new LocationData();
     }
 
     // Make the item codes used for extract / release
-    private static IEnumerable<Tuple<string, string>> MakeItemCodes(LG_ComputerTerminal terminal)
+    private static IEnumerable<Tuple<string, KeyedLocation>> MakeItemCodes(StateTracker stateTracker, LG_ComputerTerminal terminal)
     {
-        Terminal.Data? terminalData = Terminal.Data.FromTerminal(terminal);
+        Terminal.Data? terminalData = Terminal.Data.FromTerminal(terminal).Data;
         if (terminalData == null)
-            return Enumerable.Empty<Tuple<string, string>>();
+            return Enumerable.Empty<Tuple<string, KeyedLocation>>();
 
         Random random = new(Tuple.Create(Plugin.Get().StateTracker.RootSeed, terminalData.TerminalName.GetHashCode()).GetHashCode());
         char r()
@@ -77,8 +78,17 @@ public class APCommandExtractHandler : ArchipelagoFeature
             return (char)(choice >= 10 ? 'A' + (choice - 10) : '0' + choice);
         }
 
-        return Enumerable.Range(1, ItemsPerTerminal)
-            .Select(i => Tuple.Create($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", TerminalExtractReleaseLocation.MakeName(terminalData, i)));
+        Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+        Tuple<string, KeyedLocation>[] results = new Tuple<string, KeyedLocation>[ItemsPerTerminal];
+        for (int i = 0; i < ItemsPerTerminal; i++)
+        {
+            RandomizationTag tag = TerminalExtractReleaseLocation.MakeTag(terminalData, i + 1);
+            if (!gameData.TryLookupLocation(tag, out var loc))
+                FeatureLogger.Error($"Failed to lookup terminal extraction location: {gameData.LookupTagDef(tag).Name}");
+            results[i] = Tuple.Create($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", loc);
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -102,14 +112,14 @@ public class APCommandExtractHandler : ArchipelagoFeature
 
             StateTracker stateTracker = StateTracker.Get();
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-            var codes = MakeItemCodes(terminal);
+            var codes = MakeItemCodes(stateTracker, terminal);
             bool printedSomething = false;
             foreach (var pair in codes)
             {
-                Location location = gameData.LookupLocation(pair.Item2);
-                bool isEmpty = location.ItemID == 0 || stateTracker.HasLocation(pair.Item2);
+                bool isEmpty = pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID);
 
-                string itemName()   => location.ScoutedItem?.ItemDisplayName ?? gameData.LookupItem(location.ItemID).Name;
+                Location location = pair.Item2.Location;
+                string itemName()   => location.ScoutedItem?.ItemDisplayName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
                 string itemGame()   => location.ScoutedItem?.ItemGame ?? "GTFO";
                 string itemPlayer() => location.ScoutedItem?.Player.Name ?? StateTracker.Config.Username;
                 
@@ -142,7 +152,9 @@ public class APCommandExtractHandler : ArchipelagoFeature
 
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
-            var pair = MakeItemCodes(terminal).FirstOrDefault(p => string.Compare(p.Item1, param2, StringComparison.OrdinalIgnoreCase) == 0);
+            StateTracker stateTracker = StateTracker.Get();
+            var pair = MakeItemCodes(stateTracker, terminal).FirstOrDefault(p => string.Compare(p.Item1, param2, StringComparison.OrdinalIgnoreCase) == 0);
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
 
             if (pair == null)
             {
@@ -153,18 +165,15 @@ public class APCommandExtractHandler : ArchipelagoFeature
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, $"Releasing item {param2.ToUpper()}", ReleaseDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Positive);
 
-                StateTracker stateTracker = StateTracker.Get();
-                Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-                Location location = gameData.LookupLocation(pair.Item2);
 
-                if (location.ItemID == 0)
+                if (pair.Item2.Location.ItemID.IsNull)
                 {
                     terminal.AddLine("No item to release.");
                 }
                 else
                 {
-                    terminal.AddLine("Item released successfully: " + location.ScoutedItem?.ItemDisplayName ?? gameData.LookupItem(location.ItemID).Name);
-                    terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(location.ID, terminal.m_syncedInteractionSource));
+                    terminal.AddLine("Item released successfully: " + pair.Item2.Location.ScoutedItem?.ItemDisplayName ?? gameData.LookupTagDef(gameData.LookupItem(pair.Item2.Location.ItemID).NameTag).Name);
+                    terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(pair.Item2.ID, terminal.m_syncedInteractionSource));
                 }
             }
         }
@@ -175,11 +184,15 @@ public class APCommandExtractHandler : ArchipelagoFeature
     /// </summary>
     /// <param name="data">The terminal data for processing callback</param>
     [Terminal.Callback]
-    public static void AddTerminalItems(Terminal.Data data)
+    public void AddTerminalItems(Terminal.Data data)
     {
         for (int i = 1; i <= ItemsPerTerminal; i++)
         {
-            data.GetLocation(new TerminalExtractReleaseLocation(data, i));
+            data.AddLocation(
+                TerminalExtractReleaseLocation.MakeTag(data, i), 
+                data.LookupOrCreateRegion(data.TerminalName), 
+                TerminalExtractReleaseLocation.MakeRandData()
+            );
         }
     }
 

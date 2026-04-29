@@ -1,5 +1,5 @@
 ﻿using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using ReTFO.Archipelago.ModdedInstanceData;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +15,6 @@ namespace ReTFO.Archipelago.FeaturesAPI;
 /// </summary>
 public static class ArchipelagoFeatureHelper
 {
-
     [ForceDisable("Internal archipelago feature used only for finding features"), HideInModSettings]
     internal class FakeFeature : ArchipelagoFeature
     {
@@ -76,8 +75,9 @@ public static class ArchipelagoFeatureHelper
             | BindingFlags.NonPublic
         ;
 
-        return type.GetMethods(bf)
-                .Where(m => m.CustomAttributes.Any(a => a.AttributeType.IsAssignableTo(typeof(Game.IProcessor.CallbackBase))));
+        return type
+            .GetMethods(bf)
+            .Where(m => m.CustomAttributes.Any(a => a.AttributeType.IsAssignableTo(typeof(MidManager.Processor.CallbackBase))));
     }
 
     /// <summary>
@@ -95,14 +95,14 @@ public static class ArchipelagoFeatureHelper
     public static void RegisterInstancedCallbacks(object instance)
     {
         var methods = GetInstancedProcessorCallbacks(instance.GetType());
-        var gameData = Plugin.Get().MidManager.GetUnprocessedGameData();
+        MidManager manager = Plugin.Get().MidManager;
         foreach (var method in methods)
         {
-            var attribute = method.GetCustomAttribute<Game.IProcessor.CallbackBase>();
+            var attribute = method.GetCustomAttribute<MidManager.Processor.CallbackBase>();
             if (attribute == null)
                 throw new NotSupportedException("After checking for the Callback attribute, it was still somehow null!");
 
-            Game.IProcessor processor = gameData.GetProcessor(attribute.DataType);
+            MidManager.Processor processor = manager.GetProcessor(attribute.DataType);
             Delegate? del = Delegate.CreateDelegate(attribute.DelegateType, instance, method, false);
             if (del == null)
                 FeatureLogger.Error($"Failed to bind delegate! Method: {method.DeclaringType!.FullName}.{method.Name} Delegate Type: {attribute.DelegateType.DeclaringType}.{attribute.DelegateType.Name}");
@@ -118,14 +118,14 @@ public static class ArchipelagoFeatureHelper
     public static void UnregisterInstancedCallbacks(object instance)
     {
         var methods = GetInstancedProcessorCallbacks(instance.GetType());
-        var gameData = Plugin.Get().MidManager.GetUnprocessedGameData();
+        MidManager manager = Plugin.Get().MidManager;
         foreach (var method in methods)
         {
-            var attribute = method.GetCustomAttribute<Game.IProcessor.CallbackBase>();
+            var attribute = method.GetCustomAttribute<MidManager.Processor.CallbackBase>();
             if (attribute == null)
                 throw new NotSupportedException("After checking for the Callback attribute, it was still somehow null!");
 
-            Game.IProcessor processor = gameData.GetProcessor(attribute.DataType);
+            MidManager.Processor processor = manager.GetProcessor(attribute.DataType);
             Delegate del = Delegate.CreateDelegate(attribute.DelegateType, instance, method);
             processor.UntypedUnregisterCallback(del);
         }

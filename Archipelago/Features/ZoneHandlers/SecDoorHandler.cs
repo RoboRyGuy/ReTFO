@@ -1,6 +1,7 @@
 ﻿
 using GameData;
 using Player;
+using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -11,11 +12,10 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
-using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class SecDoorHandler : ArchipelagoFeature
 {
     public override string Name => "Sec Door Handler";
@@ -31,7 +31,7 @@ public class SecDoorHandler : ArchipelagoFeature
 
     // Add entrances between zones on the same layer
     [Zone.Callback]
-    public static void AddZoneEntrances(Zone.Data data)
+    public void AddZoneEntrances(Zone.Data data)
     {
         // Check if this zone generates a normal doorway
         if (data.Layout == null || data.Zone == null) return; // Dimension with only one zone
@@ -43,81 +43,92 @@ public class SecDoorHandler : ArchipelagoFeature
             entryZone = data.FirstZone; // Yes, this happens. Presumably an oversight in R8C1's secondary layout data
         else
             entryZone = data.FindZoneByIndex(data.Zone.BuildFromLocalIndex)!;
-        int entryRegion = data.GetOrCreateRegion(entryZone.ZoneName);
-        Path path = data.AddPath(
-            entryRegion,
-            data.GetOrCreateRegion(data.ZoneName)
-        );
+        RegionID entryRegion = data.LookupOrCreateRegion(entryZone.ZoneName);
+        Path path = new Path()
+        {
+            Name = $"{data.ZoneName} Main Entry",
+            StartingRegion = entryRegion,
+            EndingRegion = data.LookupOrCreateRegion(data.ZoneName)
+        };
 
         // Handle locked doors
-        path.Name = $"{data.ZoneName} Main Entry";
         LayerData? layerData = data.LayerDatas;
         if (layerData?.ZonesWithBulkheadEntrance.Contains(data.Zone.LocalIndex) ?? false)
         {   // This zone is locked by a bulkhead door
-            path.RequiredItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).Name;
-            path.RequiredItemCount = 1;
+            path.ReqItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).PathReqs;
+            path.ReqCount = 1u;
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Keycard_SecurityBox)
         {   // Typical colored key
-            path.RequiredItem = ColoredKeyHandler.GetColoredKeyItem(data).Name;
-            path.RequiredItemCount = 1;
+            path.ReqItem = ColoredKeyHandler.GetColoredKeyItem(data).PathReqs;
+            path.ReqCount = 1u;
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
         {   // Must power a specific generator with a cell
-            path.RequiredItem = BigPickupHelper.GetBigPickupItem(data, BigPickupHelper.CellItemID).Name;
+            path.ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID).PathReqs;
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Locked_No_Key)
         {   // Can only be unlocked by an event force unlocking it
-            path.RequiredItem = data.NotAnItem;
-            path.RequiredItemCount = 1u;
+            path.ReqItem = data.RequiresAltItemReq;
+            path.ReqCount = 1u;
         }
-        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(data).Name;
+        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(data).PathReqs;
+        data.AddPath(path);
 
         // Finally, handle OnApproach events, which will live in the entry zone
         if (data.Zone.EventsOnApproachDoor.Any())
         {
             string eventName = $"{data.ZoneName} OnApproach";
-            int eventRegion = data.GetOrCreateRegion(eventName);
-            data.AddPath(entryRegion, eventRegion);
+            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            data.AddPath(new Path() {
+                StartingRegion = entryRegion, 
+                EndingRegion = eventRegion
+            });
             data.ProcessEvents(eventRegion, eventName, data.Zone.EventsOnApproachDoor);
         }
     }
 
     // Add entrances to the first zones in secondary and overload
     [Layer.Callback]
-    public static void AddLayerEntrances(Layer.Data data)
+    public void AddLayerEntrances(Layer.Data data)
     {
-        if (data.BuildFromData == null) return; // As a side effect, this limits processing to secondary and overload layers
+        if (data.BuildFromData == null) return; // This limits processing to secondary and overload layers
 
         Zone.Data targetZone = data.FirstZone;
         Layer.Data sourceLayer = data.GetLayer(data.BuildFromData.LayerType);
         Zone.Data? entryZone = sourceLayer.FindZoneByIndex(data.BuildFromData.Zone);
 
-        int entryRegion = data.GetOrCreateRegion(entryZone.ZoneName);
-        Path path = data.AddPath(
-            entryRegion,
-            data.GetOrCreateRegion(targetZone.ZoneName)
-        );
+        RegionID entryRegion = data.LookupOrCreateRegion(entryZone.ZoneName);
+        Path path = new()
+        {
+            Name = $"{data.LayerName} Layer Entry",
+            StartingRegion = entryRegion,
+            EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName)
+        };
 
-        path.Name = $"{data.LayerName} Layer Entry";
         if (sourceLayer.LayerDatas!.BulkheadDoorControllerPlacements.FirstOrDefault(p => p.ZoneIndex == data.BuildFromData.Zone) != null)
         {   // If there is a bulkhead DC in the zone this layer connects to, we can unlock this zone with a key
-            path.RequiredItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).Name;
-            path.RequiredItemCount = 1;
+            path.ReqItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).PathReqs;
+            path.ReqCount = 1u;
         }
         else
         {   // Can only unlock via an event
-            path.RequiredItem = data.NotAnItem;
-            path.RequiredItemCount = 0xFF;
+            path.ReqItem = data.RequiresAltItemReq;
+            path.ReqCount = 1u;
         }
-        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(targetZone).Name;
+        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(targetZone).PathReqs;
+        data.AddPath(path);
 
         // Finally, handle OnApproach events, which will live in the entry zone
         if (targetZone.Zone!.EventsOnApproachDoor.Any())
         {
             string eventName = $"{targetZone.ZoneName} OnApproach";
-            int eventRegion = data.GetOrCreateRegion(eventName);
-            data.AddPath(entryRegion, eventRegion);
+            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            data.AddPath(new Path()
+            {
+                StartingRegion = entryRegion,
+                EndingRegion = eventRegion
+            });
             data.ProcessEvents(eventRegion, eventName, targetZone.Zone.EventsOnApproachDoor);
         }
     }

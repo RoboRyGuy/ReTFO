@@ -1,5 +1,4 @@
-﻿using Clonesoft.Json;
-using GameData;
+﻿using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -13,7 +12,20 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
-[EnableFeatureByDefault]
+public static class SpecialTerminalCommandHandler_Tags
+{
+    extension (Game.Data data)
+    {
+        public TagResolver Tag_SpecialCommandLocations
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Command Locations", "Locations checked by executing special command objectives' commands", gd.Tag_Never));
+
+        public TagResolver Tag_SpecialCommandItems
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Command Items", "Items awared for executing special command objectives' commands", gd.Tag_Never));
+    }
+
+}
+
+[EnableFeatureByDefault, AutomatedFeature]
 public class SpecialTerminalCommandHandler : ArchipelagoFeature
 {
     public override string Name => "Special Terminal Command Handler";
@@ -29,115 +41,113 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    /*
-     * TODO:
-     *  Location: Detect the command being run
-     *  Item: Add ability to receive item over network
-     *  Region: Currently detected using OnActivate events
-     */
-
-    private class STCLocation : Location
+    // Implementation of common static methods for objective handlers
+    private static class This
     {
-        public STCLocation(string name, RegionList regions, Item? item)
-            : base(name, regions, item) { }
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.SpecialTerminalCommand;
 
-        private static RandomizationData s_randData = new()
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
         {
+            CheckIsCorrectObjective(data);
+            return $"Execute Command {data.Objective.SpecialTerminalCommand}";
+        }
 
-        };
-        public override RandomizationData RandData => s_randData;
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
+
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
+        {
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+
+        // Helper to get the full name for This objective
+        public static string ObjectiveName(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return data.ObjectiveName(ObjectiveSummary(data));
+        }
+    }
+
+    // Names of regions for this objective
+    private static class ThisRegions
+    {
+        // Region reached by executing the special command
+        public static string CommandExecuted(Objective.Data data)
+            => $"{This.ObjectiveName(data)} Command Executed";
+    }
+
+    private static class STCLocation
+    {
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Special Command Location", "A special command location for a particular objective", gd.Tag_SpecialCommandLocations));
+
+        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
 
     private class STCItem : Item
     {
-        public STCItem(string name, Objective.Data data)
-            : base(name)
+        public STCItem(Objective.Data data)
+            : base(MakeTag(data), MakeRandData())
         {
             ObjectiveData = data;
         }
 
-        [JsonIgnore]
+        public static TagResolver MakeTag(Objective.Data data)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Special Command Item", "A special command item for a particular objective", gd.Tag_SpecialCommandItems));
+
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        
         public Objective.Data ObjectiveData { get; set; }
-
-        private static RandomizationData s_randData = new()
-        {
-            Categories = { "All", "Objective Items", "Terminal Commands", "Special Terminal Commands" },
-        };
-        public override RandomizationData RandData => s_randData;
     }
 
-    private const eWardenObjectiveType ThisObjectiveType
-        = eWardenObjectiveType.SpecialTerminalCommand;
-
-    private static string ThisObjectiveSummary(Objective.Data data)
+    public static KeyedItem GetItem(Objective.Data data)
     {
-        CheckThisIsCorrectObjective(data);
-        return $"Execute Command {data.Objective.SpecialTerminalCommand}";
-    }
+        if (data.TryLookupItem(STCItem.MakeTag(data), out var item))
+            return item;
 
-    private static bool ThisIsCorrectObjective(Objective.Data data)
-        => data.Objective.Type == ThisObjectiveType;
-
-    private static void CheckThisIsCorrectObjective(Objective.Data data)
-    {
-        if (!ThisIsCorrectObjective(data))
-            FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ThisObjectiveType)}, got {data.Objective.Type}");
-    }
-
-    private static string ThisObjectiveName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return data.ObjectiveName(ThisObjectiveSummary(data));
-    }
-
-    private static string ThisItemName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Command Executed";
-    }
-
-    private static string ThisLocationName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Terminal";
-    }
-
-    private static string ThisRegionName(Objective.Data data)
-    {
-        CheckThisIsCorrectObjective(data);
-        return $"{ThisObjectiveName(data)} Command Executed";
+        Item newItem = new STCItem(data);
+        return new(data.AddItem(newItem), newItem);
     }
 
     // Objective requiring a single command be entered into a specific terminal
     [Objective.Callback]
     public void HandleSpecialTerminalCommandObjective(Objective.Data data)
     {
-        if (!ThisIsCorrectObjective(data))
+        if (!This.IsCorrectObjective(data))
             return;
-
-        Path path;
 
         var rawPlacements = data.ObjectiveData.ZonePlacementDatas.FirstOrDefault()?.Iter() ?? Enumerable.Repeat(new ZonePlacementData(), 1);
         var placement = data.PlacementsToTerminalRegions(rawPlacements).Select(info => info.Region);
 
-        Item item = data.GetItem(new STCItem(ThisItemName(data), data));
-        Location location = data.GetLocation(new STCLocation(
-            ThisLocationName(data),
-            placement.ToList(),
-            item
-        ));
+        KeyedItem item = GetItem(data);
+        data.AddLocation(
+            STCLocation.MakeTag(data),
+            placement.ToArray(),
+            STCLocation.MakeRandData(),
+            item.ID
+        );
 
-        string commandExecutedName = ThisRegionName(data);
-        int commandExecutedRegion = data.GetOrCreateRegion(commandExecutedName);
-        path = data.AddPath(data.ObjectiveStartRegion, commandExecutedRegion);
-        path.RequiredItem = item.Name;
-        path.RequiredItemCount = 1;
+        string commandExecutedName = ThisRegions.CommandExecuted(data);
+        RegionID commandExecutedRegion = data.LookupOrCreateRegion(commandExecutedName);
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.ObjectiveStartRegion,
+            EndingRegion = commandExecutedRegion,
+            ReqItem = item.PathReqs,
+            ReqCount = 1u,
+        });
 
         // Events triggered upon executing the command
         var eventWrapper = data.WrapOnActivateEvents();
         eventWrapper.Process(commandExecutedRegion, commandExecutedName);
 
-        SharedObjectiveHandler.AddObjectiveCompleteItem(data, ThisObjectiveSummary(data), commandExecutedRegion);
+        SharedObjectiveHandler.AddObjectiveCompleteItem(data, commandExecutedRegion);
     }
 
 }

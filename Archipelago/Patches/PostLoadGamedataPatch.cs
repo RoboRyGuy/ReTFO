@@ -27,13 +27,12 @@ internal static class PostLoadGamedataPatch
             throw new NotImplementedException("PostLoadGamedataPatch could not access plugin!");
         plugin.MidManager.InvalidateModdedInstanceData();
 
-        // Overwrite the rundowns to be loaded - This changes the menu which is loaded to the "Connect to Rundown" menu
-        // This will be copied to Globals.Global, which we will then modify to increase the number of rundowns as needed
+        // Overwrite the rundowns to be loaded - This changes the menu which is loaded to the "Connect to Rundown" menu.
+        // This will later be copied to Globals.Global, which we will then modify to increase the number of rundowns as needed.
         GameSetupDataBlock setup = GameSetupDataBlock.GetAllBlocks()[0];
         uint oldId = setup.RundownIdsToLoad[0];
         setup.RundownIdsToLoad = new(1);
         setup.RundownIdsToLoad.Add(oldId);
-        plugin.StateTracker.TryOverwriteRundowns();
     }
 
 }

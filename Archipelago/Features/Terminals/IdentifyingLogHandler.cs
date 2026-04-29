@@ -30,15 +30,32 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Method to retrieve terminal data from the identifying log
-    public static Terminal.Data? RetrieveDataFromLog(LG_ComputerTerminal terminal)
+    /// <summary>
+    /// Because reactor terminals are a special case, we have a special way to track them
+    /// </summary>
+    public struct IdentifyTerminalResult
     {
+        public IdentifyTerminalResult(bool isReactor, Terminal.Data? data)
+        {
+            IsReactorTerminal = isReactor;
+            Data = data;
+        }
+        public bool IsReactorTerminal;
+        public Terminal.Data? Data;
+    }
+
+    // Method to retrieve terminal data from the identifying log
+    public static IdentifyTerminalResult RetrieveDataFromLog(LG_ComputerTerminal terminal)
+    {
+        if (terminal.ConnectedReactor != null)
+            return new IdentifyTerminalResult(true, null);
+
         int entry = terminal.m_localLogs.FindEntry(IdentifyingLogName);
         if (entry < 0)
         {
             Zone.Data zone = Zone.Data.FromZone(terminal.SpawnNode.m_zone);
             FeatureLogger.Warning($"Failed to find identifying log from terminal in zone: {zone.ZoneName}");
-            return null;
+            return new IdentifyTerminalResult(false, null);
         }
 
         var pair = terminal.m_localLogs.entries[entry];
@@ -48,10 +65,10 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         {
             Zone.Data zone = Zone.Data.FromZone(terminal.SpawnNode.m_zone);
             FeatureLogger.Warning($"Failed to retrieving identifying data from log for terminal in zone: {zone.ZoneName}");
-            return null;
+            return new IdentifyTerminalResult(false, null);
         }
 
-        return injectedText.TerminalData;
+        return new IdentifyTerminalResult(false, injectedText.TerminalData);
     }
 
     // Name of the log used to identify the terminal
@@ -72,7 +89,7 @@ public class IdentifyingLogHandler : ArchipelagoFeature
 
     // When processing terminals, add a custom log which helps us identify it during gameplay
     [Terminal.Callback]
-    public static void AddIdentifyingLog(Terminal.Data data)
+    public void AddIdentifyingLog(Terminal.Data data)
     {
         if ((data.TerminalLocalLogs.Count > 0) && (data.TerminalLocalLogs.Any(l => l.FileName == IdentifyingLogName)))
             return;
