@@ -1,4 +1,5 @@
-﻿using GameData;
+﻿using CellMenu;
+using GameData;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
@@ -6,6 +7,7 @@ using ReTFO.Archipelago.Features.FloatingItems;
 using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Patches;
 using ReTFO.Archipelago.Utilities;
+using SimpleProgression.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,6 +48,12 @@ public partial class StateTracker : ArchipelagoFeature
         get => m_plugin ??= Plugin.Get();
         protected set => m_plugin = value;
     }
+
+    public override bool ShouldInit()
+    {
+        return true;
+    }
+
     public MidManager MidManager => Plugin.MidManager;
     public AP.ArchipelagoSession? ApSession { get; protected set; } = null;
     public event Action<StateTracker>? OnStateChange;
@@ -260,6 +268,9 @@ public partial class StateTracker : ArchipelagoFeature
         BlacklistTags = new();
 
         PostConnectCommon();
+
+        FeatureLogger.Notice("Due to fake connect, removing all expedition locks.");
+        UnlockExpeditionHandler.UnlockAll();
     }
 
     /// <summary>
@@ -377,7 +388,6 @@ public partial class StateTracker : ArchipelagoFeature
         FeatureLogger.Notice("Beginning graph traversal for new rundowns");
         HashSet<RandomizationTag> unlockTags = Expeditions.Select(e => e.Tag_UnlockItems_ByExpedition.SelfResolve()).ToHashSet();
         HashSet<RandomizationTag> goalTags = Expeditions.Select(e => e.Tag_GoalItems_ByExpedition.SelfResolve()).ToHashSet();
-        WhitelistTags.UnionWith(unlockTags);
 
         if (!MidManager.DoGraphTraversal(gameData, true, unlockTags, goalTags, false))
         {
@@ -389,8 +399,15 @@ public partial class StateTracker : ArchipelagoFeature
         else
             FeatureLogger.Success("Graph traversal succeeded!");
 
-        // Early overwrite so that callbacks can depend on them being there
+        // Early overwrite so that callbacks can depend on the rundowns being there
         TryOverwriteRundowns();
+
+        // Resetting local progression (entering a clean state)
+        var expeditionProgressions = Globals.Global.ActiveRundownIds
+            .Select(LocalProgressionManager.Instance.GetOrCreateLocalProgression);
+
+        foreach (var prog in expeditionProgressions)
+            prog.Expeditions.Clear();
 
         // Ensure everything is reset
         FoundRegions.Clear();
@@ -422,7 +439,7 @@ public partial class StateTracker : ArchipelagoFeature
             .GetAllFloatingItemIds()
             .Select(id => new KeyedItem(id, gameData.LookupItem(id)))
             .Where(i => i.RandData.IsProgression)
-            .Where(i => TestRandomization(i.Item).IsFloatingItem)
+            .Where(i => TestRandomization(i.Item).IsRandomized)
             .Select(i => i.ID);
         foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
         DistributeItems(emptyLocations, queuedItems);
@@ -446,7 +463,7 @@ public partial class StateTracker : ArchipelagoFeature
         );
         floatingItems = gameData
             .GetAllFloatingItemIds()
-            .Where(id => TestRandomization(gameData.LookupItem(id)).IsFloatingItem);
+            .Where(id => TestRandomization(gameData.LookupItem(id)).IsRandomized);
         foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
         DistributeItems(emptyLocations, queuedItems);
 
@@ -472,14 +489,8 @@ public partial class StateTracker : ArchipelagoFeature
             item.OnItemLost(this);
         }
 
-        // If we're in fake connect, we need to at least allow access to the first expedition
-        if (CurrentState.IsFakeConnected)
-        {
-            RandomizationTag firstUnlockTag = Expeditions[0].UnlockItemsTag;
-            FeatureLogger.Notice($"Because of fake connect, granting duplicate items from tag {gameData.LookupTagDef(firstUnlockTag).Name}");
-            foreach (var item in gameData.GetAllFloatingItemIds())
-                if (gameData.TagMatches(firstUnlockTag, gameData.LookupItem(item))) CollectItem(item);
-        }
+        // Find the first region (for free) - Note that the Local PlayerAgent is likely null
+        NotifyFoundRegion(gameData.MenuRegionName, PlayerManager.GetLocalPlayerAgent());
     }
 
     /// <summary>
@@ -505,19 +516,19 @@ public partial class StateTracker : ArchipelagoFeature
             RandomizedEmptyLocation = 4,
 
             /// <summary>
-            /// This is an item with no source location which is a candidate for randomization
-            /// </summary>
-            RandomizedFloatingItem = 6,
-
-            /// <summary>
             /// This location is not allowed to be randomized due to its tag(s) being blacklisted
             /// </summary>
-            LocationBlacklisted = 8,
+            LocationBlacklisted = 6,
 
             /// <summary>
             /// There is no whitelist tag allowing this location to be randomized
             /// </summary>
-            LocationNotWhitelisted = 10,
+            LocationNotWhitelisted = 8,
+
+            /// <summary>
+            /// This item has a non-null required expedition AND that expedition is not enabled
+            /// </summary>
+            ItemExpeditionNotRandomized = 10,
 
             /// <summary>
             /// This item (or the item contained by this location) is not allowed to be randomized due to its tag(s) being blacklisted
@@ -525,7 +536,7 @@ public partial class StateTracker : ArchipelagoFeature
             ItemBlacklisted = 12,
 
             /// <summary>
-            /// There is no whitelist tag allowing this item to be randomized
+            /// There is no whitelist tag allowing this item (or the item contained by this location) to be randomized
             /// </summary>
             ItemNotWhitelisted = 14,
         }
@@ -545,7 +556,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <summary>
         /// True if the randomization type is "Randomized"
         /// </summary>
-        public bool IsRandomized => (int)m_value > 1;
+        public bool IsRandomized => Type == eType.Randomized;
 
         /// <summary>
         /// True if the randomization type is "Randomlike"
@@ -561,11 +572,6 @@ public partial class StateTracker : ArchipelagoFeature
         /// True if this result represents an empty location
         /// </summary>
         public bool IsEmptyLocation => Type == eType.RandomizedEmptyLocation;
-
-        /// <summary>
-        /// True if this result represents a floating item
-        /// </summary>
-        public bool IsFloatingItem => Type == eType.RandomizedFloatingItem;
     }
 
     /// <summary>
@@ -580,12 +586,12 @@ public partial class StateTracker : ArchipelagoFeature
 
         if (gameData.AnyTagMatches(BlacklistTags, loc))
             result = RandTest.eType.LocationBlacklisted;
-        else if (!gameData.AllTagsMatch(WhitelistTags, loc))
+        else if (!gameData.AnyTagMatches(WhitelistTags, loc))
             result = RandTest.eType.LocationNotWhitelisted;
         else if (loc.ItemID.IsNull)
             return new RandTest(RandTest.eType.RandomizedEmptyLocation);
         else
-            return TestRandomization(gameData.LookupItem(loc.ItemID), true);
+            return TestRandomization(gameData.LookupItem(loc.ItemID));
 
         bool isRandomLike = !loc.ItemID.IsNull && gameData.LookupItem(loc.ItemID).RandData.IsRandomLike;
         if (isRandomLike)
@@ -597,21 +603,20 @@ public partial class StateTracker : ArchipelagoFeature
     /// Test the randomization properties of an item
     /// </summary>
     /// <param name="item">The item to test</param>
-    /// <param name="hasSourceLocation">True if the item has a source location. Generally, call with hasSourceLocation=false</param>
     /// <returns>A RandTest which tells how this item is or is not randomized</returns>
-    public RandTest TestRandomization(Item item, bool hasSourceLocation = false)
+    public RandTest TestRandomization(Item item)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         RandTest.eType result;
 
-        if (gameData.AnyTagMatches(BlacklistTags, item))
+        if ((item.RequiredExpedition != null) && !Expeditions.Contains(item.RequiredExpedition, new Expedition.Data.Comparer()))
+            result = RandTest.eType.ItemExpeditionNotRandomized;
+        else if (gameData.AnyTagMatches(BlacklistTags, item))
             result = RandTest.eType.ItemBlacklisted;
-        else if (!gameData.AllTagsMatch(WhitelistTags, item))
+        else if (!gameData.AnyTagMatches(WhitelistTags, item))
             result = RandTest.eType.ItemNotWhitelisted;
-        else if (hasSourceLocation)
-            result = RandTest.eType.Randomized;
         else
-            result = RandTest.eType.RandomizedFloatingItem;
+            result = RandTest.eType.Randomized;
 
         if (item.RandData.IsRandomLike)
             result |= RandTest.eType.Randomlike;
@@ -760,7 +765,7 @@ public partial class StateTracker : ArchipelagoFeature
             newExpedition.Descriptive.Prefix = Expeditions[i].ExpeditionName;
             newExpedition.Descriptive.SkipExpNumberInName = true;
             newExpedition.ExcludeFromMatchmaking = true;
-            newExpedition.ExcludeFromProgression = true;
+            newExpedition.ExcludeFromProgression = false;
             newExpedition.Descriptive.ProgressionVisualStyle = eProgressionVisualStyle.Normal;
             newExpedition.Accessibility = eExpeditionAccessibility.AlwaysAllow; // Will be overwritten by expedition unlock item
             newExpedition.HideOnLocked = false; // R8 right-side expeditions
@@ -849,11 +854,11 @@ public partial class StateTracker : ArchipelagoFeature
                     Title = MakeText($"{rundown.name} - Title", rundown.name),
                     ExternalExpTitle = MakeText($"{rundown.name} - ExpTitle", rundown.name),
                     SurfaceDescription = MakeText($"{rundown.name} - Surface Description", ""
-                      + "\nWORK WITH <#FF0>FELLOW <i>PRISON</i>ERS</color> TO RECOVER <#0F0>SECURE AS<i>SETS</i></color> AND <#F0F>COMPLETE THE </color><#F00>RUN<i>DOWN</i></color>"
+                      + "\nWORK WITH FELLOW PRISONERS TO RECOVER SECURE ASSETS AND COMPLETE THE RUNDOWN"
                       + "\n\n-----------------------------------"
-                      + "\n\n<#FF0>COORDINATE</color> ACROSS THE <#00F><i>MULTI</i>WORLD</color> TO <#F00>MINIMIZE <i>CASUAL</i>TIES</color> AND <#0F0>ACCELE<i>RATE PRIOR</i>ITIES</color>"
+                      + "\n\nCOORDINATE ACROSS THE MULTIWORLD TO MINIMIZE CASUALTIES AND ACCELERATE PRIORITIES"
                       + "\n\n-----------------------------------"
-                      + "\n\nCOLLECT <#F00>WARDEN <i>ART</i>IFACTS</color> TO <#FF0>SUPPLEMENT SUCCESS MAR<i>GINS</i></color> AT THE COST OF <#F0F><i>EMOTION</i>AL DUR<i>ESS<i></color>"
+                      + "\n\nCOLLECT WARDEN ARTIFACTS TO SUPPLEMENT SUCCESS MARGINS AT THE COST OF EMOTIONAL DURESS"
                     ),
                     SurfaceIconPosition = new(0, 0),
                     Visuals = new() { ColorBackground = Color.magenta },
@@ -921,10 +926,9 @@ public partial class StateTracker : ArchipelagoFeature
                     ExpeditionInTierData expedition;
                     if (weights[i] > 0f)
                         expedition = newExpeditions.Dequeue();
-                    //else if (weights[i] > -1.5f)
-                    //    expedition = dudExpedition;
                     else
                         continue; // Throwout
+
                     switch (tier)
                     {
                         case 0:
@@ -948,6 +952,9 @@ public partial class StateTracker : ArchipelagoFeature
                 }
             }
         }
+
+        if (newExpeditions.Count > 0)
+            throw new NotSupportedException("Failed to populate the correct number of expeditions");
 
         // Clean up the visuals
         static IEnumerable<Tuple<int, TierVisualData>> GetVisualData(RundownDataBlock rundown)
@@ -974,8 +981,10 @@ public partial class StateTracker : ArchipelagoFeature
             pair.Item2.Color = Color.HSVToRGB(MathF.Pow(random.NextSingle(), .125f), 1f, 1f);
         }
 
-        if (newExpeditions.Count > 0)
-            throw new NotSupportedException("Failed to populate the correct number of expeditions");
+        foreach (var icon in MainMenuGuiLayer.Current.PageRundownNew.m_expIconsAll)
+        {
+            icon.SetStatusTextVisible(true);
+        }
 
         // Set up the menu so everything is correctly displayed
         Il2CppSystem.Collections.Generic.List<uint> ids = new(newRundowns.Count);
@@ -984,13 +993,16 @@ public partial class StateTracker : ArchipelagoFeature
         Globals.Global.ActiveRundownIds = ids.ToArray().Cast<Il2CppStructArray<uint>>();
         GameSetupDataBlock.GetAllBlocks()[0].RundownIdsToLoad = ids;
 
-        // Shuffling the rundowns so they're actually in order (and not 7 in position 2 for some reason)
-        var selections = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections;
-        var positions = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelectionPositions;
-        for (int i = 1; i < 6; i++)
+        // Moving rundown 7 from position 2 to position 7 (so rundowns load in order)
+        if (MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections.Count == 8)
         {
-            (selections[i + 1], selections[i]) = (selections[i], selections[i + 1]);
-            (positions[i + 1], positions[i]) = (positions[i], positions[i + 1]);
+            var selections = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections;
+            var positions = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelectionPositions;
+            for (int i = 1; i < 6; i++)
+            {
+                (selections[i + 1], selections[i]) = (selections[i], selections[i + 1]);
+                (positions[i + 1], positions[i]) = (positions[i], positions[i + 1]);
+            }
         }
 
         // Placing new rundowns into the selections
@@ -1018,14 +1030,15 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            Game.Data data = MidManager.GetProcessedGameData();
-            foreach (var locPair in data.GetAllLocations())
-            {
-                if (locPair.Value.ItemID.IsNull) continue;
-                Item item = data.LookupItem(locPair.Value.ItemID);
-                if (data.TagMatches(data.Tag_LobbySlotUnlocks, item))
-                    FeatureLogger.Warning($"Lobby slot found in {data.LookupTagDef(locPair.Value.NameTag).Name}");
-            }
+            //Game.Data data = MidManager.GetProcessedGameData();
+            //RandomizationTag target = data.Tag_FreeCheckpoints.SelfResolve();
+            //foreach (var locPair in data.GetAllLocations())
+            //{
+            //    if (locPair.Value.ItemID.IsNull) continue;
+            //    Item item = data.LookupItem(locPair.Value.ItemID);
+            //    if (data.TagMatches(target, item))
+            //        FeatureLogger.Warning($"Item found in {data.LookupTagDef(locPair.Value.NameTag).Name}");
+            //}
 
             //DeathLinkHandler.TryTriggerDeathLink(new AP.BounceFeatures.DeathLink.DeathLink("Kyle", "Killed by a debug event"));
         }
@@ -1266,6 +1279,52 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 FeatureLogger.Error(" -> Items not added to terminal system!");
             }
+        }
+    }
+
+    /// <summary>
+    /// When setting the artifact heat on an expedition icon, we can overwrite it with a location count
+    /// </summary>
+    [ArchivePatch(typeof(CM_ExpeditionIcon_New), nameof(CM_ExpeditionIcon_New.SetArtifactHeat))]
+    public static class CM_ExpeditionIcon_New__SetArtifactHeat__Patch
+    {
+        public static bool Prefix(CM_ExpeditionIcon_New __instance)
+        {
+            StateTracker stateTracker = StateTracker.Get();
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+            if (!gameData.TryLookupExpedition(__instance.DataBlock.Descriptive.Prefix, out var data))
+            {
+                FeatureLogger.Error($"Failed to lookup expedition for location count: {__instance.DataBlock.Descriptive.Prefix}");
+                return true;
+            }
+
+            HashSet<RegionID> traversedRegions = new();
+            HashSet<LocationID> locations = new();
+            void searchRecusive(RegionID region)
+            {
+                if (!traversedRegions.Add(region)) return;
+                var r = gameData.LookupRegion(region);
+                foreach (var loc in r.ConnectedLocationIds) locations.Add(loc);
+                foreach (var path in r.ConnectedPaths)
+                    searchRecusive(gameData.LookupPath(path).EndingRegion);
+            }
+            searchRecusive(data.StartingRegion);
+
+            List<KeyedLocation> randomizedLocations = locations
+                .Select(id => new KeyedLocation(id, gameData.LookupLocation(id)))
+                .Where(l => stateTracker.TestRandomization(l.Location).IsTreatedAsRandom)
+                .ToList();
+            int foundCount = randomizedLocations.Count(l => stateTracker.HasLocation(l.ID));
+            __instance.m_artifactHeatText.SetText($"Items: {foundCount} / {randomizedLocations.Count}");
+
+            if (randomizedLocations.Count == 0)
+                __instance.m_artifactHeatText.SetFaceColor(Color.grey);
+            else if (foundCount == randomizedLocations.Count)
+                __instance.m_artifactHeatText.SetFaceColor(new Color(1f, .5f, .5f));
+            else
+                __instance.m_artifactHeatText.SetFaceColor(Color.white);
+
+            return false;
         }
     }
 

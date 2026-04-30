@@ -94,7 +94,7 @@ public class BulkheadKeyHandler : ArchipelagoFeature
             // If the bulkhead key is not randomized, we want to try and give it directly to the player who found it
             if (ExpeditionData.IsCurrentlyInExpedition())
             {
-                if (!stateTracker.TestRandomization(this, true).IsRandomized && player != null)
+                if (!stateTracker.TestRandomization(this).IsRandomized && player != null)
                 {
                     var wrapper = SpawnItemAsync();
                     wrapper.OnItemSpawned += (item, _) => 

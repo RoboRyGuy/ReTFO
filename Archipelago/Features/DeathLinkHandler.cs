@@ -12,6 +12,7 @@ using TheArchive.Core.Attributes.Feature.Members;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.Attributes.Feature.Settings;
 using TheArchive.Core.FeaturesAPI;
+using TheArchive.Core.FeaturesAPI.Components;
 using TheArchive.Core.Localization;
 using TheArchive.Interfaces;
 
@@ -58,27 +59,26 @@ public class DeathLinkHandler : ArchipelagoFeature
         [FSDisplayName("DeathLink Trigger")]
         [FSDescription(
             "What in GTFO triggers a DeathLink event to be sent to the multiverse."
-            + "\n - OnHumanPlayerDowned => When the number of human (non-bot) players downed meets or exceeds the threshold."
-            + "\n - OnAnyDowned         => When the number of players (including bots) downed meets or exceeds the threshold."
-            + "\n - OnExpeditionFail    => When an expedition ends in failure (not success, not abort)."
+            + "\n\n<u>On Human Player Downed</u>" + "\nWhen the number of human (non-bot) players downed meets or multiples the threshold, or on expedition fail."
+            + "\n\n<u>On Any Downed</u>"          + "\nWhen the number of players (including bots) downed meets or multiples the threshold, or on expedition fail."
+            + "\n\n<u>On Expedition Fail</u>"     + "\nWhen an expedition ends in failure (not success, not abort)."
         )]
         public TriggerType Trigger { get; set; } = TriggerType.OnExpeditionFail;
 
         [FSDisplayName("DeathLink Trigger Threshold")]
-        [FSDescription("The number of players who must be downed at the same time for the DeathLink to trigger")]
-        public int TriggerThreshold { get; set; } = 1;
+        [FSDescription("The number of players who must be downed at the same time for the DeathLink to trigger. 1 will trigger anytime someone is downed; 2 on 2, 4, 6, ... downed; 3 on 3, 6, ...; etc ")]
+        public int TriggerThreshold { get; set; } = 2;
 
         [FSDisplayName("DeathLink Effect")]
         [FSDescription(
             "What in GTFO happens when a DeathLink event is received from the multiverse."
-            + "\n - SpawnTanks            => Spawn the supplied number of tanks (immediately aggressive)."
-            + "\n - SpawnSnatchers        => Spawn the supplied number of snatchers. They are spawned one at a time in 1-5 minute intervals."
-            + "\n - SpawnNightmareScouts  => Spawn the supplied number of nightmare scouts (still asleep) in random unoccupied zones."
-            + "\n - DealDamage            => The supplied percent is dealt as damage to each player, killing them if necessary."
-            + "\n - DeleteResources       => The supplied percent is dealt as damage AND deleted from all gear for each player."
-            + "\n                            If this would kill a player, they are instead left at 1% health"
-            + "\n - DownRandomPlayer      => The supplied number of players are randomly picked and immediately downed."
-            + "\n - DownRandomHumanPlayer => The supplied number of players are immediately downed, randomly picked with a priority for humans."
+            + "\n\n<u>Spawn Tanks</u>"              + "\nSpawn the supplied number of tanks (immediately aggressive)."
+            + "\n\n<u>Spawn Snatchers</u>"          + "\nSpawn the supplied number of snatchers. One is spawned immediately, the rest are chain-spawned in 1-5 minute intervals."
+            + "\n\n<u>Spawn Nightmare Scouts</u>"   + "\nSpawn the supplied number of nightmare scouts (still asleep) in random unoccupied zones."
+            + "\n\n<u>Deal Damage</u>"              + "\nThe supplied percent is dealt as damage to each player, killing them if necessary."
+            + "\n\n<u>Delete Resources</u>"         + "\nThe supplied percent is dealt as damage AND deleted from all gear for each player. If this would kill a player, they are instead left at 1% health."
+            + "\n\n<u>Down Random Player</u>"       + "\nThe supplied number of players are randomly picked and immediately downed."
+            + "\n\n<u>Down Random Human Player</u>" + "\nThe supplied number of players are immediately downed, randomly picked with a priority for humans."
         )]
         public EffectType Effect { get; set; } = EffectType.DownRandomPlayer;
 
@@ -87,8 +87,19 @@ public class DeathLinkHandler : ArchipelagoFeature
         public int EffectNumber { get; set; } = 1;
 
         [FSDisplayName("DeathLink Cooldown (Seconds)")]
-        [FSDescription("Time between DeathLink events, since receing a DeathLink otherwise can very quickly result in another being sent out.")]
+        [FSDescription(
+            "Cooldown after sending or receiving a DeathLink during which another cannot be sent or received."
+            + "\n\nThis exists because receiving a DeathLink can quickly result in sending a new DeathLink, and because certain DeathLink trigger configs are capable of triggering multiple DeathLinks in quick succession."
+        )]
         public float Cooldown { get; set; } = 10f;
+
+        [FSDisplayName("Trigger Now")]
+        [FSDescription("Immediately try to trigger the DeathLink effect. Affects this GTFO lobby only; is restricted by the cooldown")]
+        public FButton TriggerEffectButton { get; set; } = new FButton("Test DeathLink", callback: () => TryTriggerDeathLink(new DeathLink(HostName, $"{PlayerManager.GetLocalPlayerAgent()?.Owner.NickName ?? "Someone"} hit the \"Test DeathLink\" button.")));
+
+        [FSDisplayName("Show Messages")]
+        [FSDescription("If true, show death messages when sending or receiving a DeathLink event.")]
+        public bool DoShowMessages { get; set; } = true;
     }
 
     private static DeathLinkService? s_service = null;
@@ -129,7 +140,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         }
     }
 
-    public static string HostName => $"{StateTracker.Get().ApSession?.Players.ActivePlayer.Name ?? SNetwork.SNet.Master.NickName}";
+    public static string HostName => $"{StateTracker.Get().ApSession?.Players.ActivePlayer.Name ?? SNetwork.SNet.Master?.NickName ?? "Admin"}";
 
     /// <summary>
     /// Receive a DeathLink event and trigger the effect
@@ -144,7 +155,7 @@ public class DeathLinkHandler : ArchipelagoFeature
             return;
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
-        if (data.Cause != null)
+        if (Config.DoShowMessages && data.Cause != null)
             GuiManager.PlayerLayer.m_gameEventLog.AddLogItem($"<#F0F>[Death]</color> {data.Cause}");
             //PlayerChatManager.WantToSentTextMessage(PlayerManager.GetLocalPlayerAgent(), data.Cause);
     
@@ -309,7 +320,8 @@ public class DeathLinkHandler : ArchipelagoFeature
 
         FeatureLogger.Debug("Sending DeathLink event: " + cause);
         s_service?.SendDeathLink(new DeathLink(HostName, cause));
-        GuiManager.PlayerLayer.m_gameEventLog.AddLogItem($"<#F0F>[Death]</color> {cause}");
+        if (Config.DoShowMessages)
+            GuiManager.PlayerLayer.m_gameEventLog.AddLogItem($"<#F0F>[Death]</color> {cause}");
     }
 
     /// <summary>
@@ -348,14 +360,16 @@ public class DeathLinkHandler : ArchipelagoFeature
             => CheckDeath(__instance, data);
     }
 
-    [ArchivePatch(typeof(RundownManager), nameof(RundownManager.OnExpeditionEnded))]
-    public static class RundownManager__OnExpeditionEnded__Patch
+    [ArchivePatch(typeof(GameStateManager), nameof(GameStateManager.DoChangeState))]
+    public static class GameStateManager__DoChangeState__Patch
     {
-        public static void Postfix(ExpeditionEndState endState)
+        public static void Postfix(eGameStateName nextState)
         {
-            if (endState == ExpeditionEndState.Fail && Config.Trigger == Settings.TriggerType.OnExpeditionFail)
-                NotifyDied($"Team {HostName} marked MIA.");
+            if (nextState != eGameStateName.ExpeditionFail)
+                return;
+
+            if (((int)Config.Trigger) < 3)
+                NotifyDied($"Team {HostName} marked MIA. Objective failed.");
         }
     }
-
 }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -193,6 +194,60 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 data.LookupOrCreateRegion(data.TerminalName), 
                 TerminalExtractReleaseLocation.MakeRandData()
             );
+        }
+    }
+
+    [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.AddInitialTerminalOutput))]
+    public static class LG_ComputerTerminalCommandInterpreter__AddInitialTerminalOutput__Patch
+    {
+        public static void Postfix(LG_ComputerTerminalCommandInterpreter __instance)
+        {
+            // This command is often called on terminals before they are set up
+            // If the terminal is not set up, we can't look up its data (and there's no output anyway)
+            if (!__instance.m_terminal.m_isSetup) return;
+
+            // Count how many items are available on this terminal
+            var tDataResult = Terminal.Data.FromTerminal(__instance.m_terminal);
+            if (tDataResult.Data == null)
+            {
+                if (!tDataResult.IsReactorTerminal)
+                    FeatureLogger.Error($"Failed to lookup terminal data: {__instance.m_terminal.ItemKey}");
+                return;
+            }
+
+            Terminal.Data data = tDataResult.Data;
+            StateTracker stateTracker = StateTracker.Get();
+            Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
+
+            int count = 0;
+            for (int i = 0; i < ItemsPerTerminal; i++)
+            {
+                RandomizationTag tag = TerminalExtractReleaseLocation.MakeTag(data, i + 1);
+                if (!gameData.TryLookupLocation(tag, out var loc))
+                    FeatureLogger.Error($"Failed to lookup terminal extraction location: {gameData.LookupTagDef(tag).Name}");
+                else if (!loc.ItemID.IsNull && !stateTracker.HasLocation(loc.ID)) ++count;
+            }
+
+            // Add our new item to the output queue
+            if (count == 1)
+                __instance.AddOutput("There is 1 available item on this terminal", false);
+            else
+                __instance.AddOutput($"There are {count} available items on this terminal", false);
+
+            // Now simply move it back 5 lines to line it up below the logs message
+            var queue = __instance.m_outputQueue;
+            int currentIndex = (queue._head + queue.Count - 1) % queue._array.Count;
+            int targetIndex;
+            for (int i = 0; i < 5; i++)
+            {
+                targetIndex = currentIndex - 1;
+                if (targetIndex < 0)
+                    targetIndex = queue._array.Count - 1;
+                var oldValue = queue._array[targetIndex];
+                queue._array[targetIndex] = queue._array[currentIndex];
+                queue._array[currentIndex] = oldValue;
+                currentIndex = targetIndex;
+            }
         }
     }
 

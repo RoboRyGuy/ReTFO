@@ -54,6 +54,13 @@ public class Item
     public ItemData RandData { get; init; }
 
     /// <summary>
+    /// Optional; if not null, this item can only be randomized if the supplied expedition 
+    /// is randomized. Typically used by floating items to help ensure only relevant floating
+    /// items are randomized.
+    /// </summary>
+    public virtual Expedition.Data? RequiredExpedition => null;
+
+    /// <summary>
     /// How this item should be represented when a path uses it as a requirement.
     /// Override this if you need the item to use a category instead.
     /// </summary>

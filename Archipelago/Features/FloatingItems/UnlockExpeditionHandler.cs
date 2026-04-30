@@ -6,7 +6,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Members;
+using TheArchive.Core.Attributes.Feature.Settings;
 using TheArchive.Core.FeaturesAPI;
+using TheArchive.Core.FeaturesAPI.Components;
 using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
@@ -38,6 +41,20 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    [FeatureConfig]
+    public static int Config { get; set; }
+
+    public class Settings
+    {
+        [FSDisplayName("Unlock All Expeditions")]
+        [FSDescription("Immediately unlocks all expeditions")]
+        public FButton UnlockAllButton { get; set; } = new FButton("Unlock All", callback: UnlockAll);
+
+        [FSDisplayName("Re-Lock All Expeditions")]
+        [FSDescription("Undoes the Unlock All button, applying locks to any expeditions which were previously locked")]
+        public FButton ResetAllButton { get; set; } = new FButton("Reset Locks", callback: ResetLocks);
+    }
+
     private static IEnumerable<ExpeditionInTierData> UnpackRundown(RundownDataBlock rundown)
     {
         foreach (var expedition in rundown.TierA) yield return expedition;
@@ -56,7 +73,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             : base(MakeTag(expedition), MakeRandData())
         {
             ExpeditionData = expedition;
-            Tag2 = expedition.Tag_UnlockItems_ByExpedition; // Requires the relevant expedition to be part of the rando
+            Tag2 = expedition.Tag_UnlockItems_ByExpedition;
         }
 
         public static TagResolver MakeTag(Expedition.Data data)
@@ -65,6 +82,8 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true, DoLoseOnStart = true };
 
         public Expedition.Data ExpeditionData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ExpeditionData;
 
         private ExpeditionInTierData FindExpedition()
         {
@@ -109,6 +128,36 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             ReqItem = reqItem.PathReqs,
             ReqCount = 1u,
         });
+    }
+    
+    /// <summary>
+    /// Unlocks all expeditions, ignoring normal restrictions
+    /// </summary>
+    public static void UnlockAll()
+    {
+        foreach (var expedition in GetActiveExpeditions())
+            expedition.Accessibility = eExpeditionAccessibility.AlwaysAllow;
+    }
+
+    /// <summary>
+    /// Re-applies locks to any expeditions which should be locked
+    /// </summary>
+    public static void ResetLocks()
+    {
+        StateTracker stateTracker = StateTracker.Get();
+        Game.Data data = stateTracker.MidManager.GetProcessedGameData();
+        foreach (var expedition in GetActiveExpeditions())
+        {
+            if (!data.TryLookupExpedition(expedition.Descriptive.Prefix, out var eData))
+            {
+                FeatureLogger.Warning("Failed to find data for expedition: " + expedition.Descriptive.Prefix + "; not applying lock!");
+                continue;
+            }
+
+            KeyedItem reqItem = GetExpeditionUnlockItem(eData);
+            if (stateTracker.TestRandomization(reqItem.Item).IsTreatedAsRandom && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
+                expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
+        }
     }
 
 }

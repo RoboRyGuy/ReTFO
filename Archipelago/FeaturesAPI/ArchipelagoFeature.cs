@@ -27,6 +27,12 @@ public class ArchipelagoFeature : Feature
 
     public override bool ShouldInit()
     {
+        if (!Plugin.TryGet(out var plugin))
+        {
+            FeatureLogger.Error("Failed to find plugin during init for feature: " + GetType().FullName);
+            return false;
+        }
+
         if (GetType() == typeof(ArchipelagoFeature))
             return false;
         else

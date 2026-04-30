@@ -42,7 +42,6 @@ public class FreeCheckpointsHandler : ArchipelagoFeature
             : base(MakeTag(expedition), MakeRandData())
         {
             ExpeditionData = expedition;
-            Tag2 = ExpeditionData.Tag_UnlockItems_ByExpedition; // Requires the relevant expedition to be part of the rando
         }
 
         public static TagResolver MakeTag(Expedition.Data data)
@@ -51,6 +50,8 @@ public class FreeCheckpointsHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true };
 
         public Expedition.Data ExpeditionData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ExpeditionData;
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
         {

@@ -168,7 +168,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return true;
-            if (!stateTracker.TestRandomization(item.Item, true).IsTreatedAsRandom) return true;
+            if (!stateTracker.TestRandomization(item.Item).IsTreatedAsRandom) return true;
 
             __instance.m_playerSlotPermissions[playerIndex] = SNet_PlayerSlotManager.SlotPermission.Forbidden;
             return false;
@@ -192,7 +192,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return;
-            if (!stateTracker.TestRandomization(item.Item, true).IsTreatedAsRandom) return;
+            if (!stateTracker.TestRandomization(item.Item).IsTreatedAsRandom) return;
 
             item.OnItemLost(stateTracker);
         }

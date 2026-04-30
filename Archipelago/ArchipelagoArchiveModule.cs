@@ -17,11 +17,13 @@ public class ArchipelagoArchiveModule : IArchiveModule
         get => m_logger ?? throw new NullReferenceException("Module logger was not initalized!");
         set => m_logger = value;
     }
+
     public void Init() 
     {
-        if (Plugin.TryGet(out var plugin))
-            plugin.ArchiveModule = this;
+        // Throw on fail
+        if (!Plugin.TryGet(out var plugin))
+            Logger.Error("Failed to find Plugin while loading Archipelago Archive Module!");
         else
-            Logger.Warning("Failed to find Plugin and set ArchiveModule!");
+            plugin.ArchiveModule = this;
     }
 }

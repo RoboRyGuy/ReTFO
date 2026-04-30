@@ -15,11 +15,11 @@ using System.Linq;
 using System.Reflection;
 using TheArchive;
 using TheArchive.Interfaces;
-using UnityEngine;
 
 namespace ReTFO.Archipelago;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using SimpleProgression.Core;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
@@ -35,6 +35,7 @@ internal class InjectToIl2Cpp : Attribute
 [BepInProcess("GTFO.exe")]
 [BepInDependency(MTFO.MTFO.GUID)]
 [BepInDependency(ArchiveMod.GUID)]
+[BepInDependency(SimpleProgression.Plugin.GUID)]
 public class Plugin : BasePlugin
 {
     public const string Name = "Archipelago";       // Plugin name
@@ -163,19 +164,5 @@ public class Plugin : BasePlugin
     public static void PreRecallBytes(SNet_Replication __instance, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> bytes, uint size)
     {
 
-    }
-
-    [HarmonyPatch(typeof(PlayerChatManager), nameof(PlayerChatManager.Log))]
-    [HarmonyPostfix]
-    public static void PostLog()
-    {
-        FeatureLogger.Notice("Made a log!");
-    }
-
-    [HarmonyPatch(typeof(PlayerChatManager), nameof(PlayerChatManager.WantToSentTextMessage))]
-    [HarmonyPostfix]
-    public static void PostSent()
-    {
-        FeatureLogger.Notice("Sent a chat message!");
     }
 }

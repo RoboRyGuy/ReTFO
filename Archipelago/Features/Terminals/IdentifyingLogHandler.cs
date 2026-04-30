@@ -53,8 +53,8 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         int entry = terminal.m_localLogs.FindEntry(IdentifyingLogName);
         if (entry < 0)
         {
-            Zone.Data zone = Zone.Data.FromZone(terminal.SpawnNode.m_zone);
-            FeatureLogger.Warning($"Failed to find identifying log from terminal in zone: {zone.ZoneName}");
+            Zone.Data? zone = terminal.SpawnNode?.m_zone == null ? null : Zone.Data.FromZone(terminal.SpawnNode.m_zone);
+            FeatureLogger.Warning($"Failed to find identifying log from {terminal.ItemKey} in {zone?.ZoneName ?? "ZONE_NULL"}");
             return new IdentifyTerminalResult(false, null);
         }
 

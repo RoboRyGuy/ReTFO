@@ -82,7 +82,7 @@ public class BigPickupHandler : ArchipelagoFeature
         {
             if (Data.IsCurrentlyInExpedition())
             {
-                if (RandData.IsRandomLike && !stateTracker.TestRandomization(this, true).IsRandomized && player != null)
+                if (RandData.IsRandomLike && !stateTracker.TestRandomization(this).IsRandomized && player != null)
                 {
                     // Give it directly to the player
                     void AttemptPickup(ISyncedItem item, PlayerAgent _)

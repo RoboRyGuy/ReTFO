@@ -8,6 +8,7 @@ using System.Linq;
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
+using System.Diagnostics.CodeAnalysis;
 
 public static class Expedition
 {
@@ -53,6 +54,18 @@ public static class Expedition
             Rundown = other.Rundown;
             ExpeditionTier = other.ExpeditionTier ;
             ExpeditionIndex = other.ExpeditionIndex;
+        }
+
+        /// <summary>
+        /// Helper class for comparing two expeditions to see if they refer to the same expedition
+        /// </summary>
+        public class Comparer : EqualityComparer<Expedition.Data>
+        {
+            public override bool Equals(Expedition.Data? x, Expedition.Data? y)
+                => x != null ? y?.IsSameExpedition(x) ?? false : y == null;
+
+            public override int GetHashCode([DisallowNull] Expedition.Data obj)
+                => obj.GetHashCode();
         }
 
         /// <summary>
