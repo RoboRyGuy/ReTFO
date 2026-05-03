@@ -7,7 +7,6 @@ using ReTFO.Archipelago.Features.FloatingItems;
 using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Patches;
 using ReTFO.Archipelago.Utilities;
-using SimpleProgression.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,15 +24,16 @@ namespace ReTFO.Archipelago.Features;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using TheArchive.Core.FeaturesAPI.Components;
 
 /// <summary>
 /// Tracks Archipelago state
 /// </summary>
-[EnableFeatureByDefault, DisallowInGameToggle]
+[EnableFeatureByDefault, AutomatedFeature]
 public partial class StateTracker : ArchipelagoFeature
 {
-    public override string Name => "State Tracker";
-    public override string Description => "Core feature used for all Archipelago operations during play";
+    public override string Name => "AP Server Settings";
+    public override string Description => "Controls AP server and sync settings.";
     public override FeatureGroup Group => FeatureGroups.Archipelago;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -58,11 +58,15 @@ public partial class StateTracker : ArchipelagoFeature
     public AP.ArchipelagoSession? ApSession { get; protected set; } = null;
     public event Action<StateTracker>? OnStateChange;
 
-    // Things provided by the server at initial sync
+    // Things set up at initial sync
     protected List<Expedition.Data> Expeditions { get; set; } = new();
     protected HashSet<RandomizationTag> WhitelistTags { get; set; } = new();
     protected HashSet<RandomizationTag> BlacklistTags { get; set; } = new();
     public long RootSeed { get; protected set; } = 0;
+    public float DisiredFilleWeight { get; protected set; } = 1f;
+    public float DesiredTrapWeight { get; protected set; } = 1f;
+    public List<float> FillerWeights { get; protected set; } = new();
+    public List<float> TrapWeights { get; protected set; } = new();
 
     // Things consistently synced / updated
     protected HashSet<RegionID> FoundRegions { get; init; } = new();
@@ -182,7 +186,7 @@ public partial class StateTracker : ArchipelagoFeature
         public ushort Port { get; set; } = 38281;
 
         [FSDisplayName("Slot Name")]
-        [FSDescription("Slot in the server to try to connect to\nIn simpler terms, your username")]
+        [FSDescription("Slot in the server to try to connect to\nAnalagous to a username")]
         [PrivateFeatureSettingsPatch.FSOptionallyPrivate]
         public string Username { get; set; } = "admin";
 
@@ -194,6 +198,15 @@ public partial class StateTracker : ArchipelagoFeature
         [FSDescription("The password to use when connecting to Archipelago")]
         [PrivateFeatureSettingsPatch.FSOptionallyPrivate]
         public string Password { get; set; } = "Password";
+
+        [FSDisplayName("Export MID Data")]
+        [FSDescription("Export the MID data file for server-side randomization.")]
+        public FButton ExportMidDataButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportMidData(null));
+
+        [FSDisplayName("Export Tags to CSV")]
+        [FSDescription("Export all tag data to a CSV file (for your perusal)")]
+        public FButton ExportTagsButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportTags(null));
+
 
     }
 
@@ -343,7 +356,7 @@ public partial class StateTracker : ArchipelagoFeature
             return;
         }
 
-        if (loginSuccessful.SlotData.GetValueOrDefault("ExpeditionNames") is not int rootSeed)
+        if (loginSuccessful.SlotData.GetValueOrDefault("RootSeed") is not int rootSeed)
         {
             FeatureLogger.Error("No root seed associated with slot data!");
             return;
@@ -402,13 +415,6 @@ public partial class StateTracker : ArchipelagoFeature
         // Early overwrite so that callbacks can depend on the rundowns being there
         TryOverwriteRundowns();
 
-        // Resetting local progression (entering a clean state)
-        var expeditionProgressions = Globals.Global.ActiveRundownIds
-            .Select(LocalProgressionManager.Instance.GetOrCreateLocalProgression);
-
-        foreach (var prog in expeditionProgressions)
-            prog.Expeditions.Clear();
-
         // Ensure everything is reset
         FoundRegions.Clear();
         FoundUnusedRegions.Clear();
@@ -441,7 +447,8 @@ public partial class StateTracker : ArchipelagoFeature
             .Where(i => i.RandData.IsProgression)
             .Where(i => TestRandomization(i.Item).IsRandomized)
             .Select(i => i.ID);
-        foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
+        foreach (var id in floatingItems) queuedItems.Enqueue(id);
+        foreach (var id in queuedItems) seenItems.Add(id);
         DistributeItems(emptyLocations, queuedItems);
 
         // Round 2 - Place the remaining progression items (if any) into all locations
@@ -464,11 +471,12 @@ public partial class StateTracker : ArchipelagoFeature
         floatingItems = gameData
             .GetAllFloatingItemIds()
             .Where(id => TestRandomization(gameData.LookupItem(id)).IsRandomized);
-        foreach (var id in floatingItems) if (seenItems.Add(id)) queuedItems.Enqueue(id);
+        foreach (var id in floatingItems) if (!seenItems.Contains(id)) queuedItems.Enqueue(id);
+        foreach (var id in queuedItems) seenItems.Add(id);
         DistributeItems(emptyLocations, queuedItems);
 
         // Round 4 - Any remaining items are given
-        if (queuedItems.Count > 0)
+        if (queuedItems.Count > 0 && CurrentState.IsFakeConnected)
         {
             FeatureLogger.Warning($"Insufficient empty locations for selected floating items. Granting {queuedItems.Count} free items!");
             foreach (var item in queuedItems) CollectItem(item);
@@ -477,7 +485,7 @@ public partial class StateTracker : ArchipelagoFeature
         // Attempt to scout all relevant locations
         var randomizedLocations = reachableLocations.Where(l => TestRandomization(l.Value).IsRandomized);
         if (CurrentState.IsConnected)
-            ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.Key.Value).ToArray()).ContinueWith(OnLocationsScouted);
+            ApSession!.Locations.ScoutLocationsAsync(randomizedLocations.Select(l => l.Key.AsId).ToArray()).ContinueWith(OnLocationsScouted);
 
         // OnItemLost callbacks for all randomized items
         foreach (var pair in reachableLocations)
@@ -491,6 +499,7 @@ public partial class StateTracker : ArchipelagoFeature
 
         // Find the first region (for free) - Note that the Local PlayerAgent is likely null
         NotifyFoundRegion(gameData.MenuRegionName, PlayerManager.GetLocalPlayerAgent());
+        OnStateChange?.Invoke(this);
     }
 
     /// <summary>
@@ -640,7 +649,7 @@ public partial class StateTracker : ArchipelagoFeature
 
         if (!FoundRegions.Add(region.ID))
             return;
-        FeatureLogger.Debug($"Discovered region [{region.ID.Value}] {name}");
+        FeatureLogger.Debug($"Discovered region [{region.ID.AsId}] {name}");
 
         // Check for auto-discover locations
         bool isFoundLocation(LocationID locID)
@@ -672,14 +681,14 @@ public partial class StateTracker : ArchipelagoFeature
 
         if (!FoundLocations.Add(id))
             return randomization;
-        FeatureLogger.Debug($"Discovered Location: [{id.Value}] {gameData.LookupTagDef(location.NameTag).Name}");
+        FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(location.NameTag).Name}");
 
         if (randomization.IsTreatedAsRandom)
         {
             if (CurrentState.IsFakeConnected)
                 CollectItem(location.ItemID, id, player);
             else if (CurrentState.IsConnected)
-                ApSession!.Locations.CompleteLocationChecksAsync(id.Value).ContinueWith(OnLocationChecksCompleted);
+                ApSession!.Locations.CompleteLocationChecksAsync(id.AsId).ContinueWith(OnLocationChecksCompleted);
         }
 
         return randomization;
@@ -702,14 +711,14 @@ public partial class StateTracker : ArchipelagoFeature
 
             if (!FoundLocations.Add(id))
                 continue;
-            FeatureLogger.Debug($"Discovered Location: [{id.Value}] {gameData.LookupTagDef(loc.NameTag).Name}");
+            FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(loc.NameTag).Name}");
 
             if (randomization.IsTreatedAsRandom)
             {
                 if (CurrentState.IsFakeConnected)
                     CollectItem(loc.ItemID, id, player);
                 else if (CurrentState.IsConnected)
-                    networkIds.Add(id.Value);
+                    networkIds.Add(id.AsId);
             }
         }
 
@@ -1056,12 +1065,12 @@ public partial class StateTracker : ArchipelagoFeature
             //  the item was already "collected"
             if (itemInfo.LocationGame == ApSession.ConnectionInfo.Game) // TODO: I don't think this is correct
             {
-                Location location = MidManager.GetProcessedGameData().LookupLocation(new LocationID(itemInfo.LocationId));
+                Location location = MidManager.GetProcessedGameData().LookupLocation(new LocationID() { AsId = itemInfo.LocationId });
                 if (!TestRandomization(location).IsRandomized)
                     continue;
             }
 
-            CollectItem(new ItemID(itemInfo.ItemId));
+            CollectItem(new ItemID() { AsId = itemInfo.ItemId });
         }
     }
 
@@ -1099,14 +1108,14 @@ public partial class StateTracker : ArchipelagoFeature
                 .Where(l => l.Value.OwningRegionIds.All(reachableRegions.Contains));
 
             ApSession!.Locations.ScoutLocationsAsync(
-                locations.Select(l => l.Key.Value).ToArray()
+                locations.Select(l => l.Key.AsId).ToArray()
                 ).ContinueWith(OnLocationsScouted);
             return;
         }
 
         foreach (var pair in task.Result)
         {
-            Location location = gameData.LookupLocation(new LocationID(pair.Key));
+            Location location = gameData.LookupLocation(new LocationID() { AsId = pair.Key });
             location.ScoutedItem = pair.Value;
             FeatureLogger.Debug($"Location has been scouted: { gameData.LookupTagDef(location.NameTag).Name }");
         }
@@ -1168,10 +1177,10 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         Item item = gameData.LookupItem(id);
-        FeatureLogger.Debug($"Collecting item [{id.Value}] {gameData.LookupTagDef(item.NameTag).Name}");
+        FeatureLogger.Debug($"Collecting item [{id.AsId}] {gameData.LookupTagDef(item.NameTag).Name}");
         ItemCounts[id] = ItemCounts.GetValueOrDefault(id, 0) + 1;
         item.OnItemObtained(this, sourceLocationId, player);
-        SendInteraction(pArchipelagoInteraction.eType.CollectItem, id.Value);
+        SendInteraction(pArchipelagoInteraction.eType.CollectItem, id.AsId);
     }
 
     /// <summary>
@@ -1283,7 +1292,7 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// When setting the artifact heat on an expedition icon, we can overwrite it with a location count
+    /// Replace artifact heat with the unfound location count
     /// </summary>
     [ArchivePatch(typeof(CM_ExpeditionIcon_New), nameof(CM_ExpeditionIcon_New.SetArtifactHeat))]
     public static class CM_ExpeditionIcon_New__SetArtifactHeat__Patch
@@ -1313,18 +1322,34 @@ public partial class StateTracker : ArchipelagoFeature
             List<KeyedLocation> randomizedLocations = locations
                 .Select(id => new KeyedLocation(id, gameData.LookupLocation(id)))
                 .Where(l => stateTracker.TestRandomization(l.Location).IsTreatedAsRandom)
+                .Where(l => !(l.RandData.IsExcluded || l.RandData.IsTrap))
                 .ToList();
             int foundCount = randomizedLocations.Count(l => stateTracker.HasLocation(l.ID));
+
             __instance.m_artifactHeatText.SetText($"Items: {foundCount} / {randomizedLocations.Count}");
 
+            Color color;
             if (randomizedLocations.Count == 0)
-                __instance.m_artifactHeatText.SetFaceColor(Color.grey);
+                color = Color.grey;
             else if (foundCount == randomizedLocations.Count)
-                __instance.m_artifactHeatText.SetFaceColor(new Color(1f, .5f, .5f));
+                color = new Color(0f, 1f, 0f);
             else
-                __instance.m_artifactHeatText.SetFaceColor(Color.white);
+                color = Color.white;
+            __instance.m_artifactHeatText.SetFaceColor(color);
 
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Ensure that the artifact heat is updated after an expedition ends, even if no one grabbed any artifacts
+    /// </summary>
+    [ArchivePatch(typeof(RundownManager), nameof(RundownManager.OnExpeditionEnded))]
+    public static class RundownManager__OnExpeditionEnded__Patch
+    {
+        public static void Postfix()
+        {
+            RundownManager.RundownProgression.UpdateArtifactHeat(RundownManager.ActiveExpeditionUniqueKey, 1);
         }
     }
 

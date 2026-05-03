@@ -1,6 +1,5 @@
 ﻿using BepInEx;
 using Clonesoft.Json;
-using Clonesoft.Json.Serialization;
 using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -13,8 +12,10 @@ using System.Runtime.InteropServices;
 
 namespace ReTFO.Archipelago.ModdedInstanceData;
 
+using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using UnityEngine.Playables;
 
 /// <summary>
 /// Wraps modded instance data; creates it and manages its lifetime.
@@ -251,11 +252,19 @@ public class MidManager
 
         IsProcessing = true;
         
+        // Get all our entities
         var gameData = GetUnprocessedGameData();
         m_gameProcessor.Process(gameData);
+        gameData.CleanUp(); // Trims lists
 
+        // Check that the game is winnable and such
         DoGraphTraversal(gameData, true, null, null, true);
-        
+
+        // Marking the data complete
+        // This is used during graph traversal to ensure the path reqs are calculated and
+        //  to start logging warnings if modifications are made past this point
+        gameData.IsComplete = true;
+
         IsProcessing = false;
         IsProcessed = true;
 
@@ -275,24 +284,6 @@ public class MidManager
     private static extern string SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, nint hToken = 0);
     private static Guid DownloadsGUID => new("374DE290-123F-4565-9164-39C4925E467B");
 
-    // A json contract resolver which blocks serialization of extension properties
-    // Note that this is a somewhat lazy resolver with the assumption we won't be serializing much or often
-    private class NoExtensionsContractResolver : DefaultContractResolver
-    {
-        protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
-        {
-            JsonProperty property = base.CreateProperty(member, memberSerialization);
-
-            if (property.PropertyType != null && !property.Ignored)
-            {
-                if (property.PropertyType.IsAssignableTo(typeof(Game.Data)) && property.PropertyType != typeof(Game.Data))
-                    property.Ignored = true;
-            }
-
-            return property;
-        }
-    }
-
     /// <summary>
     /// Export game data as a JSON file to the designated path.
     /// </summary>
@@ -300,22 +291,87 @@ public class MidManager
     /// The full path of the file to export to.
     /// If null, defaults to a file in the downloads folder.
     /// </param>
-    public void ExportGameData(string? filename = null)
+    public void ExportMidData(string? filename = null)
     {
         if (filename == null)
-            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "moddedInstanceData.json");
+            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "moddedInstanceData.mid");
 
         Game.Data gameData = GetProcessedGameData();
+        DoGraphTraversal(gameData, true, null, null, false);
+
+        // Identify regions rechable by all possible expeditions
+        List<MidExpeditionData> eData = new();
+        HashSet<RegionID> reachableRegionIds = new();
+        Queue<PathID> queuedPaths = new();
+
+        foreach (var pair in gameData.GetAllExpeditions())
+        {
+            reachableRegionIds.Clear();
+            queuedPaths.Clear();
+
+            reachableRegionIds.Add(pair.Value.StartingRegion);
+            foreach (var path in gameData.LookupRegion(reachableRegionIds.First()).ConnectedPaths)
+                queuedPaths.Enqueue(path);
+
+            while (queuedPaths.Count > 0)
+            {
+                var path = gameData.LookupPath(queuedPaths.Dequeue());
+                if (reachableRegionIds.Contains(path.EndingRegion)) continue;
+                
+                var newRegion = gameData.LookupRegion(path.EndingRegion);
+                if (!newRegion.Reachable) continue;
+                
+                reachableRegionIds.Add(path.EndingRegion);
+                foreach (var id in newRegion.ConnectedPaths) 
+                    queuedPaths.Enqueue(id);
+            }
+
+            eData.Add(new() { Name = pair.Key, ReachableRegions = reachableRegionIds.ToList() });
+        }
+
+
+        var dumpData = new
+        {
+            Expeditions = eData,
+            Tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
+            Regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
+            Paths = gameData.GetAllPaths().Select(p => new KeyedPath(p.Key, p.Value)).ToList(),
+            Locations = gameData.GetAllLocations().Select(l => new KeyedLocation(l.Key, l.Value)).ToList(),
+            Items = gameData.GetAllItems().Select(i => new KeyedItem(i.Key, i.Value)).ToList(),
+            FloatingItems = gameData.GetAllFloatingItemIds(),
+        };
+
         JsonSerializerSettings settings = new()
         {
             Formatting = Formatting.Indented,
         };
-        settings.ContractResolver = new NoExtensionsContractResolver();
         settings.Converters.Add(new Clonesoft.Json.Converters.StringEnumConverter());
-        settings.Converters.Add(new ListConverter<int>(20));
-        settings.Converters.Add(new ListConverter<long>(15));
-        string json = JsonConvert.SerializeObject(gameData, settings);
+        settings.Converters.Add(new SimplifiedListConverter<long>(20));   // Compress long lists of longs (unpacked IDs) for readability
+        settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
+        settings.Converters.Add(new IdConverter());             // Convert IDs to longs
+        Type[] containerTypes = [ typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem) ];
+        Type[] inlinedTypes = [ typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), typeof(Path), typeof(Location), typeof(Item) ];
+        settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
+        string json = JsonConvert.SerializeObject(dumpData, settings);
         File.WriteAllText(filename, json);
+    }
+
+    /// <summary>
+    /// Export tags as a CSV to the designated path.
+    /// </summary>
+    /// <param name="filename">
+    /// The full path of the file to export to.
+    /// If null, defaults to a file in the downloads folder.
+    /// </param>
+    public void ExportTags(string? filename = null)
+    {
+        if (filename == null)
+            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "gtfoTags.csv");
+
+        IEnumerable<string> text = Enumerable.Repeat("\"ID\",\"NAME\",\"PARENT\",\"DESCRIPTION\"", 1)
+            .Concat(GetProcessedGameData().GetAllTags().Select(pair => $"\"{pair.Key.AsId.ToString()}\"\"{pair.Value.Name}\",\"{pair.Value.Parent}\",\"{pair.Value.Description}\""));
+        
+        File.WriteAllLines(filename, text);
     }
 
     /// <summary>
@@ -504,8 +560,6 @@ public class MidManager
         // ----------------------------------------------------------------------------------------
 
         // We've stopped making progress. Check if we've won!
-        if (doProcessing) gameData.IsComplete = true;
-
         // @Todo: Can't use HashSet, we need multiset. Too lazy to implement right now
         List<Item> requiredItems = gameData.GetAllLocations()
             .Select(pair => pair.Value.ItemID)
@@ -544,7 +598,7 @@ public class MidManager
             bool reachable = getReachable(pair.Key);
             if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);
             else ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-            ConsoleManager.ConsoleStream.WriteLine($"  {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{pair.Key.Value.ToString("000")}] {pair.Value.Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{pair.Key.AsId.ToString("000")}] {pair.Value.Name}");
             printed = true;
         }
         if (!printed) ConsoleManager.ConsoleStream.WriteLine($"\n  NO REGIONS FOUND");
@@ -564,9 +618,9 @@ public class MidManager
             ConsoleManager.ConsoleStream.WriteLine();
             ConsoleManager.ConsoleStream.WriteLine($"  Name:  {path.Name ?? "None"}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Green);
-            ConsoleManager.ConsoleStream.WriteLine($"  Start: [{path.StartingRegion.Value.ToString("000")}] {gameData.LookupRegion(path.StartingRegion).Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  Start: [{path.StartingRegion.AsId.ToString("000")}] {gameData.LookupRegion(path.StartingRegion).Name}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-            ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.Value.ToString("000")}] {gameData.LookupRegion(path.EndingRegion).Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.AsId.ToString("000")}] {gameData.LookupRegion(path.EndingRegion).Name}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             if (path.ReqItem.Type == Path.RequiredItem.eType.None)
                 ConsoleManager.ConsoleStream.WriteLine($"  No required item!");
@@ -616,7 +670,7 @@ public class MidManager
                 bool reachable = getReachable(i);
                 if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);
                 else ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-                ConsoleManager.ConsoleStream.WriteLine($"   {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{i.Value.ToString("000")}] {gameData.LookupRegion(i).Name}");
+                ConsoleManager.ConsoleStream.WriteLine($"   {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{i.AsId.ToString("000")}] {gameData.LookupRegion(i).Name}");
             }
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             printed = true;

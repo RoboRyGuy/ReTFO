@@ -1,44 +1,42 @@
 ﻿using ReTFO.Archipelago.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
-using GameData;
-using global::Archipelago.MultiClient.Net.Models;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Diagnostics.CodeAnalysis;
 
 /// <summary>
 /// A RandomizationTag used for randomization purposes
 /// </summary>
-public struct RandomizationTag : INullable, IIndex, IComparable<RandomizationTag>, IEquatable<RandomizationTag>
+[DataContract]
+public struct RandomizationTag : INullable, IId, IIndex, IComparable<RandomizationTag>, IEquatable<RandomizationTag>
 {
     /// <summary>
     /// Constructs a null RandomizationTag
     /// </summary>
-    public RandomizationTag() => Value = 0;
+    public RandomizationTag() { }
 
     /// <summary>
-    /// Creates a new randomization tag with the provided value
+    /// ID of the tag
     /// </summary>
-    public RandomizationTag(int value) => Value = value;
+    [DataMember(Name = "Value")] 
+    private readonly long m_value = 0;
 
-    /// <summary>
-    /// Index of the tag definition in the relevant lookup table
-    /// </summary>
-    public int Value { get; private init; }
-
-    public bool IsNull => Value == 0;
-    public int AsIndex { get => Value - 1; init => Value = value + 1; }
-    public int CompareTo(RandomizationTag other) => Value.CompareTo(other.Value);
-    public bool Equals(RandomizationTag other) => Value.Equals(other.Value);
+    public bool IsNull => m_value == 0;
+    public long AsId { get => m_value; init => m_value = value; }
+    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
+    public int CompareTo(RandomizationTag other) => m_value.CompareTo(other.m_value);
+    public bool Equals(RandomizationTag other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is RandomizationTag tag && Equals(tag);
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => m_value.GetHashCode();
 }
 
 /// <summary>
 /// A definition for a randomization tag; metadata associated with a tag
 /// </summary>
+[DataContract]
 public struct RandomizationTagDefinition
 {
     /// <summary>
@@ -57,17 +55,52 @@ public struct RandomizationTagDefinition
     /// <summary>
     /// The name of this tag. Tag names must be unique.
     /// </summary>
+    [DataMember]
     public string Name { get; private init; }
 
     /// <summary>
     /// A description of what this tag controls.
     /// </summary>
+    [DataMember]
     public string Description { get; private init; }
 
     /// <summary>
     /// The parent of this tag, if any
     /// </summary>
+    [DataMember]
     public RandomizationTag Parent { get; private init; }
+}
+
+[DataContract]
+public struct KeyedRandomizationTag
+{
+    /// <summary>
+    /// Create a deafult, null KeyedItem
+    /// </summary>
+    public KeyedRandomizationTag()
+    {
+        ID = new();
+        Definition = new(); // Todo: Class default item?
+    }
+
+    /// <summary>
+    /// Create a keyed item with the given item and ID
+    /// </summary>
+    public KeyedRandomizationTag(RandomizationTag id, RandomizationTagDefinition definition)
+    {
+        ID = id;
+        Definition = definition;
+    }
+
+    /// <summary>
+    /// Unique ID of the Item. IDs range from 1 to 2^53-1.
+    /// </summary>
+    [DataMember] public readonly RandomizationTag ID;
+
+    /// <summary>
+    /// The Item object with the given ID
+    /// </summary>
+    [DataMember] public readonly RandomizationTagDefinition Definition;
 }
 
 /// <summary>

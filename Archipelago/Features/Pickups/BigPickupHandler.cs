@@ -85,11 +85,10 @@ public class BigPickupHandler : ArchipelagoFeature
                 if (RandData.IsRandomLike && !stateTracker.TestRandomization(this).IsRandomized && player != null)
                 {
                     // Give it directly to the player
-                    void AttemptPickup(ISyncedItem item, PlayerAgent _)
+                    void AttemptPickup(ISyncedItem item)
                         => item.Cast<CarryItemPickup_Core>().m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player.Owner);
                     var wrapper = TrySpawnAsync();
-                    wrapper.OnItemSpawned += AttemptPickup;
-                    if (wrapper.Item != null) AttemptPickup(wrapper.Item, null!);
+                    wrapper.AddSpawnCallback(AttemptPickup);
                 }
             }
             stateTracker.AddItemToTerminal(this);

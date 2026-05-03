@@ -57,7 +57,7 @@ internal static class ModifyRundownMenuPatch
         // Button which dumps modded instance data
         var dumpMIDButton = AddButton(__instance, 2f * gap);
         dumpMIDButton.SetText("Export MID Data");
-        dumpMIDButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().MidManager.ExportGameData()));
+        dumpMIDButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().MidManager.ExportMidData()));
 
         // We set the connectButton as the parent so these will appear / disappear with it
         // We have to wait until now to set it to avoid duplicating buttons while creating new ones

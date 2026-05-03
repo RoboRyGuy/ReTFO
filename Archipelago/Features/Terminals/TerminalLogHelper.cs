@@ -58,12 +58,12 @@ public class TerminalLogHelper : ArchipelagoFeature
         
         if (comp.StoredLocations.TryGetValue(logName, out var oldLocation))
         {
-            int locLength = Math.Max(oldLocation.Value.ToString().Length, locationId.Value.ToString().Length);
+            int locLength = Math.Max(oldLocation.AsId.ToString().Length, locationId.AsId.ToString().Length);
             string formatString = new string('0', locLength);
             FeatureLogger.Error(
                 $"Overwriting location stored in log!\n"
-                + $"  Old Location: [{oldLocation.Value.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(oldLocation).NameTag).Name}"
-                + $"  New Location: [{locationId.Value.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
+                + $"  Old Location: [{oldLocation.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(oldLocation).NameTag).Name}"
+                + $"  New Location: [{locationId.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
             );
         }
         comp.StoredLocations[logName] = locationId;

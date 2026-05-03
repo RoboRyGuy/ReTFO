@@ -15,11 +15,11 @@ using System.Linq;
 using System.Reflection;
 using TheArchive;
 using TheArchive.Interfaces;
+using UnityEngine;
 
 namespace ReTFO.Archipelago;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using SimpleProgression.Core;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]
@@ -35,7 +35,6 @@ internal class InjectToIl2Cpp : Attribute
 [BepInProcess("GTFO.exe")]
 [BepInDependency(MTFO.MTFO.GUID)]
 [BepInDependency(ArchiveMod.GUID)]
-[BepInDependency(SimpleProgression.Plugin.GUID)]
 public class Plugin : BasePlugin
 {
     public const string Name = "Archipelago";       // Plugin name
@@ -143,7 +142,23 @@ public class Plugin : BasePlugin
 
     // --------------------------------------------------------------------------------------------
 
-    // Tracks Archipelago state and syncs with server
+    /// <summary>
+    /// Event invoked when StateTracker initalizes replication.
+    /// You can use this event to set up custom packets using StateTracker's replicator
+    /// Also useful for late patches.
+    /// </summary>
+    public event Action<SNet_Replicator>? LateSetup;
+
+    /// <summary>
+    /// Invoke late setup. Called in <see cref="StateTracker.SetupReplication"/>
+    /// </summary>
+    /// <param name="replicator"></param>
+    internal void InvokeLateSetup(SNet_Replicator replicator)
+        => LateSetup?.Invoke(replicator);
+
+    /// <summary>
+    /// Tracks Archipelago state and syncs both with AP server and lobby members
+    /// </summary>
     private StateTracker? m_stateTracker = null;
     public StateTracker StateTracker 
     { 
@@ -151,7 +166,9 @@ public class Plugin : BasePlugin
         protected set => m_stateTracker = value; 
     }
 
-    // Manager for Modded instance data, manages generating it and such
+    /// <summary>
+    /// Manager for Modded instance data, manages generating it and such
+    /// </summary>
     private MidManager m_midManager = new();
     public MidManager MidManager 
     { 
@@ -159,10 +176,15 @@ public class Plugin : BasePlugin
         protected set => m_midManager = value;
     }
 
+    /// <summary>
+    /// Debug patch I added to try and figure out a checkpoint bug.
+    /// Since I've added it, though, the bug has not occured. So, I guess it fixes the bug?
+    /// </summary>
     [HarmonyPatch(typeof(SNet_Replication), nameof(SNet_Replication.RecallBytes))]
     [HarmonyPrefix]
     public static void PreRecallBytes(SNet_Replication __instance, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> bytes, uint size)
     {
 
     }
+
 }

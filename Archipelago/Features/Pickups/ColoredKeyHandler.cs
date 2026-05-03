@@ -7,10 +7,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Members;
 using TheArchive.Core.Attributes.Feature.Patches;
+using TheArchive.Core.Attributes.Feature.Settings;
 using TheArchive.Core.FeaturesAPI;
+using TheArchive.Core.Localization;
 using TheArchive.Interfaces;
-using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
@@ -42,6 +44,31 @@ public class ColoredKeyHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    public class Settings
+    {
+        [Localized]
+        public enum eRetrievalType
+        {
+            ToTerminal,
+            ToHost,
+            ToRandom,
+            ToDoor,
+        }
+
+        [FSDisplayName("Retrieval Type")]
+        [FSDescription(
+            "Determines what happens when receiving a Colored Key from the Multiworld."
+            + "\n\n<u>To Terminal</u>" + "\nPlace the key in the relevant terminal system, from which it can be retrieved at any time."
+            + "\n\n<u>To Host</u>"     + "\nGive the key directly to the host, either immediately when receiving it or when the level starts."
+            + "\n\n<u>To Random</u>"   + "\nGive the key directly to a randomly-chosen non-bot player."
+            + "\n\n<u>To Door</u>"     + "\nImmediately unlock the associated door."
+        )]
+        public eRetrievalType RetrievalType { get; set; } = eRetrievalType.ToTerminal;
+    }
+
+    [FeatureConfig]
+    public static Settings Config { get; set; } = null!;
+
     private static class ColoredKeyLocation
     {
         public static TagResolver MakeTag(Zone.Data data)
@@ -65,19 +92,11 @@ public class ColoredKeyHandler : ArchipelagoFeature
 
         public Zone.Data ZoneData { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (ZoneData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ZoneData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        /// <summary>
+        /// Try to spawn the key now. Returns the async spawn wrapper, with which
+        ///  you can queue events for when the key spawns
+        /// </summary>
+        public AsyncItemSpawnWrapper TrySpawnKey()
         {
             LG_Zone? zone = ZoneData.GetLG_Zone();
             if (zone == null)
@@ -93,13 +112,82 @@ public class ColoredKeyHandler : ArchipelagoFeature
                     new pItemData() { itemID_gearCRC = sourceDoor.m_keyItem.DataBlockID },
                     new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
                     ItemMode.Pickup,
-                    Vector3.zero,
-                    Quaternion.identity,
+                    UnityEngine.Vector3.zero,
+                    UnityEngine.Quaternion.identity,
                     null,
                     null
                 );
             }
 
+            return wrapper;
+        }
+
+        /// <summary>
+        /// Immediately retrieves the key item, placing it into the terminal,
+        /// unlocking the relevant door, or giving it to a player.
+        /// Assumes you are in the correct expedition.
+        /// </summary>
+        public void RetrieveKey()
+        {
+            switch (Config.RetrievalType)
+            {
+                case Settings.eRetrievalType.ToTerminal:
+                    StateTracker.Get().AddItemToTerminal(this);
+                    break;
+
+                case Settings.eRetrievalType.ToHost:
+                    TrySpawnKey().AddSpawnCallback((ISyncedItem item) => {
+                        KeyItemPickup_Core? keyItem = item.TryCast<KeyItemPickup_Core>();
+                        if (keyItem != null)
+                            keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, SNetwork.SNet.Master);
+                        else
+                        {
+                            FeatureLogger.Error("Failed to give keycard directly to host. Adding to terminal!");
+                            StateTracker.Get().AddItemToTerminal(this);
+                        }
+                    });
+                    break;
+
+                case Settings.eRetrievalType.ToRandom:
+                    TrySpawnKey().AddSpawnCallback((ISyncedItem item) => {
+                        List<SNetwork.SNet_Player> players = SNetwork.SNet.LobbyPlayers.Where(p => !p.IsBot).ToList();
+                        KeyItemPickup_Core? keyItem = item.TryCast<KeyItemPickup_Core>();
+                        if (keyItem != null)
+                            keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, players[Random.Shared.Next(0, players.Count)]);
+                        else
+                        {
+                            FeatureLogger.Error("Failed to give keycard directly to random human. Adding to terminal!");
+                            StateTracker.Get().AddItemToTerminal(this);
+                        }
+                    });
+                    break;
+
+                case Settings.eRetrievalType.ToDoor:
+                    LG_Zone? zone = ZoneData.GetLG_Zone();
+                    LG_SecurityDoor? sourceDoor = zone?.m_sourceGate?.SpawnedDoor.TryCast<LG_SecurityDoor>();
+                    if (sourceDoor == null)
+                        FeatureLogger.Error("Failed to retrieve zone door while unlocking colored keycard door!");
+                    else
+                        sourceDoor.AttemptOpenCloseInteraction(true);
+                    break;
+            }
+        }
+
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        {
+            if (ZoneData.IsCurrentlyInExpedition())
+                RetrieveKey();
+        }
+
+        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
+        {
+            if (ZoneData.IsSameExpedition(data))
+                RetrieveKey();
+        }
+
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        {
+            AsyncItemSpawnWrapper wrapper = TrySpawnKey();
             var player = terminal.m_localInteractionSource.Owner;
 
             yield return () =>

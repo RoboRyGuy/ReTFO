@@ -1,12 +1,13 @@
-﻿using ReTFO.Archipelago.Utilities;
+﻿using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Diagnostics.CodeAnalysis;
 
 /// <summary>
 /// Represents a region in archipelago. Some examples of regions:
@@ -17,6 +18,7 @@ using System.Diagnostics.CodeAnalysis;
 ///  <item>Objective steps (objectives are built out as traversable graphs)</item>
 /// </list>
 /// </summary>
+[DataContract]
 public struct Region
 {
     /// <summary>
@@ -34,17 +36,17 @@ public struct Region
         Name = other.Name;
         Reachable = other.Reachable;
         ConnectedPaths = other.ConnectedPaths;             // Note that this copies elements to our owned list
-        ConnectedLocationIds = other.ConnectedLocationIds; // Note that this copies elements to our owned list
+        ConnectedLocations = other.ConnectedLocations; // Note that this copies elements to our owned list
     }
 
     /// <summary>
     /// Unique name of the region, used to identify it
     /// </summary>
+    [DataMember]
     public string Name { get; private init; }
 
     /// <summary>
     /// Whether this region is reachable, typically populated during the graph traversal checks.
-    /// 
     /// </summary>
     public bool Reachable { get; set; } = false;
 
@@ -54,20 +56,21 @@ public struct Region
     public IReadOnlyCollection<PathID> ConnectedPaths 
     { 
         get => m_connectedPaths; 
-        init => m_connectedPaths.AddRange(value); 
+        init => m_connectedPaths.AddRange(value);
     }
+    [DataMember(Name = "ConnectedPaths")]
     private List<PathID> m_connectedPaths = new();
 
     /// <summary>
     /// Locations that can be discovered in this region.
     /// During randomization, locations are considered discoverable if and only if all regions they can be in are discoverable.
     /// </summary>
-    public IReadOnlyCollection<LocationID> ConnectedLocationIds 
+    public IReadOnlyCollection<LocationID> ConnectedLocations 
     { 
-        get => m_connectedLocationIds; 
-        init => m_connectedLocationIds.AddRange(value); 
+        get => m_connectedLocations; 
+        init => m_connectedLocations.AddRange(value);
     }
-    private List<LocationID> m_connectedLocationIds = new();
+    private List<LocationID> m_connectedLocations = new();
 
     /// <summary>
     /// Add a path to the connected paths list. Note that this cannot be removed later
@@ -85,10 +88,10 @@ public struct Region
     /// </summary>
     public void AddLocation(LocationID locationID)
     {
-        if (m_connectedLocationIds.Contains(locationID))
-            FeatureLogger.Error($"Cannot add duplicate location {locationID.Value} to region: {Name}");
+        if (m_connectedLocations.Contains(locationID))
+            FeatureLogger.Error($"Cannot add duplicate location {locationID.AsId} to region: {Name}");
         else
-            m_connectedLocationIds.Add(locationID);
+            m_connectedLocations.Add(locationID);
     }
 
     /// <summary>
@@ -97,7 +100,7 @@ public struct Region
     public void CleanUp()
     {
         m_connectedPaths.TrimExcess();
-        m_connectedLocationIds.TrimExcess();
+        m_connectedLocations.TrimExcess();
     }
 }
 
@@ -105,23 +108,26 @@ public struct Region
 /// Simple wrapper around a int to help identify it as a RegionID, usable
 ///  for looking up a Region instance in GameData.
 /// </summary>
-public struct RegionID : INullable, IIndex, IComparable<RegionID>, IEquatable<RegionID>
+[DataContract]
+public struct RegionID : INullable, IId, IIndex, IComparable<RegionID>, IEquatable<RegionID>
 {
     public RegionID() { }
-    public RegionID(int value) => Value = value;
-    public readonly int Value = 0;
+    [DataMember(Name = "Value")] 
+    private readonly long m_value = 0;
 
-    public bool IsNull => Value == 0;
-    public int AsIndex { get => Value - 1; init => Value = value + 1; }
-    public int CompareTo(RegionID other) => Value.CompareTo(other.Value);
-    public bool Equals(RegionID other) => Value.Equals(other.Value);
+    public bool IsNull => m_value == 0;
+    public long AsId { get => m_value; init => m_value = value; }
+    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
+    public int CompareTo(RegionID other) => m_value.CompareTo(other.m_value);
+    public bool Equals(RegionID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is RegionID id && Equals(id);
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => m_value.GetHashCode();
 }
 
 /// <summary>
 /// A Region with an ID associated with it
 /// </summary>
+[DataContract]
 public struct KeyedRegion : INullable
 {
     /// <summary>
@@ -145,12 +151,12 @@ public struct KeyedRegion : INullable
     /// <summary>
     /// Unique ID of the Region
     /// </summary>
-    public readonly RegionID ID;
+    [DataMember] public readonly RegionID ID;
 
     /// <summary>
     /// The Region object
     /// </summary>
-    public ReadOnlyRegion Region;
+    [DataMember] public ReadOnlyRegion Region;
 
     public bool IsNull => ID.IsNull;
 }
@@ -158,6 +164,7 @@ public struct KeyedRegion : INullable
 /// <summary>
 /// A variation of region which is readonly
 /// </summary>
+[DataContract]
 public struct ReadOnlyRegion
 {
     /// <summary>
@@ -178,6 +185,7 @@ public struct ReadOnlyRegion
     /// <summary>
     /// Contained region
     /// </summary>
+    [DataMember(Name = "ContainedRegion")] 
     private Region m_region;
 
     /// <inheritdoc cref="Region.Name"/>
@@ -189,6 +197,6 @@ public struct ReadOnlyRegion
     /// <inheritdoc cref="Region.ConnectedPaths"/>
     public IReadOnlyCollection<PathID> ConnectedPaths => m_region.ConnectedPaths;
 
-    /// <inheritdoc cref="Region.ConnectedLocationIds"/>
-    public IReadOnlyCollection<LocationID> ConnectedLocationIds => m_region.ConnectedLocationIds;
+    /// <inheritdoc cref="Region.ConnectedLocations"/>
+    public IReadOnlyCollection<LocationID> ConnectedLocationIds => m_region.ConnectedLocations;
 }

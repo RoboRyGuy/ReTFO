@@ -2,6 +2,7 @@
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
@@ -16,6 +17,7 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 /// In GTFO, locations are considered reachable if and only if all regions they can be located in are reachable.
 /// Note that in actual gameplay, it is still possible to reach locations without access to all possible regions.
 /// </summary>
+[DataContract]
 public class Location
 {
     /// <summary>
@@ -37,32 +39,38 @@ public class Location
     /// <summary>
     /// Identifying tag used by this locations
     /// </summary>
+    [DataMember]
     public RandomizationTag NameTag { get; init; }
 
     /// <summary>
     /// Optional secondary tag for this location.
     /// </summary>
+    [DataMember]
     public RandomizationTag Tag2 { get; init; }
 
     /// <summary>
     /// Optional tertiary tag for this location.
     /// </summary>
+    [DataMember]
     public RandomizationTag Tag3 { get; init; }
 
     /// <summary>
     /// Regions this location can be in.
     /// </summary>
+    [DataMember]
     public RegionID[] OwningRegionIds { get; init; }
 
     /// <summary>
     /// Item typically located in this location. 
     /// If 0, this location will be a candidate for floating items.
     /// </summary>
+    [DataMember]
     public ItemID ItemID { get; set; } = new();
 
     /// <summary>
     /// The data to use for this location.
     /// </summary>
+    [DataMember]
     public LocationData RandData { get; init; }
 
     /// <summary>
@@ -76,23 +84,26 @@ public class Location
 /// Simple wrapper around a long to help identify it as a LocationID, usable
 ///  for looking up a Location instance in GameData.
 /// </summary>
-public struct LocationID : INullable, IIndex, IComparable<LocationID>, IEquatable<LocationID>
+[DataContract]
+public struct LocationID : INullable, IId, IIndex, IComparable<LocationID>, IEquatable<LocationID>
 {
     public LocationID() { }
-    public LocationID(long value) => Value = value;
-    public readonly long Value = 0;
+    [DataMember(Name = "Value")] 
+    private readonly long m_value = 0;
 
-    public bool IsNull => Value == 0;
-    public int AsIndex { get => checked((int)Value) - 1; init => Value = value + 1; }
-    public int CompareTo(LocationID other) => Value.CompareTo(other.Value);
-    public bool Equals(LocationID other) => Value.Equals(other.Value);
+    public bool IsNull => m_value == 0;
+    public long AsId { get => m_value; init => m_value = value; }
+    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
+    public int CompareTo(LocationID other) => m_value.CompareTo(other.m_value);
+    public bool Equals(LocationID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is LocationID id && Equals(id);
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => m_value.GetHashCode();
 }
 
 /// <summary>
 /// A Location with an ID associated with it
 /// </summary>
+[DataContract]
 public struct KeyedLocation : INullable
 {
     /// <summary>
@@ -116,7 +127,7 @@ public struct KeyedLocation : INullable
     /// <summary>
     /// Unique ID of the Location. IDs range from 1 to 2^53-1.
     /// </summary>
-    public LocationID ID { get; init; }
+    [DataMember] public LocationID ID { get; init; }
 
     /// <summary>
     /// True if null (contains no location)
@@ -126,7 +137,7 @@ public struct KeyedLocation : INullable
     /// <summary>
     /// The location object with the given ID
     /// </summary>
-    public Location Location { get; init; }
+    [DataMember] public Location Location { get; init; }
 
     // Below are helper for accessing data in the location
 
@@ -140,7 +151,7 @@ public struct KeyedLocation : INullable
     public ItemID ItemID => Location.ItemID;
 
     /// <inheritdoc cref="Location.RandData"/>
-    public LocationData Data => Location.RandData;
+    public LocationData RandData => Location.RandData;
 
     /// <inheritdoc cref="Location.ScoutedItem"/>
     public ScoutedItemInfo? ScoutedItem => ScoutedItem;
@@ -149,6 +160,7 @@ public struct KeyedLocation : INullable
 /// <summary>
 /// Simple wrapper around some enum values
 /// </summary>
+[DataContract]
 public struct LocationData
 { 
     /// <summary>
@@ -204,12 +216,13 @@ public struct LocationData
     /// <summary>
     /// Extract or write the priority mode for this data
     /// </summary>
+    [DataMember]
     public eType PriorityMode
     {
         get => m_value & eType.PriorityMask;
         init  
         {
-            if (value != (value & eType.PriorityMask)) throw new ArgumentException("Must assign a priority type to Priority mode!");
+            if (value != (value & eType.PriorityMask)) throw new ArgumentException("Value assigned to PriorityMode must be a priority type!");
             m_value = value | (m_value & ~eType.PriorityMask);
         }
     }

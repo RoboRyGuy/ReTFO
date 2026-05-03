@@ -132,9 +132,37 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         public Layer.Data Layer { get; set; }
     }
 
-    // Add the shared objective and sector cleared regions not handled in individual objective processing
+    /// <summary>
+    /// Get the "Complete Objective" item, signaling an objective for this layer has been completed
+    /// </summary>
+    /// <param name="data">The layer objective being completed is on</param>
+    /// <returns>The CompleteObjectiveItem</returns>
+    public static KeyedItem GetCompleteObjectiveItem(Objective.Data data)
+    {
+        if (data.TryLookupItem(CompleteObjectiveItem.MakeTag(data), out var item))
+            return item;
+
+        Item newItem = new CompleteObjectiveItem(data);
+        return new(data.AddItem(newItem), newItem);
+    }
+
+    /// <summary>
+    /// Get the "Sector Cleared" item, signaling an expedtion was completed with a sector (main, secondary, or overload) cleared
+    /// </summary>
+    /// <param name="data">The layer for the sector being cleared</param>
+    /// <returns>The SectorCleared item</returns>
+    public static KeyedItem GetSectorClearedItem(Layer.Data data)
+    {
+        if (data.TryLookupItem(SectorClearedItem.MakeTag(data), out var item))
+            return item;
+
+        Item newItem = new SectorClearedItem(data);
+        return new(data.AddItem(newItem), newItem);
+    }
+
+    // Adds common regions, locations, and items for all layers. Things like the sector clear, the elevator dropped region and events, etc
     [Layer.Callback]
-    public void AddCommonObjectiveRegions(Layer.Data data)
+    public void AddCommonObjectiveElements(Layer.Data data)
     {
         var objectives = data.GetObjectiveDatas().ToList();
         if (!objectives.Any()) return;
@@ -205,34 +233,6 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             SectorClearedLocation.MakeRandData(),
             sectorClearedItem.ID
         );
-    }
-
-    /// <summary>
-    /// Get the "Complete Objective" item, signaling an objective for this layer has been completed
-    /// </summary>
-    /// <param name="data">The layer objective being completed is on</param>
-    /// <returns>The CompleteObjectiveItem</returns>
-    public static KeyedItem GetCompleteObjectiveItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(CompleteObjectiveItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new CompleteObjectiveItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    /// <summary>
-    /// Get the "Sector Cleared" item, signaling an expedtion was completed with a sector (main, secondary, or overload) cleared
-    /// </summary>
-    /// <param name="data">The layer for the sector being cleared</param>
-    /// <returns>The SectorCleared item</returns>
-    public static KeyedItem GetSectorClearedItem(Layer.Data data)
-    {
-        if (data.TryLookupItem(SectorClearedItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new SectorClearedItem(data);
-        return new(data.AddItem(newItem), newItem);
     }
 
     /// <summary>

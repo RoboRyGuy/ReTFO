@@ -55,6 +55,5 @@
     <Reference Include="$(BepInEx)\plugins\dakkhuza-MTFO\MTFO.dll" Private="false" />
     <Reference Include="$(BepInEx)\plugins\AuriRex-Clonesoft_Json\Clonesoft.Json.dll" Private="false" />
     <Reference Include="$(BepInEx)\plugins\AuriRex-TheArchive_Core\TheArchive.Core.dll" Private="false" />
-    <Reference Include="$(BepInEx)\plugins\AuriRex-Simple_Progression\SimpleProgression.dll" Private="false" />
   </ItemGroup>
 </Project>

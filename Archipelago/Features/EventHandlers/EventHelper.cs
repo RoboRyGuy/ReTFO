@@ -106,7 +106,11 @@ public class EventHelper : ArchipelagoFeature
     {
         WardenObjectiveEventData e = MakeBlankEvent();
         e.Type = CheckRegionEventType;
-        e.EnemyID = BitConverter.ToUInt32(BitConverter.GetBytes(regionId.Value));
+
+        var bytes = BitConverter.GetBytes(regionId.AsId);
+        e.Type = CheckLocationEventType;
+        e.EnemyID = BitConverter.ToUInt32(bytes, 0);
+        e.FogSetting = BitConverter.ToUInt32(bytes, 4);
         return e;
     }
 
@@ -127,7 +131,7 @@ public class EventHelper : ArchipelagoFeature
         LocationID id = data.AddLocation(loc);
         if (id.IsNull) return;
 
-        var bytes = BitConverter.GetBytes((long)id.Value);
+        var bytes = BitConverter.GetBytes(id.AsId);
         e.Type = CheckLocationEventType;
         e.EnemyID = BitConverter.ToUInt32(bytes, 0);
         e.FogSetting = BitConverter.ToUInt32(bytes, 4);
@@ -174,7 +178,10 @@ public class EventHelper : ArchipelagoFeature
             {
                 action = () =>
                 {
-                    RegionID id = new(BitConverter.ToInt32(BitConverter.GetBytes(inputEvent.EnemyID)));
+                    byte[] bytes = new byte[8];
+                    BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
+                    BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
+                    RegionID id = new() { AsId = BitConverter.ToInt64(bytes) };
                     Plugin.Get().StateTracker.NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
                 };
             }
@@ -183,7 +190,7 @@ public class EventHelper : ArchipelagoFeature
                 byte[] bytes = new byte[8];
                 BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
                 BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
-                LocationID id = new(BitConverter.ToInt64(bytes));
+                LocationID id = new() { AsId = BitConverter.ToInt64(bytes) };
 
                 StateTracker stateTracker = StateTracker.Get();
                 action = () =>
@@ -198,7 +205,7 @@ public class EventHelper : ArchipelagoFeature
                     if (loc is EventLocation eLoc)
                         eData = eLoc.SourceEvent;
                     else
-                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.Value}] {StateTracker.Get().MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
+                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.AsId}] {StateTracker.Get().MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
                     return true;
                 }
             }

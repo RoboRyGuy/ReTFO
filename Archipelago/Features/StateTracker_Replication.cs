@@ -242,27 +242,25 @@ public partial class StateTracker : ArchipelagoFeature
         {
             ClassInjector.DerivedConstructorBody(this);
             m_owner = owner;
-            m_replicator = SNet_Replication.AddManagerReplicator(new IReplicatorSupplier(this.Pointer));
+            m_replicator = SNet_Replication.AddManagerReplicator(new IReplicatorSupplier(this.Pointer)).Cast<SNet_Replicator>();
             SNet_SyncManager.RegisterCaptureCallback(new ICaptureCallbackObject(this.Pointer));
-
-            SNet_Replicator replicator = m_replicator.Cast<SNet_Replicator>();
 
             IntPtr ptr;
 
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveInitState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
-            m_initStatePacket = replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
+            m_initStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveGeneralState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
-            m_generalStatePacket = replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
+            m_generalStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveRecallState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
-            m_recallStatePacket = replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
+            m_recallStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveInteraction), typeof(void).FullName!, new string[] { typeof(pArtifactInventoryState).FullName! }
@@ -277,7 +275,7 @@ public partial class StateTracker : ArchipelagoFeature
         // END IReplicatorSupplier
 
         // ICaptureCallbackObject
-        public IReplicator GetReplicator() => m_replicator;
+        public IReplicator GetReplicator() => m_replicator.Cast<IReplicator>();
         public void OnStateCapture()
         {
             // This capture statement doesn't seem to work?
@@ -300,8 +298,9 @@ public partial class StateTracker : ArchipelagoFeature
 
         private const string s_name = "State Tracker Replicator";
         private UnityEngine.GameObject m_gameObject = new(s_name);
-        private IReplicator m_replicator = null!;
+        private SNet_Replicator m_replicator = null!;
         private StateTracker m_owner = null!;
+        public SNet_Replicator ConcreteReplicator => m_replicator;
 
         // Packets
         // Note that we have to reuse existing generic instantiations for which AOT code
@@ -317,12 +316,12 @@ public partial class StateTracker : ArchipelagoFeature
         public pStateReplicatorProvider GetProviderSyncStruct()
         {
             SNetStructs.pReplicator rep = new();
-            rep.SetID(m_replicator);
+            rep.SetID(Replicator);
             return new pStateReplicatorProvider() { pRep = rep };
         }
 
         /// <summary>
-        /// Callback fro rececing init state from the network
+        /// Callback fro receiving init state from the network
         /// </summary>
         /// <param name="bytes">Init state as bytes</param>
         /// <param name="data">Data about the buffer being received</param>
@@ -376,7 +375,7 @@ public partial class StateTracker : ArchipelagoFeature
                     m_owner.MakeInitState().ToBytes(),
                     SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
                     SNet_SendGroup.PlayersInSessionHub,
-                    SNet_SendQuality.Reliable_WithBuffering,
+                    SNet_SendQuality.Reliable,
                     (int)SNet_ChannelType.SessionOrderCritical
                 );
             }
@@ -385,7 +384,7 @@ public partial class StateTracker : ArchipelagoFeature
                 m_initStatePacket.Send(
                     m_owner.MakeInitState().ToBytes(),
                     SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
-                    SNet_SendQuality.Reliable_WithBuffering,
+                    SNet_SendQuality.Reliable,
                     (int)SNet_ChannelType.SessionOrderCritical,
                     player
                 );
@@ -403,7 +402,7 @@ public partial class StateTracker : ArchipelagoFeature
                     m_owner.MakeGeneralState().ToBytes(),
                     SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
                     SNet_SendGroup.PlayersInSessionHub,
-                    SNet_SendQuality.Reliable_WithBuffering,
+                    SNet_SendQuality.Reliable,
                     (int)SNet_ChannelType.SessionOrderCritical
                 );
             }
@@ -412,7 +411,7 @@ public partial class StateTracker : ArchipelagoFeature
                 m_generalStatePacket.Send(
                     m_owner.MakeGeneralState().ToBytes(),
                     SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
-                    SNet_SendQuality.Reliable_WithBuffering,
+                    SNet_SendQuality.Reliable,
                     (int)SNet_ChannelType.SessionOrderCritical,
                     player
                 );
@@ -434,6 +433,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     ArchipelagoStateReplicator? m_stateReplicator = null;
 
+    /// <summary>
+    /// Simple update enumerator which will be used as a coroutine
+    /// </summary>
     private class UpdateStateEnumerator : IEnumerator
     {
         private StateTracker m_owner;
@@ -454,12 +456,15 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Ensure replication is running for this StateTracker
+    /// Ensure replication is running for this StateTracker.
+    /// This is called in <see cref="Patches.ModifyRundownMenuPatch"/>
     /// </summary>
     public void SetupReplication()
     {
         if (m_stateReplicator != null) return;
+
         m_stateReplicator ??= new(this);
+        Plugin.InvokeLateSetup(m_stateReplicator.ConcreteReplicator);
 
         // Seems fitting to put this on SNet, though it probably doesn't matter
         SNet.Current.StartCoroutine(new Il2CppEnumerator(new UpdateStateEnumerator(this)));
@@ -467,7 +472,6 @@ public partial class StateTracker : ArchipelagoFeature
 
     /// <summary>
     /// Wrap the current state of the StateTracker into a struct used for replication.
-    /// This 
     /// </summary>
     /// <returns>The current state for the StateTracker</returns>
     public pArchipelagoInitState MakeInitState()
@@ -486,11 +490,11 @@ public partial class StateTracker : ArchipelagoFeature
 
         int count = 0;
         foreach (var tag in WhitelistTags)
-            result.WhitelistTags[count++] = tag.Value;
+            result.WhitelistTags[count++] = tag.AsId;
 
         count = 0;
         foreach (var tag in BlacklistTags)
-            result.BlacklistTags[count++] = tag.Value;
+            result.BlacklistTags[count++] = tag.AsId;
 
         return result;
     }
@@ -504,8 +508,8 @@ public partial class StateTracker : ArchipelagoFeature
         // Might optimize this later
         return new pArchipelagoGeneralState()
         {
-            ItemIds = ItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.Value, pair.Value)).ToArray(),
-            ItemsInTerminalSystem = ItemsInTerminalSystem.Select(pair => pair.Item1.Value).ToArray(),
+            ItemIds = ItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.AsId, pair.Value)).ToArray(),
+            ItemsInTerminalSystem = ItemsInTerminalSystem.Select(pair => pair.Item1.AsId).ToArray(),
         };
     }
 
@@ -539,8 +543,8 @@ public partial class StateTracker : ArchipelagoFeature
 
         RootSeed = state.RootSeed;
         Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
-        WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag(checked((int)i))).ToHashSet();
-        BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag(checked((int)i))).ToHashSet();
+        WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
+        BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
         CurrentState = eState.ClientConnect;
 
         PostConnectCommon();
@@ -564,11 +568,11 @@ public partial class StateTracker : ArchipelagoFeature
         // Reset terminal items
         ItemsInTerminalSystem.Clear();
         foreach (var id in state.ItemsInTerminalSystem)
-            AddItemToTerminal(new ItemID(id));
+            AddItemToTerminal(new ItemID() { AsId = id });
 
         // Reading state can never lower item counts
         var newItemCounts = state.ItemIds.GroupBy(i => i)
-            .ToDictionary(g => new ItemID(g.Key), g => g.Count());
+            .ToDictionary(g => new ItemID() { AsId = g.Key }, g => g.Count());
 
         foreach (var key in ItemCounts.Keys.Union(newItemCounts.Keys)) 
         {
@@ -597,11 +601,11 @@ public partial class StateTracker : ArchipelagoFeature
         switch (interaction.Type)
         {
             case pArchipelagoInteraction.eType.CollectItem:
-                CollectItem(new ItemID(interaction.Value));
+                CollectItem(new ItemID() { AsId = interaction.Value });
                 break;
 
             case pArchipelagoInteraction.eType.AddItemToTerminal:
-                AddItemToTerminal(new ItemID(interaction.Value));
+                AddItemToTerminal(new ItemID() { AsId = interaction.Value });
                 break;
 
             default:

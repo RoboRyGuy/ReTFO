@@ -18,19 +18,26 @@ public class AsyncItemSpawnWrapper
     /// <summary>
     /// Invoked when the item is spawned.
     /// </summary>
-    public event Action<ISyncedItem, PlayerAgent>? OnItemSpawned;
+    private event Action<ISyncedItem>? OnItemSpawned;
 
     /// <summary>
-    /// Set this item to despawn if it is spawned in.
-    /// Useful if you were waiting for it to spawn, it failed, and now you are ignoring it.
+    /// Queue an action for this item for either when it's spawned or immediately if it's already spawned
+    /// </summary>
+    public void AddSpawnCallback(Action<ISyncedItem> action)
+    {
+        OnItemSpawned += action;
+        if (Item != null)
+            OnItemSpawned.Invoke(Item);
+    }
+
+    /// <summary>
+    /// Either queue or immediately despawn the item
     /// </summary>
     public void QueueDespawn()
     {
-        static void DespawnOnSpawn(ISyncedItem item, PlayerAgent _)
+        static void Despawn(ISyncedItem item)
             => item.Cast<global::Item>().ReplicationWrapper.Replicator.Despawn();
-        if (Item != null)
-            DespawnOnSpawn(Item, null!);
-        OnItemSpawned += DespawnOnSpawn;
+        AddSpawnCallback(Despawn);
     }
 
     /// <summary>
@@ -41,12 +48,9 @@ public class AsyncItemSpawnWrapper
     /// Depending on your spawn request, you can usually safely cast to global::Item 
     ///  or its derived types (ItemInLevel, CarryItemPickup_Core, etc)
     /// </param>
-    /// <param name="player">
-    /// The player which was submitted in the spawn request, typically the player which spawned the item.
-    /// </param>
-    public void OnSpawn(ISyncedItem item, PlayerAgent player)
+    public void OnSpawn(ISyncedItem item, PlayerAgent _)
     {
         Item = item;
-        OnItemSpawned?.Invoke(item, player);
+        OnItemSpawned?.Invoke(item);
     }
 }

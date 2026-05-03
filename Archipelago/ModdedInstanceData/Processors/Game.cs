@@ -81,7 +81,16 @@ public static class Game
         /// <param name="data">The data for the expedition.</param>
         /// <returns>True if successful, false otherwise (the name is already taken)</returns>
         public bool TryRegisterExpedition(string name, Expedition.Data data)
-            => ExpeditionLookup.TryAdd(name, data);
+        {
+            if (IsComplete) FeatureLogger.Warning($"Adding late expedition: {name}");
+            return ExpeditionLookup.TryAdd(name, data);
+        }
+
+        /// <summary>
+        /// Get all the expeditions registered to this game data
+        /// </summary>
+        public IReadOnlyDictionary<string, Expedition.Data> GetAllExpeditions()
+            => ExpeditionLookup;
 
         /// <summary>
         /// Attempt to look up expedition data by name
@@ -103,6 +112,7 @@ public static class Game
         {
             if (!TagLookup.TryGetValue(tagName, out RandomizationTag result))
             {   // Invoke parent resolver first, since it'll likely add new tags and change this tag's index
+                if (IsComplete) FeatureLogger.Warning($"Adding late tag: {tagName}");
                 RandomizationTag parent = parentResolver?.Invoke(this) ?? new();
                 result = new() { AsIndex = TagDefinitions.Count };
                 TagDefinitions.Add(new(tagName, tagDesc, parent));
@@ -134,6 +144,7 @@ public static class Game
         public RandomizationTagDefinition LookupTagDef(RandomizationTag tag)
             => TagDefinitions[tag.AsIndex];
 
+        #region TagMatching
         /// <summary>
         /// Test if a tag matches against another tag
         /// </summary>
@@ -253,6 +264,7 @@ public static class Game
                 && (item.Tag2.IsNull || TagMatches(parents, item.Tag2))
                 && (item.Tag3.IsNull || TagMatches(parents, item.Tag3));
         }
+        #endregion
 
         /// <summary>
         /// Lookup a RegionID; create the region if necessary
@@ -263,6 +275,7 @@ public static class Game
         {
             if (!RegionLookup.TryGetValue(regionName, out RegionID region))
             {
+                if (IsComplete) FeatureLogger.Warning($"Adding late region: {regionName}");
                 region = new RegionID() { AsIndex = RegionList.Count };
                 RegionList.Add(new Region(regionName));
                 RegionLookup.Add(regionName, region);
@@ -329,6 +342,13 @@ public static class Game
         /// <returns>The ID of the newly-added path</returns>
         public PathID AddPath(ReadOnlyPath path)
         {
+            if (IsComplete)
+            {
+                FeatureLogger.Warning($"Adding late path: {path.Name ?? "NO NAME"}");
+                FeatureLogger.Warning($"                  From {LookupRegion(path.StartingRegion).Name}");
+                FeatureLogger.Warning($"                    To {LookupRegion(path.EndingRegion).Name}");
+            }
+
             if (path.StartingRegion.IsNull)
                 throw new ArgumentNullException("Cannot add path; starting region is null!");
 
@@ -340,6 +360,12 @@ public static class Game
             LookupRegionProtected(path.StartingRegion).AddPath(id);
             return id;
         }
+
+        /// <summary>
+        /// Gets all paths currently registered
+        /// </summary>
+        public IReadOnlyDictionary<PathID, ReadOnlyPath> GetAllPaths()
+            => new ReadOnlyListDict<PathID, ReadOnlyPath>(PathList);
 
         /// <summary>
         /// Try to look up a path based on its start and end regions. 
@@ -361,6 +387,13 @@ public static class Game
         }
 
         /// <summary>
+        /// Get a path by ID
+        /// </summary>
+        /// <param name="id">The ID of the path</param>
+        /// <returns>The found path object</returns>
+        public ReadOnlyPath LookupPath(PathID id) => PathList[id.AsIndex];
+
+        /// <summary>
         /// Set the required item count for a particular path
         /// </summary>
         /// <param name="id">The path to modify</param>
@@ -370,18 +403,11 @@ public static class Game
         /// </remarks>
         public void SetPathReqCount(PathID id, uint newCount)
         {
+            if (IsComplete) FeatureLogger.Warning($"Late path req modification: PathID {id.AsId}");
             Path newPath = PathList[id.AsIndex].MakeMutable();
             newPath.ReqCount = newCount;
             PathList[id.AsIndex] = newPath;
         }
-
-        /// <summary>
-        /// Get a path by ID
-        /// </summary>
-        /// <param name="id">The ID of the path</param>
-        /// <returns>The found path object</returns>
-        public ReadOnlyPath LookupPath(PathID id)
-            => PathList[id.AsIndex];
 
         /// <summary>
         /// Shortcut to create a new base Location object and add it
@@ -405,6 +431,11 @@ public static class Game
         /// <returns>The ID of the newly-added location, or a null ID if the location name is taken</returns>
         public LocationID AddLocation(Location location)
         {
+            if (location.NameTag.IsNull)
+                throw new ArgumentNullException("Cannot register an item with a null name tag!");
+
+            if (IsComplete) FeatureLogger.Warning($"Adding late location: {LookupTagDef(location.NameTag).Name}");
+
             if (LocationLookup.ContainsKey(location.NameTag))
             {
                 FeatureLogger.Error($"Failed to add new location: {LookupTagDef(location.NameTag).Name}");
@@ -456,8 +487,7 @@ public static class Game
         /// <param name="id">The ID of the location to be looked up</param>
         /// <returns>The found location</returns>
         /// <remarks>If this Game.Data provided the ID, the location is guaranteed to exist</remarks>
-        public Location LookupLocation(LocationID id)
-            => LocationList[id.AsIndex];
+        public Location LookupLocation(LocationID id) => LocationList[id.AsIndex];
 
         /// <summary>
         /// Attempts to register a new item.
@@ -468,6 +498,8 @@ public static class Game
         {
             if (item.NameTag.IsNull)
                 throw new ArgumentNullException("Cannot register an item with a null name tag!");
+
+            if (IsComplete) FeatureLogger.Warning($"Adding late item: {LookupTagDef(item.NameTag).Name}");
 
             if (ItemLookup.ContainsKey(item.NameTag))
             {
@@ -484,8 +516,7 @@ public static class Game
         /// <summary>
         /// Gets all registered items
         /// </summary>
-        public IReadOnlyDictionary<ItemID, Item> GetAllItems()
-            => new ReadOnlyListDict<ItemID, Item>(ItemList);
+        public IReadOnlyDictionary<ItemID, Item> GetAllItems() => new ReadOnlyListDict<ItemID, Item>(ItemList);
 
         /// <summary>
         /// Attempt to lookup an item by name.
@@ -511,15 +542,17 @@ public static class Game
         /// </summary>
         /// <param name="name">The name of the item</param>
         /// <returns>The item</returns>
-        public Item LookupItem(ItemID id)
-            => ItemList[id.AsIndex];
+        public Item LookupItem(ItemID id) => ItemList[id.AsIndex];
 
         /// <summary>
         /// Adds an item as a floating item, which can be randomized to any empty location.
         /// </summary>
         /// <param name="id">The ID of the item to add</param>
         public void AddFloatingItem(ItemID id)
-            => FloatingItems.Add(id);
+        {
+            if (IsComplete) FeatureLogger.Warning($"Adding late floating item: {LookupTagDef(LookupItem(id).NameTag).Name}");
+            FloatingItems.Add(id);
+        }
 
         /// <summary>
         /// Get all registered floating item IDs

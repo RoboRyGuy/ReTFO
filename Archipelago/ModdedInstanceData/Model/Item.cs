@@ -4,11 +4,12 @@ using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Diagnostics.CodeAnalysis;
 
 /// <summary>
 /// Represents an item in GTFO. Some examples include:
@@ -20,6 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 /// Items do not necessarily support randomization; some items are purely event items which
 ///  are used to perform pathing logic, while others may simply be unimeplemented.
 /// </summary>
+[DataContract]
 public class Item
 {
     /// <summary>
@@ -36,21 +38,25 @@ public class Item
     /// <summary>
     /// Identifying tag used by this item
     /// </summary>
+    [DataMember]
     public RandomizationTag NameTag { get; init; }
 
     /// <summary>
     /// Optional secondary tag for this item.
     /// </summary>
+    [DataMember]
     public RandomizationTag Tag2 { get; init; } = new();
 
     /// <summary>
     /// Optional tertiary tag for this item.
     /// </summary>
+    [DataMember]
     public RandomizationTag Tag3 { get; init; } = new();
 
     /// <summary>
     /// Randomization data associated with this item.
     /// </summary>
+    [DataMember]
     public ItemData RandData { get; init; }
 
     /// <summary>
@@ -61,9 +67,20 @@ public class Item
     public virtual Expedition.Data? RequiredExpedition => null;
 
     /// <summary>
+    /// Property used purely to assist with serialization, since Expedition.Data is not serializable
+    /// </summary>
+    [DataMember]
+    private string? RequiredExpeditionName
+    {
+        get => RequiredExpedition?.ExpeditionName ?? null;
+        set { } // Discard
+    }
+
+    /// <summary>
     /// How this item should be represented when a path uses it as a requirement.
     /// Override this if you need the item to use a category instead.
     /// </summary>
+    [DataMember]
     public virtual Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Item, NameTag);
 
     /// <summary>
@@ -122,23 +139,26 @@ public class Item
 /// Simple wrapper around a long to help identify it as an ItemID, usable
 ///  for looking up an Item instance in GameData.
 /// </summary>
-public struct ItemID : INullable, IIndex, IComparable<ItemID>, IEquatable<ItemID>
+[DataContract]
+public struct ItemID : INullable, IId, IIndex, IComparable<ItemID>, IEquatable<ItemID>
 {
     public ItemID() { }
-    public ItemID(long value) => Value = value;
-    public readonly long Value = 0;
+    [DataMember(Name = "Value")] 
+    private readonly long m_value = 0;
 
-    public bool IsNull => Value == 0;
-    public int AsIndex { get => checked((int)Value) - 1; init => Value = value + 1; }
-    public int CompareTo(ItemID other) => Value.CompareTo(other.Value);
-    public bool Equals(ItemID other) => Value.Equals(other.Value);
+    public bool IsNull => m_value == 0;
+    public long AsId { get => m_value; init => m_value = value; }
+    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
+    public int CompareTo(ItemID other) => m_value.CompareTo(other.m_value);
+    public bool Equals(ItemID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is ItemID id && Equals(id);
-    public override int GetHashCode() => Value.GetHashCode();
+    public override int GetHashCode() => m_value.GetHashCode();
 }
 
 /// <summary>
 /// A Item with an ID associated with it
 /// </summary>
+[DataContract]
 public struct KeyedItem : INullable
 {
     /// <summary>
@@ -162,12 +182,12 @@ public struct KeyedItem : INullable
     /// <summary>
     /// Unique ID of the Item. IDs range from 1 to 2^53-1.
     /// </summary>
-    public readonly ItemID ID;
-    
+    [DataMember] public readonly ItemID ID;
+
     /// <summary>
     /// The Item object with the given ID
     /// </summary>
-    public readonly Item Item;
+    [DataMember] public readonly Item Item;
 
     /// <summary>
     /// True if the item is null, false otherwise
@@ -175,7 +195,13 @@ public struct KeyedItem : INullable
     public bool IsNull => ID.IsNull;
 
     /// <inheritdoc cref="Item.NameTag"/>
-    public RandomizationTag Name => Item.NameTag;
+    public RandomizationTag NameTag => Item.NameTag;
+
+    /// <inheritdoc cref="Item.Tag2"/>
+    public RandomizationTag Tag2 => Item.Tag2;
+
+    /// <inheritdoc cref="Item.Tag3"/>
+    public RandomizationTag Tag3 => Item.Tag3;
 
     /// <inheritdoc cref="Item.RandData"/>
     public ItemData RandData => Item.RandData;
@@ -200,6 +226,7 @@ public struct KeyedItem : INullable
 /// <summary>
 /// Simple wrapper around some enum values
 /// </summary>
+[DataContract]
 public struct ItemData
 {
     /// <summary>
@@ -273,6 +300,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsProgression bit
     /// </summary>
+    [DataMember]
     public bool IsProgression
     {
         get => (m_value & eType.Progression) != 0;
@@ -286,6 +314,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsUseful bit
     /// </summary>
+    [DataMember]
     public bool IsUseful
     {
         get => (m_value & eType.Useful) != 0;
@@ -299,6 +328,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsFiller bit
     /// </summary>
+    [DataMember]
     public bool IsFiller
     {
         get => (m_value & eType.Filler) != 0;
@@ -312,6 +342,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsTrapbit
     /// </summary>
+    [DataMember]
     public bool IsTrap
     {
         get => (m_value & eType.Trap) != 0;
@@ -325,6 +356,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the DoSkipBalancing
     /// </summary>
+    [DataMember]
     public bool DoSkipBalancing
     {
         get => (m_value & eType.SkipBalancing) != 0;
@@ -338,6 +370,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsDeprioritized bit
     /// </summary>
+    [DataMember]
     public bool IsDeprioritized
     {
         get => (m_value & eType.Deprioritized) != 0;

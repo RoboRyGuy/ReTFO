@@ -20,7 +20,7 @@ namespace ReTFO.Archipelago.Features;
 
 public class DeathLinkHandler : ArchipelagoFeature
 {
-    public override string Name => "DeahtLink";
+    public override string Name => "Death Link";
     public override string Description
         => "Handles death link";
     public override FeatureGroup Group => FeatureGroups.Archipelago;
@@ -32,7 +32,7 @@ public class DeathLinkHandler : ArchipelagoFeature
     }
 
     [FeatureConfig]
-    public static Settings Config { get; set; }
+    public static Settings Config { get; set; } = null!;
 
     public class Settings
     {

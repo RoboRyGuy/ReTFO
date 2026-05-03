@@ -4,10 +4,10 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
-/* Wraps the LG_LayerType and eDimensionIndex enums and combines them into one, to simplify 
- *  methods which deal with both types of layers
- * Implictly castable from both
- */
+/// <summary>
+/// Wraps the LG_LayerType and eDimensionIndex enums with the assumption that only Reality
+///  has more than one layer. This helps simplify many aspects of logic
+/// </summary>
 public struct LayerType
 {
     private int value;
@@ -17,6 +17,7 @@ public struct LayerType
         if (dimension == eDimensionIndex.Reality) this = layer;
         else this = dimension;
     }
+
     public LayerType(eDimensionIndex dimension, LG_LayerType layer)
     {
         if (dimension == eDimensionIndex.Reality) this = layer;

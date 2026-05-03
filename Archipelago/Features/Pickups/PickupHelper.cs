@@ -153,12 +153,12 @@ public class PickupHelper : ArchipelagoFeature
         else if (!comp.StoredLocation.IsNull)
         {
             Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
-            int locLength = Math.Max(comp.StoredLocation.Value.ToString().Length, locationId.Value.ToString().Length);
+            int locLength = Math.Max(comp.StoredLocation.AsId.ToString().Length, locationId.AsId.ToString().Length);
             string formatString = new string('0', locLength);
             FeatureLogger.Error(
                 $"Overwriting location on pickup!\n"
-                + $"  Old Location: [{comp.StoredLocation.Value.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(comp.StoredLocation).NameTag).Name}"
-                + $"  New Location: [{         locationId.Value.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
+                + $"  Old Location: [{comp.StoredLocation.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(comp.StoredLocation).NameTag).Name}"
+                + $"  New Location: [{         locationId.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
             );
         }
 

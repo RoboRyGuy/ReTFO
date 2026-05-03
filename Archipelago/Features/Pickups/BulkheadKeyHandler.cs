@@ -97,11 +97,11 @@ public class BulkheadKeyHandler : ArchipelagoFeature
                 if (!stateTracker.TestRandomization(this).IsRandomized && player != null)
                 {
                     var wrapper = SpawnItemAsync();
-                    wrapper.OnItemSpawned += (item, _) => 
+                    wrapper.AddSpawnCallback(item => 
                     {
                         KeyItemPickup_Core keyItem = item.Cast<KeyItemPickup_Core>();
                         keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player.Owner);
-                    };
+                    });
                     return;
                 }
                 stateTracker.AddItemToTerminal(this);
