@@ -153,6 +153,7 @@ public struct ItemID : INullable, IId, IIndex, IComparable<ItemID>, IEquatable<I
     public bool Equals(ItemID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is ItemID id && Equals(id);
     public override int GetHashCode() => m_value.GetHashCode();
+    public override string ToString() => $"ItemID: {m_value}";
 }
 
 /// <summary>

@@ -31,6 +31,7 @@ public struct RandomizationTag : INullable, IId, IIndex, IComparable<Randomizati
     public bool Equals(RandomizationTag other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is RandomizationTag tag && Equals(tag);
     public override int GetHashCode() => m_value.GetHashCode();
+    public override string ToString() => $"TagID: {m_value}";
 }
 
 /// <summary>

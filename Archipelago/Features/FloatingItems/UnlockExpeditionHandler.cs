@@ -64,8 +64,8 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         foreach (var expedition in rundown.TierE) yield return expedition;
     }
 
-    private static IEnumerable<ExpeditionInTierData> GetActiveExpeditions()
-        => Globals.Global.ActiveRundownIds?.Select(RundownDataBlock.GetBlock).SelectMany(UnpackRundown) ?? Enumerable.Empty<ExpeditionInTierData>();
+    private static IEnumerable<ExpeditionInTierData> GetExpeditions()
+        => RundownDataBlock.GetAllBlocks().SelectMany(UnpackRundown) ?? Enumerable.Empty<ExpeditionInTierData>();
 
     private class ExpeditionUnlockItem : Item
     {
@@ -85,24 +85,36 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
 
         public override Expedition.Data? RequiredExpedition => ExpeditionData;
 
-        private ExpeditionInTierData FindExpedition()
+        private List<ExpeditionInTierData> FindExpeditions()
         {
-            foreach (var expedition in GetActiveExpeditions())
-                if (Expedition.Data.FromExpedition(expedition) == ExpeditionData) return expedition;
-            FeatureLogger.Error($"Failed to find expedition in loaded rundowns: {ExpeditionData.ExpeditionName}");
-            throw new NotSupportedException();
+            List<ExpeditionInTierData> expeditions = GetExpeditions()
+                .Where(e => Expedition.Data.TryFromExpedition(e)?.IsSameExpedition(ExpeditionData) ?? false)
+                .ToList();
+
+            if (expeditions.Count == 0)
+                FeatureLogger.Error($"Failed to find expedition during lock/unlock event: {ExpeditionData.ExpeditionName}");
+
+            return expeditions;
         }
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
         {
             if (ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled)
-                FindExpedition().Accessibility = eExpeditionAccessibility.AlwaysAllow;
+            {
+                foreach (var e in FindExpeditions()) 
+                    e.Accessibility = eExpeditionAccessibility.AlwaysAllow;
+                StateTracker.UpdateLocationCounts(); // Since a new icon is now visible
+            }
         }
 
         public override void OnItemLost(StateTracker stateTracker)
         {
             if (ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled)
-                FindExpedition().Accessibility = eExpeditionAccessibility.AlwayBlock;
+            {
+                foreach (var e in FindExpeditions()) 
+                    e.Accessibility = eExpeditionAccessibility.AlwayBlock;
+                StateTracker.UpdateLocationCounts(); // Since a new icon is now hidden
+            }
         }
     }
 
@@ -135,7 +147,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// </summary>
     public static void UnlockAll()
     {
-        foreach (var expedition in GetActiveExpeditions())
+        foreach (var expedition in GetExpeditions())
             expedition.Accessibility = eExpeditionAccessibility.AlwaysAllow;
     }
 
@@ -146,7 +158,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     {
         StateTracker stateTracker = StateTracker.Get();
         Game.Data data = stateTracker.MidManager.GetProcessedGameData();
-        foreach (var expedition in GetActiveExpeditions())
+        foreach (var expedition in GetExpeditions())
         {
             if (!data.TryLookupExpedition(expedition.Descriptive.Prefix, out var eData))
             {

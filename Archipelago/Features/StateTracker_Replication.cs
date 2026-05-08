@@ -447,7 +447,7 @@ public partial class StateTracker : ArchipelagoFeature
         
         public bool MoveNext()
         {
-            if (m_owner.CurrentState.IsConnected || m_owner.CurrentState.IsFakeConnected)
+            if (m_owner.CurrentState == eState.HostConnected || m_owner.CurrentState == eState.FakeConnect)
                 m_owner.m_stateReplicator!.SendGeneral();
             return true;
         }
@@ -485,10 +485,10 @@ public partial class StateTracker : ArchipelagoFeature
             BlacklistTags = new long[BlacklistTags.Count],
         };
 
-        for (int i = 0; i < Expeditions.Count; i++)
-            result.ExpeditionNames[i] = Expeditions[i].ExpeditionName;
-
         int count = 0;
+        foreach (var exp in Expeditions)
+            result.ExpeditionNames[count++] = exp.ExpeditionName;
+
         foreach (var tag in WhitelistTags)
             result.WhitelistTags[count++] = tag.AsId;
 
@@ -500,7 +500,7 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Wrap the current state of the StateTracker into a struct used for recalls.
+    /// Wrap the current state of the StateTracker into a struct used for recalls and replication
     /// </summary>
     /// <returns></returns>
     public pArchipelagoGeneralState MakeGeneralState()
@@ -508,7 +508,7 @@ public partial class StateTracker : ArchipelagoFeature
         // Might optimize this later
         return new pArchipelagoGeneralState()
         {
-            ItemIds = ItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.AsId, pair.Value)).ToArray(),
+            ItemIds = ActualItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.AsId, pair.Value)).ToArray(),
             ItemsInTerminalSystem = ItemsInTerminalSystem.Select(pair => pair.Item1.AsId).ToArray(),
         };
     }
@@ -521,7 +521,7 @@ public partial class StateTracker : ArchipelagoFeature
     protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0)
     {
         // Check if master
-        if (!(CurrentState.IsConnected || CurrentState.IsClientConnected)) return;
+        if (!SNet.IsMaster) return;
         
         // If recalling, we'll redo several interactions (ie adding items to terminal)
         if (SNet.Capture.IsRecalling) return;
@@ -535,9 +535,15 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="state">The init state being received</param>
     public void ReceiveInitState(pArchipelagoInitState state)
     {
-        if (!CurrentState.IsDisconnected)
+        if (SNet.IsMaster)
         {
-            FeatureLogger.Warning("Received init state while connected. Ignoring!");
+            FeatureLogger.Warning("Receive init state, but this is master. Ignoring!");
+            return;
+        }
+
+        if (CurrentState != eState.ClientConnect)
+        {
+            FeatureLogger.Warning("Receive init state but wasn't expecting it. Ignoring!");
             return;
         }
 
@@ -547,7 +553,7 @@ public partial class StateTracker : ArchipelagoFeature
         BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
         CurrentState = eState.ClientConnect;
 
-        PostConnectCommon();
+        ConnectCommon();
     }
 
     /// <summary>
@@ -557,9 +563,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="isRecall">If the state is the reuslt of a recall</param>
     public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall)
     {
-        if (!(CurrentState.IsClientConnected || isRecall))
+        if (SNet.IsMaster)
         {
-            FeatureLogger.Warning("Ignoring GeneralState packet because this is not a client!");
+            FeatureLogger.Warning("Ignoring GeneralState packet because this is master!");
             return;
         }
 
@@ -574,9 +580,9 @@ public partial class StateTracker : ArchipelagoFeature
         var newItemCounts = state.ItemIds.GroupBy(i => i)
             .ToDictionary(g => new ItemID() { AsId = g.Key }, g => g.Count());
 
-        foreach (var key in ItemCounts.Keys.Union(newItemCounts.Keys)) 
+        foreach (var key in ActualItemCounts.Keys.Union(newItemCounts.Keys)) 
         {
-            int count = ItemCounts.GetValueOrDefault(key, 0);
+            int count = ActualItemCounts.GetValueOrDefault(key, 0);
             int newCount = newItemCounts.GetValueOrDefault(key, 0);
 
             if (isRecall)
@@ -624,7 +630,7 @@ public partial class StateTracker : ArchipelagoFeature
         {
             if ((player?.Pointer ?? IntPtr.Zero) == IntPtr.Zero) return;
             StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.CurrentState.IsConnected || stateTracker.CurrentState.IsFakeConnected)
+            if (SNet.IsMaster)
             {
                 stateTracker.m_stateReplicator!.SendInit(player);
                 stateTracker.m_stateReplicator!.SendGeneral(player);

@@ -121,14 +121,13 @@ public class APCommandExtractHandler : ArchipelagoFeature
 
                 Location location = pair.Item2.Location;
                 string itemName()   => location.ScoutedItem?.ItemDisplayName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
-                string itemGame()   => location.ScoutedItem?.ItemGame ?? "GTFO";
+                string itemGame()   => location.ScoutedItem?.ItemGame ?? "DEBUG";
                 string itemPlayer() => location.ScoutedItem?.Player.Name ?? StateTracker.Config.Username;
                 
                 terminal.AddLine($"\n |--------------| {(isEmpty ? ""                   : " Item: " + itemName())}", false);
                 terminal.AddLine(  $" | {pair.Item1} | {(isEmpty ? "-- MODULE EMPTY --" : "World: " + itemGame())}", false);
                 terminal.AddLine(  $" |--------------| {(isEmpty ? ""                   : "Owner: " + itemPlayer())}", false);
                 printedSomething = true;
-
             }
             if (printedSomething)
                 terminal.AddLine($"\n   -- END OF LIST --", true);

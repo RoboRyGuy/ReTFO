@@ -34,8 +34,16 @@ public class TriggerEventsHandler : ArchipelagoFeature
     private static Dictionary<string, Tuple<LayerType, eLocalZoneIndex>> WorldEventObjectOverrides
         = new Dictionary<string, Tuple<LayerType, eLocalZoneIndex>>()
     {
-        { "Evt_Shuttlebox_Interact_R8A1", Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_4) },
-        { "WE_Hearsay_Interact_02",       Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_7) },
+        { "Evt_Shuttlebox_Interact_R8A1", Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_4) }, // R8A1 shuttlebox (for MWP)
+        { "WE_Hearsay_Interact_02",       Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_7) }, // I don't remember
+    };
+
+    private static Dictionary<string, Func<Zone.Data, KeyedItem>> PathReqsOverride
+        = new Dictionary<string, Func<Zone.Data, KeyedItem>>()
+    {
+        { "Evt_Shuttlebox_Interact_R8A1", (data) => ObjectiveHandlers.RetrieveBigItemsHandler.GetItem(data.GetObjectiveDatas().ElementAt(0), 1) }, // R8A1 - Shuttlebox near the end. That MWP is a retrieval target, so this is a bit odd
+        { "WE_Dataextractor_Interact", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 181) }, // R8D2 - Fake "Process Item" objective at start
+        { "Evt_Shuttlebox_Interact_R7B1", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 173) }, // R7B1 - The collection case interaction
     };
 
     [Zone.Callback]
@@ -73,6 +81,13 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 {
                     sourceZone = data.FindZoneExact(overrideInfo.Item1, overrideInfo.Item2)
                         ?? throw new Exception("Warden Event Trigger has zone override, but the override zone could not be found");
+                }
+
+                // Identify the item needed to trigger the event. Again, using a simple override to identify this
+                Path.RequiredItem reqs = new();
+                if (PathReqsOverride.TryGetValue(trigger, out var itemGetter))
+                {
+                    reqs = itemGetter.Invoke(data).Item.PathReqs;
                 }
 
                 // Process the events

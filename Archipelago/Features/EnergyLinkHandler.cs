@@ -339,7 +339,11 @@ public class EnergyLinkHandler : ArchipelagoFeature
     public override void OnEnable()
     {
         base.OnEnable();
-        Plugin.Get().LateSetup += (replicator) => m_replicator = new(replicator);
+        Plugin.Get().LateSetup += (replicator) =>
+        {
+            m_replicator = new(replicator);
+            StateTracker.Get().OnStateChange += (st) => st.ApSession?.DataStorage[$"EnergyLink{st.ApSession.Players.ActivePlayer.Team}"].Initialize(0);
+        };
     }
 
     /// <summary>

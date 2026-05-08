@@ -241,7 +241,11 @@ public class APCommandItemsHandler : ArchipelagoFeature
         public static void Postfix(LG_ComputerTerminalCommandInterpreter __instance)
         {
             if (__state == null || __state.currentIndex >= __state.claimActions.Count) return;
-            if (__instance.OnEndOfQueue != null) return;
+
+            // Checks if it contains the helper already
+            if (__instance.OnEndOfQueue?.GetInvocationList().Any(i => i.Target.Pointer == __state.thisAction.Pointer) ?? false)
+                return;
+
             __instance.OnEndOfQueue += __state.thisAction;
             __state = null;
         }

@@ -294,7 +294,7 @@ public class MidManager
     public void ExportMidData(string? filename = null)
     {
         if (filename == null)
-            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "moddedInstanceData.mid");
+            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "moddedInstanceData.ini");
 
         Game.Data gameData = GetProcessedGameData();
         DoGraphTraversal(gameData, true, null, null, false);

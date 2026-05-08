@@ -41,13 +41,19 @@ public static class Game
         /// </summary>
         public Data(MidManager manager) 
         {
-            // The first region must always be the Menu region
             Storage = new()
             {
                 Manager = manager
             };
 
+            // The first region must always be the Menu region
             LookupOrCreateRegion(MenuRegionName);
+
+            // We need an "Empty" item
+            AddItem(new(
+                LookupOrCreateTag("Empty", "An item used to balance randomization during fill", this.Tag_Never),
+                new ItemData() { IsFiller = true }
+            ));
         }
 
         /// <summary>

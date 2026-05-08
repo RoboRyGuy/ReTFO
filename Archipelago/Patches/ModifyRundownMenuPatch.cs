@@ -4,6 +4,7 @@ using HarmonyLib;
 using Il2CppInterop.Runtime;
 using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
+using System;
 using UnityEngine;
 
 namespace ReTFO.Archipelago.Patches;
@@ -75,7 +76,8 @@ internal static class ModifyRundownMenuPatch
         var connectButton = __instance.m_buttonConnect;
         foreach (var action in connectButton.OnBtnPressCallback.GetInvocationList())
         {
-            if (action.Target?.GetIl2CppType().Pointer == Il2CppType.Of<CM_PageRundown_New>().Pointer)
+            // We're removing function __instance.setup_b__102_0
+            if ((action.Target?.Pointer ?? IntPtr.Zero) == __instance.Pointer)
                 connectButton.remove_OnBtnPressCallback(action.Cast<Il2CppSystem.Action<int>>());
         }
 

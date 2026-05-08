@@ -120,7 +120,7 @@ public static class Expedition
         /// </summary>
         /// <param name="expedition">The expedition data to fetch data for</param>
         /// <returns>The expedition's data</returns>
-        /// <exception cref="ArgumentException"></exception>
+        /// <exception cref="ArgumentException">The expedition data is not registered / found</exception>
         /// <remarks>
         /// This method assumes the requested expedition is successfully processed and registered in Game.Data.
         /// @TODO: Let this create Expedition.Data without processing? Identify expeditions which aren't registered?
@@ -136,6 +136,18 @@ public static class Expedition
                 throw new ArgumentException(error);
             }
             return data;
+        }
+
+        /// <summary>
+        /// Attempt to find registered expedition data for the requested expedition.
+        /// Returns null if it fails, but otherwise logs no errors.
+        public static Data? TryFromExpedition(ExpeditionInTierData expedition)
+        {
+            Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
+            string? expeditionName = expedition.Descriptive?.Prefix;
+            if (expeditionName == null || !gameData.TryLookupExpedition(expeditionName, out Expedition.Data? data))
+                return null;
+            else return data;
         }
 
         /// <summary>

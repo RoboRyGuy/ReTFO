@@ -178,6 +178,7 @@ public struct PathID : INullable, IId, IIndex, IComparable<PathID>, IEquatable<P
     public bool Equals(PathID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is PathID id && Equals(id);
     public override int GetHashCode() => m_value.GetHashCode();
+    public override string ToString() => $"PathID: {m_value}";
 }
 
 /// <summary>

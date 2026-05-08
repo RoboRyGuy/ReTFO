@@ -1,6 +1,7 @@
 ﻿using Archipelago.MultiClient.Net.Models;
 using ReTFO.Archipelago.Utilities;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
 
@@ -76,8 +77,20 @@ public class Location
     /// <summary>
     /// Scouted location retrieved from archipelago during play. 
     /// Locations are scouted on session start. This will be null if the item is not randomized.
+    /// This field stores only the display name from the scouted item.
     /// </summary>
+    [DebuggerDisplay("{DebuggerScoutedItemToString()}")]
     public ScoutedItemInfo? ScoutedItem { get; set; } = null;
+
+    /// <summary>
+    /// Prevents the debugger from crashing when evaluating this property when it's null.
+    /// </summary>
+    /// <remarks>
+    /// I have no idea why the debugger crashes when viewing a null ScotuedItemInfo,
+    ///  but it's annoying.
+    /// </remarks>
+    private string DebuggerScoutedItemToString()
+        => ScoutedItem?.ToString() ?? "null";
 }
 
 /// <summary>
@@ -98,6 +111,7 @@ public struct LocationID : INullable, IId, IIndex, IComparable<LocationID>, IEqu
     public bool Equals(LocationID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is LocationID id && Equals(id);
     public override int GetHashCode() => m_value.GetHashCode();
+    public override string ToString() => $"LocationID: {m_value}";
 }
 
 /// <summary>

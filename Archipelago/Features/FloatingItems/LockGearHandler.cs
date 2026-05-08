@@ -54,7 +54,7 @@ public static class LockGearHandler_Tags
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Hacking Tool", "Special gear category for the sentry gun", gd.Tag_Never));
 
         public TagResolver Tag_MeleeItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Melee Items", "All equippable gear items in the melee slot", gd.Tag_GearItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Melee Gear Items", "All equippable gear items in the melee slot", gd.Tag_GearItems));
 
         public TagResolver Tag_MeleeSledgehammerItems
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Melee Sledgehammer Items", "All melee gear considered to be a sledgehammer", gd.Tag_MeleeItems));
@@ -69,7 +69,7 @@ public static class LockGearHandler_Tags
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Melee Bat Items", "All melee gear considered to be a bat", gd.Tag_MeleeItems));
 
         public TagResolver Tag_PrimaryItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Primary Items", "All equippable gear items in the primary slot", gd.Tag_GearItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Primary Gear Items", "All equippable gear items in the primary slot", gd.Tag_GearItems));
 
         public TagResolver Tag_PrimaryGuns
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Primary Gun Items", "Equippable items in the primary slot which are considered guns", gd.Tag_PrimaryItems));
@@ -78,28 +78,28 @@ public static class LockGearHandler_Tags
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Primary Shotgun Items", "Equippable items in the primary slot which are considered shotguns", gd.Tag_PrimaryItems));
 
         public TagResolver Tag_SpecialItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Gear Items", "All equippable gear items in the special slot", gd.Tag_GearItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Gear Items", "All equippable gear items in the special slot", gd.Tag_GearItems));
 
         public TagResolver Tag_SpecialGuns
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Gun Items", "Equippable items in the special slot which are considered guns", gd.Tag_PrimaryItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Gun Items", "Equippable items in the special slot which are considered guns", gd.Tag_SpecialItems));
 
         public TagResolver Tag_SpecialShotgun
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Shotgun Items", "Equippable items in the special slot which are considered shotguns", gd.Tag_PrimaryItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Special Shotgun Items", "Equippable items in the special slot which are considered shotguns", gd.Tag_SpecialItems));
 
         public TagResolver Tag_ToolItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Tool Items", "All equippable gear items in the tool slot (also known as the class slot)", gd.Tag_GearItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Tool Gear Items", "All equippable gear items in the tool slot (also known as the class slot)", gd.Tag_GearItems));
 
         public TagResolver Tag_BiotrackerItems
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Biotracker Items", "All equippable gear items in the tool slot considered to be a biotracker", gd.Tag_ToolItems));
 
         public TagResolver Tag_MineDeployerItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Tool Items", "All equippable gear items in the tool slot considered to be a mine deployer", gd.Tag_ToolItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Mine Deployer Items", "All equippable gear items in the tool slot considered to be a mine deployer", gd.Tag_ToolItems));
 
         public TagResolver Tag_CFoamItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Tool Items", "All equippable gear items in the tool slot considered to be a CFoam launcher", gd.Tag_ToolItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("C-foam Items Items", "All equippable gear items in the tool slot considered to be a CFoam launcher", gd.Tag_ToolItems));
 
         public TagResolver Tag_SentryItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Tool Items", "All equippable gear items in the tool slot considered to be a deployable sentry", gd.Tag_ToolItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Sentry Items", "All equippable gear items in the tool slot considered to be a deployable sentry", gd.Tag_ToolItems));
     }
 }
 
@@ -135,19 +135,62 @@ public class LockGearHandler : ArchipelagoFeature
 
         public PlayerOfflineGearDataBlock Block { get; set; }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            GearIDRange ids = new(Block.GearJSON);
-            int slot = (int)ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
-            GearManager.Current.m_gearPerSlot[slot].Add(ids);
+        const eGearComponent INJECTED_COMP_VALUE = eGearComponent.None;
 
-            stateTracker.AddItemToTerminal(this); // So players can equip it without leaving the level
+        private static void AddGear(StateTracker stateTracker, PlayerOfflineGearDataBlock block)
+        {
+            GearIDRange ids = new(block.GearJSON);
+            ids.SetCompID(INJECTED_COMP_VALUE, block.persistentID);
+            int slot = (int)ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
+
+            // Checking if it's a single existing entry and, if so, checking if that was granted to prevent softlocks
+            // We'll store the result until after we add an item so it doesn't just get re-added
+            GearIDRange? gearToRemove = null;
+            if (GearManager.Current.m_gearPerSlot[slot].Count == 1)
+            {   
+                uint blockId = GearManager.Current.m_gearPerSlot[slot][0].GetCompID(INJECTED_COMP_VALUE);
+                if (blockId != 0)
+                {
+                    var gearItem = GetGearItem(stateTracker.MidManager.GetProcessedGameData(), PlayerOfflineGearDataBlock.GetBlock(blockId));
+                    int expectedCount = stateTracker.CollectedItemCounts.GetValueOrDefault(gearItem.ID, 0);
+                    if (expectedCount == 0)
+                        gearToRemove = GearManager.Current.m_gearPerSlot[slot][0];
+                    else if (blockId == block.persistentID && expectedCount == 1)
+                        return; // Funny edge case
+                }
+            }
+
+            // Helper which finds the index of a datablock in the playerofflinegear list
+            int findIndex(uint datablockId)
+            {
+                int count = 0;
+                foreach (var item in PlayerOfflineGearDataBlock.GetAllBlocks())
+                    if (item.persistentID == datablockId) return count;
+                    else ++count;
+                return count;
+            }
+
+            // Find the index of this item in the list and insert it
+            int thisIndex = findIndex(block.persistentID);
+            bool placed = false;
+            for (int i = 0; i < GearManager.Current.m_gearPerSlot[slot].Count; i++)
+            {
+                if (thisIndex < findIndex(GearManager.Current.m_gearPerSlot[slot][i].GetCompID(INJECTED_COMP_VALUE)))
+                {
+                    GearManager.Current.m_gearPerSlot[slot].Insert(i, ids);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed)
+                GearManager.Current.m_gearPerSlot[slot].Add(ids);
+
+            // If we queued that item for removal earlier, we do so now
+            if (gearToRemove != null) RemoveGear(gearToRemove);
         }
 
-        public override void OnItemLost(StateTracker stateTracker)
+        private static void RemoveGear(GearIDRange ids)
         {
-            // Disabling the item and removing it from the inventory list
-            GearIDRange ids = new(Block.GearJSON);
             InventorySlot slot = ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
             var gearList = GearManager.Current.m_gearPerSlot[(int)slot];
 
@@ -172,7 +215,10 @@ public class LockGearHandler : ArchipelagoFeature
 
                     newGear = new(offlineBlock.GearJSON);
                     if (ItemDataBlock.GetBlock(newGear.GetCompID(eGearComponent.BaseItem)).inventorySlot == slot)
+                    {
+                        newGear.SetCompID(INJECTED_COMP_VALUE, offlineBlock.persistentID);
                         break;
+                    }
                     else
                         newGear = null;
                 }
@@ -200,6 +246,19 @@ public class LockGearHandler : ArchipelagoFeature
             }
         }
 
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        {
+            AddGear(stateTracker, Block);
+            stateTracker.AddItemToTerminal(this); // So players can equip it without leaving the level
+        }
+
+        public override void OnItemLost(StateTracker stateTracker)
+        {
+            GearIDRange ids = new(Block.GearJSON);
+            RemoveGear(ids);
+            ids.SetCompID(INJECTED_COMP_VALUE, Block.persistentID); // Now that it's added, we can safely inject this
+        }
+
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
             var player = terminal.m_localInteractionSource.Owner;
@@ -221,9 +280,18 @@ public class LockGearHandler : ArchipelagoFeature
                 pack.SpawnAndEquipGearAsync(
                     ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot,
                     ids,
-                    null
-                );
+                    new Action<BackpackItem>((backpackItem) =>
+                    {
+                        ItemEquippable? weapon = backpackItem.TryCast<ItemEquippable>();
+                        if (weapon == null) return; // This is probably safe
+                        if (weapon.AmmoType == AmmoType.None) return;
+                        pack.AmmoStorage.SetAmmo(weapon.AmmoType, .5f);
 
+                        BulletWeapon? gun = weapon.TryCast<BulletWeapon>();
+                        if (gun != null)
+                            gun.SetCurrentClipRel(1f);
+                    })
+                );
                 terminal.AddLine($"Gear item \"{Block.name}\" has been given to {player.NickName}");
             };
         }

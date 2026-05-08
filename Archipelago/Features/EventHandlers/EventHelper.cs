@@ -108,7 +108,7 @@ public class EventHelper : ArchipelagoFeature
         e.Type = CheckRegionEventType;
 
         var bytes = BitConverter.GetBytes(regionId.AsId);
-        e.Type = CheckLocationEventType;
+        e.Type = CheckRegionEventType;
         e.EnemyID = BitConverter.ToUInt32(bytes, 0);
         e.FogSetting = BitConverter.ToUInt32(bytes, 4);
         return e;
@@ -129,7 +129,11 @@ public class EventHelper : ArchipelagoFeature
         Location loc = new EventLocation(data, e.MemberwiseClone().Cast<WardenObjectiveEventData>(), count);
         loc.ItemID = item;
         LocationID id = data.AddLocation(loc);
-        if (id.IsNull) return;
+        if (id.IsNull)
+        {   // Location already added?
+            FeatureLogger.Warning("Failed to add event location!");
+            return; 
+        }
 
         var bytes = BitConverter.GetBytes(id.AsId);
         e.Type = CheckLocationEventType;
@@ -176,13 +180,13 @@ public class EventHelper : ArchipelagoFeature
 
             if (eData.Type == CheckRegionEventType)
             {
+                byte[] bytes = new byte[8];
+                BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
+                BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
+                RegionID id = new() { AsId = BitConverter.ToInt64(bytes) };
                 action = () =>
                 {
-                    byte[] bytes = new byte[8];
-                    BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
-                    BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
-                    RegionID id = new() { AsId = BitConverter.ToInt64(bytes) };
-                    Plugin.Get().StateTracker.NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
+                    StateTracker.Get().NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
                 };
             }
             else if (eData.Type == CheckLocationEventType)
@@ -192,20 +196,17 @@ public class EventHelper : ArchipelagoFeature
                 BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
                 LocationID id = new() { AsId = BitConverter.ToInt64(bytes) };
 
-                StateTracker stateTracker = StateTracker.Get();
-                action = () =>
-                {
-                    stateTracker.NotifyFoundLocation(id, null);
-                };
+                action = () => StateTracker.Get().NotifyFoundLocation(id, null);
 
                 // Check if the location is randomized. If not, continue with the original event
+                StateTracker stateTracker = StateTracker.Get();
                 Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(id);
                 if (!stateTracker.TestRandomization(loc).IsTreatedAsRandom)
                 {
                     if (loc is EventLocation eLoc)
                         eData = eLoc.SourceEvent;
                     else
-                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.AsId}] {StateTracker.Get().MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
+                        FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.AsId}] {stateTracker.MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
                     return true;
                 }
             }

@@ -58,7 +58,6 @@ public struct Region
         get => m_connectedPaths; 
         init => m_connectedPaths.AddRange(value);
     }
-    [DataMember(Name = "ConnectedPaths")]
     private List<PathID> m_connectedPaths = new();
 
     /// <summary>
@@ -122,6 +121,7 @@ public struct RegionID : INullable, IId, IIndex, IComparable<RegionID>, IEquatab
     public bool Equals(RegionID other) => m_value.Equals(other.m_value);
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is RegionID id && Equals(id);
     public override int GetHashCode() => m_value.GetHashCode();
+    public override string ToString() => $"RegionID: {m_value}";
 }
 
 /// <summary>

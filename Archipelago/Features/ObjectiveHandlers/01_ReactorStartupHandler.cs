@@ -538,7 +538,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
                 StateTracker stateTracker = StateTracker.Get();
                 int count = __instance.m_stateReplicator.State.stateCount;
-                stateTracker.NotifyFoundRegion(ThisRegions.CompletedStartup(data, count), null);
+                stateTracker.NotifyFoundRegion(ThisRegions.SurvivedWave(data, count), null);
 
                 if (data.TryLookupLocation(ReactorStartup_SkipLocation.MakeTag(data, count), out var skipLocation))
                     stateTracker.NotifyFoundLocation(skipLocation.ID, null);
