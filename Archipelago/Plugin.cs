@@ -15,7 +15,6 @@ using System.Linq;
 using System.Reflection;
 using TheArchive;
 using TheArchive.Interfaces;
-using UnityEngine;
 
 namespace ReTFO.Archipelago;
 
@@ -37,10 +36,10 @@ internal class InjectToIl2Cpp : Attribute
 [BepInDependency(ArchiveMod.GUID)]
 public class Plugin : BasePlugin
 {
-    public const string Name = "Archipelago";       // Plugin name
+    public const string Name = "Beat-Archipelago";  // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "1.0.0";          // Plugin version, can be used by System.Version
+    public const string Version = "0.0.1";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;
