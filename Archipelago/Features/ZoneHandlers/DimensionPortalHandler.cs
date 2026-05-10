@@ -318,7 +318,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
             Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
             if (data.TryLookupLocation(DimensionPortal_ScanLocation.MakeTag(data), out var loc))
             {
-                if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).IsTreatedAsRandom)
+                if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandMode.IsTreatedAsRandom)
                     return false;
             }
             else
@@ -340,7 +340,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
             Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
             if (data.TryLookupLocation(DimensionPortal_WarpLocation.MakeTag(data), out var loc))
             {
-                if (StateTracker.Get().TestRandomization(loc.Location).IsTreatedAsRandom)
+                if (loc.Location.RandMode.IsTreatedAsRandom)
                 {
                     var notifyFoundLocation = () => { StateTracker.Get().NotifyFoundLocation(loc.ID, null); };
                     __instance.m_portalChainPuzzleInstance.OnPuzzleSolved = new Il2CppAction(notifyFoundLocation);

@@ -489,6 +489,7 @@ public partial class StateTracker : ArchipelagoFeature
         foreach (var exp in Expeditions)
             result.ExpeditionNames[count++] = exp.ExpeditionName;
 
+        count = 0;
         foreach (var tag in WhitelistTags)
             result.WhitelistTags[count++] = tag.AsId;
 

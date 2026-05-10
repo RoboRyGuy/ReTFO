@@ -513,7 +513,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             }
 
             StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) == 0 && stateTracker.TestRandomization(loc.Location).IsTreatedAsRandom)
+            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) == 0 && loc.Location.RandMode.IsTreatedAsRandom)
                 overrideCode = NotACode;
 
             ProgressionObjective_ReactorStartup.Update(data, __instance);
@@ -753,7 +753,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             {
                 bool isObtained = false;
                 if (data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, index + 1), out var loc))
-                    isObtained = stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) > 0 || !stateTracker.TestRandomization(loc.Location).IsTreatedAsRandom;
+                    isObtained = stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) > 0 || !loc.Location.RandMode.IsTreatedAsRandom;
                 else
                     FeatureLogger.Error($"Failed to lookup code location #{index + 1} during code UI formatting");
 

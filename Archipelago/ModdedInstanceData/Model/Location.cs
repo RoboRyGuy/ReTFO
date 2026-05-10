@@ -75,6 +75,11 @@ public class Location
     public LocationData RandData { get; init; }
 
     /// <summary>
+    /// Currrent randomization mode of this item, with some added data
+    /// </summary>
+    public RandTest RandMode { get; set; }
+
+    /// <summary>
     /// Scouted location retrieved from archipelago during play. 
     /// Locations are scouted on session start. This will be null if the item is not randomized.
     /// This field stores only the display name from the scouted item.
@@ -176,7 +181,7 @@ public struct KeyedLocation : INullable
 /// </summary>
 [DataContract]
 public struct LocationData
-{ 
+{
     /// <summary>
     /// Enum values used by this data
     /// </summary>
@@ -215,6 +220,12 @@ public struct LocationData
         /// which will notify StateTracker that they are found.
         /// </summary>
         AutoDiscover = 1 << 2,
+
+        /// <summary>
+        /// If this bit is set, the location is considered "empty". When the location is created, its Item ID will
+        /// be ignored (and, in general, should be left as the default "null" value).
+        /// </summary>
+        IsEmpty = 1 << 3,
     }
 
     /// <summary>
@@ -234,7 +245,7 @@ public struct LocationData
     public eType PriorityMode
     {
         get => m_value & eType.PriorityMask;
-        init  
+        init
         {
             if (value != (value & eType.PriorityMask)) throw new ArgumentException("Value assigned to PriorityMode must be a priority type!");
             m_value = value | (m_value & ~eType.PriorityMask);
@@ -271,6 +282,20 @@ public struct LocationData
         {
             if (value) m_value |= eType.AutoDiscover;
             else m_value &= ~eType.AutoDiscover;
+        }
+    }
+
+    /// <summary>
+    /// Extract or write the IsEmpty mode for this data
+    /// </summary>
+    [DataMember]
+    public bool IsEmpty
+    {
+        get => (m_value & eType.IsEmpty) != 0;
+        init
+        {
+            if (value) m_value |= eType.IsEmpty;
+            else m_value &= ~eType.IsEmpty;
         }
     }
 }

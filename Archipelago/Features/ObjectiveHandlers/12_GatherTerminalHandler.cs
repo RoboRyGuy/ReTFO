@@ -252,7 +252,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
                 return true;
             }
 
-            if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).IsTreatedAsRandom)
+            if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandMode.IsTreatedAsRandom)
             {
                 __instance.m_command.AddOutput("Discovered item(s):", false);
                 __instance.m_command.AddOutput($"  {(loc.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name)}");

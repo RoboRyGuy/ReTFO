@@ -22,6 +22,7 @@ public static class Game
         private class StorageType
         {
             public bool IsComplete { get; set; } = false;
+            public string? Name { get; set; } = null;
             public MidManager Manager { get; init; } = new();
             public Dictionary<string, Expedition.Data> ExpeditionLookup { get; init; } = new();
             public List<Region> RegionList { get; init; } = new();
@@ -66,6 +67,7 @@ public static class Game
 
         private StorageType Storage { get; init; }
         public bool IsComplete { get => Storage.IsComplete; set => Storage.IsComplete = value; }
+        public string? Name { get => Storage.Name; set => Storage.Name = value; } // Unique name set AFTER done processing
         public MidManager Manager => Storage.Manager;
         private Dictionary<string, Expedition.Data> ExpeditionLookup => Storage.ExpeditionLookup;
         private List<Region> RegionList => Storage.RegionList;
@@ -355,6 +357,9 @@ public static class Game
                 FeatureLogger.Warning($"                    To {LookupRegion(path.EndingRegion).Name}");
             }
 
+            if (path.ReqItem.Type != Path.RequiredItem.eType.None && path.ReqCount <= 0)
+                FeatureLogger.Warning("Adding path with non-None path requirement but it has a reqcount of 0!");
+
             if (path.StartingRegion.IsNull)
                 throw new ArgumentNullException("Cannot add path; starting region is null!");
 
@@ -577,12 +582,6 @@ public static class Game
         /// The menu region itself
         /// </summary>
         public RegionID MenuRegion => LookupOrCreateRegion(MenuRegionName);
-
-        /// <summary>
-        /// A path requirement which is impossible to satisfy, for blocking paths so that they
-        ///  require their alternate item to traverse.
-        /// </summary>
-        public Path.RequiredItem RequiresAltItemReq => new(Path.RequiredItem.eType.Item, this.Tag_Never);
 
         /// <summary>
         /// Used as input to UnstuffPlacements

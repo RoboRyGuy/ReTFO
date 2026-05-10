@@ -79,7 +79,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Expedition.Data data)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", gd.Tag_ExpeditionUnlocks));
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, DoLoseOnStart = true };
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, CollectedByDefault = true };
 
         public Expedition.Data ExpeditionData { get; set; }
 
@@ -167,7 +167,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             }
 
             KeyedItem reqItem = GetExpeditionUnlockItem(eData);
-            if (stateTracker.TestRandomization(reqItem.Item).IsTreatedAsRandom && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
+            if (reqItem.Item.RandMode.IsTreatedAsRandom && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
                 expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
         }
     }

@@ -82,7 +82,7 @@ public class BigPickupHandler : ArchipelagoFeature
         {
             if (Data.IsCurrentlyInExpedition())
             {
-                if (RandData.IsRandomLike && !stateTracker.TestRandomization(this).IsRandomized && player != null)
+                if (RandMode.IsRandomLike && !RandMode.IsRandomized && player != null)
                 {
                     // Give it directly to the player
                     void AttemptPickup(ISyncedItem item)
@@ -90,8 +90,9 @@ public class BigPickupHandler : ArchipelagoFeature
                     var wrapper = TrySpawnAsync();
                     wrapper.AddSpawnCallback(AttemptPickup);
                 }
+                else
+                    stateTracker.AddItemToTerminal(this);
             }
-            stateTracker.AddItemToTerminal(this);
         }
 
         public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)

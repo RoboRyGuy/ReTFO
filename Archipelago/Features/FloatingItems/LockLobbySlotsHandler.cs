@@ -51,7 +51,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Game.Data data, int index)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"Lobby Slot #{index} Unlock", "Item which unlocks a particular lobby slot", gd.Tag_LobbySlotUnlocks));
 
-        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, DoLoseOnStart = true };
+        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
 
         public int Index { get; set; }
 
@@ -168,13 +168,16 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return true;
-            if (!stateTracker.TestRandomization(item.Item).IsTreatedAsRandom) return true;
+            if (!item.Item.RandMode.IsTreatedAsRandom) return true;
 
             __instance.m_playerSlotPermissions[playerIndex] = SNet_PlayerSlotManager.SlotPermission.Forbidden;
             return false;
         }
     }
 
+    /// <summary>
+    /// Grey out the lobby slot after setting up the lobby page
+    /// </summary>
     [ArchivePatch(typeof(CM_PlayerLobbyBar), nameof(CM_PlayerLobbyBar.SetupFromPage))]
     public static class CM_PlayerLobbyBar__SetupSlot__Patch
     {
@@ -192,7 +195,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return;
-            if (!stateTracker.TestRandomization(item.Item).IsTreatedAsRandom) return;
+            if (!item.Item.RandMode.IsTreatedAsRandom) return;
 
             item.OnItemLost(stateTracker);
         }

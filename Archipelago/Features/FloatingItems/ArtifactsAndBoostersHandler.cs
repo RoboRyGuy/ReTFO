@@ -258,19 +258,19 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
         var source = CachedImplants[BoosterImplantCategory.Muted];
         var category = pMan.m_boosterImplantInventory.Categories[0];
         category.Inventory.Clear();
-        category.Inventory = new(source.Length);
+        category.Inventory.EnsureCapacity(source.Length);
         foreach (var item in source) category.Inventory.Add(new(item));
 
         source = CachedImplants[BoosterImplantCategory.Bold];
         category = pMan.m_boosterImplantInventory.Categories[1];
         category.Inventory.Clear();
-        category.Inventory = new(source.Length);
+        category.Inventory.EnsureCapacity(source.Length);
         foreach (var item in source) category.Inventory.Add(new(item));
 
         source = CachedImplants[BoosterImplantCategory.Aggressive];
         category = pMan.m_boosterImplantInventory.Categories[2];
         category.Inventory.Clear();
-        category.Inventory = new(source.Length);
+        category.Inventory.EnsureCapacity(source.Length);
         foreach (var item in source) category.Inventory.Add(new(item));
 
         // Retrigger the event so everything uses our new inventory

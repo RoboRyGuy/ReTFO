@@ -50,6 +50,11 @@ public struct Path : INullable
             /// Requires a certain number of items, all of which are part of a specified category
             /// </summary>
             Category,
+
+            /// <summary>
+            /// A path req that cannot be met
+            /// </summary>
+            Blocked,
         }
 
         /// <summary>

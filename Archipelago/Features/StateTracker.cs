@@ -51,7 +51,7 @@ public partial class StateTracker : ArchipelagoFeature
 
     public MidManager MidManager => Plugin.MidManager;
     public AP.ArchipelagoSession? ApSession { get; protected set; } = null;
-    const string GameName = "GTFO";
+    public static Version APVersion = new(1, 0, 0);
     List<string> GameTags = [ "DeathLink", "EnergyLink" ];
     public Guid SessionGuid { get; protected set; } = new();
     protected Task<AP.Packets.RoomInfoPacket>? ConnectTask { get; set; } = null;
@@ -82,7 +82,13 @@ public partial class StateTracker : ArchipelagoFeature
     /// Get the current state tracker
     /// </summary>
     /// <returns>The current state tracker</returns>
-    public static StateTracker Get() => Plugin.Get().StateTracker;
+    public static StateTracker Get() => Plugin.Get().StateTracker!;
+
+    public override void OnEnable()
+    {
+        base.OnEnable();
+        Plugin.StateTracker = this;
+    }
 
     /// <summary>
     /// Possible states the StateTracker can be in, generally with regards to network connectivity
@@ -313,10 +319,10 @@ public partial class StateTracker : ArchipelagoFeature
 
         // Blocking call
         AP.LoginResult loginResult = ApSession!.TryConnectAndLogin(
-            GameName,
+            $"GTFO ({MidManager.GetProcessedGameData().Name})",
             Config.Username,
             AP.Enums.ItemsHandlingFlags.AllItems,
-            version: Version.Parse(Plugin.Version),
+            version: APVersion,
             tags: GameTags.ToArray(),
             uuid: SessionGuid.ToString(),
             password: Config.HasPassword ? Config.Password : null,
@@ -352,8 +358,19 @@ public partial class StateTracker : ArchipelagoFeature
                     .Select(l => new RandomizationTag() { AsId = l }) 
                     ?? throw new NullReferenceException("Failed to retrieve blacklist tags from slot data")
             );
-            RequiresSecondaries = 0 != (long)loginSuccessful.SlotData["RequiresSecondaries"];
-            RequiresSecondaries = 0 != (long)loginSuccessful.SlotData["RequiresOverloads"];
+
+            object test = loginSuccessful.SlotData["RequiresSecondaries"];
+            if (test is bool aTest)
+                RequiresSecondaries = aTest;
+            else
+                RequiresSecondaries = 0 != (long)test;
+
+            test = loginSuccessful.SlotData["RequiresOverloads"];
+            if (test is bool bTest)
+                RequiresOverloads = bTest;
+            else
+                RequiresOverloads = 0 != (long)test;
+
         }
         catch (Exception e)
         {
@@ -368,6 +385,8 @@ public partial class StateTracker : ArchipelagoFeature
         CurrentState = eState.HostConnected;
         ConnectTask = null;
         ConnectCommon();
+        ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientReady);
+        FoundLocations.UnionWith(ApSession.Locations.AllLocationsChecked.Select(v => new LocationID() { AsId= v }));
     }
 
     /// <summary>
@@ -379,10 +398,10 @@ public partial class StateTracker : ArchipelagoFeature
         if (connectResult.IsCompletedSuccessfully)
         {
             AP.LoginResult loginResult = ApSession!.TryConnectAndLogin(
-                GameName,
+                $"GTFO ({MidManager.GetProcessedGameData().Name})",
                 Config.Username,
                 AP.Enums.ItemsHandlingFlags.AllItems,
-                version: Version.Parse(Plugin.Version),
+                version: APVersion,
                 tags: GameTags.ToArray(),
                 uuid: SessionGuid.ToString(),
                 password: Config.HasPassword ? Config.Password : null,
@@ -399,10 +418,11 @@ public partial class StateTracker : ArchipelagoFeature
                 ApSession.Locations.CompleteLocationChecksAsync(FoundLocations.Select(l => l.AsId).ToArray())
                     .ContinueWith(OnLocationChecksCompleted);
 
+                ConnectTask = null;
                 CurrentState = eState.HostConnected;
                 ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientPlaying);
-                ConnectTask = null;
                 FeatureLogger.Success("Reconnect was successful!");
+                FoundLocations.UnionWith(ApSession.Locations.AllLocationsChecked.Select(v => new LocationID() { AsId = v }));
                 return;
             }
         }
@@ -458,7 +478,6 @@ public partial class StateTracker : ArchipelagoFeature
         ItemsInTerminalSystem.Clear();
         QueuedItemReplacements.Clear();
 
-        // Note: All below code must be deterministic and perfectly recreated on all clients and in Archipelago
 
         // Identify reachable regions and locations
         HashSet<RegionID> reachableRegionIDs = gameData
@@ -471,6 +490,33 @@ public partial class StateTracker : ArchipelagoFeature
             .Where(l => l.Value.OwningRegionIds.All(id => reachableRegionIDs.Contains(id)))
             .ToList();
 
+        // Set up items
+        var reachableItems = reachableLocations
+            .Select(l => l.Value.ItemID)
+            .Where(i => !i.IsNull)
+            .Concat(gameData.GetAllFloatingItemIds())
+            .Distinct();
+        foreach (var id in reachableItems)
+        {
+            Item item = gameData.LookupItem(id);
+            item.RandMode = TestRandomization(item);
+        }
+
+        // Set up locations
+        foreach (var pair in reachableLocations)
+        {
+            pair.Value.RandMode = TestRandomization(pair.Value);
+            if (pair.Value.RandData.IsEmpty && pair.Value.RandMode.IsRandomized)
+                pair.Value.RandMode = new(RandTest.eType.UnusedEmptyLocation);
+            else if (pair.Value.RandMode.IsRandomized)
+            {
+                if (pair.Value.ItemID.IsNull)
+                    FeatureLogger.Error($"Encountered non-empty location with null item ID during randomization: {gameData.LookupTagDef(pair.Value.NameTag).Name}");
+                else
+                    pair.Value.RandMode = gameData.LookupItem(pair.Value.ItemID).RandMode;
+            }
+        }
+
         // Find and place floating items randomly in empty locations
         List<Location> emptyLocations;
         HashSet<ItemID> seenItems = new();
@@ -480,14 +526,14 @@ public partial class StateTracker : ArchipelagoFeature
         // Round 1 - Place floating progression items into priority spots
         emptyLocations = reachableLocations
             .Select(pair => pair.Value)
+            .Where(l => l.RandMode.Type == RandTest.eType.UnusedEmptyLocation)
             .Where(l => l.RandData.IsPriority)
-            .Where(l => TestRandomization(l).IsEmptyLocation)
             .ToList();
         floatingItems = gameData
             .GetAllFloatingItemIds()
             .Select(id => new KeyedItem(id, gameData.LookupItem(id)))
+            .Where(i => i.Item.RandMode.IsRandomized)
             .Where(i => i.RandData.IsProgression)
-            .Where(i => TestRandomization(i.Item).IsRandomized)
             .Select(i => i.ID);
         foreach (var id in floatingItems) queuedItems.Enqueue(id);
         foreach (var id in queuedItems) seenItems.Add(id);
@@ -495,25 +541,24 @@ public partial class StateTracker : ArchipelagoFeature
 
         // Round 2 - Place the remaining progression items (if any) into all locations
         emptyLocations.Clear();
-        emptyLocations.AddRange(
-            reachableLocations
-             .Select(pair => pair.Value)
-             .Where(l => l.RandData.IsPriority || l.RandData.IsDefault)
-             .Where(l => TestRandomization(l).IsEmptyLocation)
+        emptyLocations.AddRange(reachableLocations
+            .Select(pair => pair.Value)
+            .Where(l => l.RandMode.Type == RandTest.eType.UnusedEmptyLocation)
+            .Where(l => l.RandData.IsPriority || l.RandData.IsDefault)
         );
         DistributeItems(emptyLocations, queuedItems);
 
         // Round 3 - Place all items into all spots
         emptyLocations.Clear();
-        emptyLocations.AddRange(
-            reachableLocations
-             .Select(pair => pair.Value)
-             .Where(l => TestRandomization(l).IsEmptyLocation)
+        emptyLocations.AddRange(reachableLocations
+            .Select(pair => pair.Value)
+            .Where(l => l.RandMode.Type == RandTest.eType.UnusedEmptyLocation)
+            //.Where(l => l.RandData.IsAnyPriority)
         );
         floatingItems = gameData
             .GetAllFloatingItemIds()
             .Where(id => !seenItems.Contains(id))
-            .Where(id => TestRandomization(gameData.LookupItem(id)).IsRandomized);
+            .Where(i => gameData.LookupItem(i).RandMode.IsRandomized);
         foreach (var id in floatingItems) queuedItems.Enqueue(id);
         foreach (var id in queuedItems) seenItems.Add(id);
         DistributeItems(emptyLocations, queuedItems);
@@ -526,7 +571,7 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 // Simulate losing the item if relevant, since our reachable location check below won't
                 Item value = gameData.LookupItem(item);
-                if (value.RandData.DoLoseOnStart)
+                if (value.RandData.CollectedByDefault)
                     value.OnItemLost(this);
 
                 // Pick up the item if not connected to AP - otherwise, AP will give it in the starting inventory
@@ -538,19 +583,32 @@ public partial class StateTracker : ArchipelagoFeature
         // OnItemLost callbacks for all randomized items
         foreach (var pair in reachableLocations)
         {
-            if (pair.Value.ItemID.IsNull) continue;
+            if (!pair.Value.RandMode.IsRandomized) continue;
+            if (pair.Value.ItemID.IsNull)
+            {
+                FeatureLogger.Error($"Encountered randomized empty location during OnItemLost callbacks: {gameData.LookupTagDef(pair.Value.NameTag).Name}");
+                continue;
+            }
+
             Item item = gameData.LookupItem(pair.Value.ItemID);
-            if (!item.RandData.DoLoseOnStart) continue;
-            if (!TestRandomization(pair.Value).IsTreatedAsRandom) continue;
+            if (!item.RandData.CollectedByDefault) continue;
             item.OnItemLost(this);
         }
 
+        // Granting lose on start items if they were not randomized
+        foreach (var id in gameData.GetAllFloatingItemIds())
+        {
+            Item item = gameData.LookupItem(id);
+            if (item.RandMode.IsRandomized) continue;
+            ActualItemCounts[id] = ActualItemCounts.GetValueOrDefault(id, 0) + 1;
+        }
+
         // Scout locations - We could use RescoutLocations, but this skips discovering reachable locations
-        if (CurrentState == eState.HostConnected)
+        if (ApSession != null)
         {
             // Request all reachable locations be scouted
-            var randomizedLocations = reachableLocations.Where(l => TestRandomization(l.Value).IsRandomized);
-            ApSession!.Locations.ScoutLocationsAsync(
+            var randomizedLocations = reachableLocations.Where(l => l.Value.RandMode.IsRandomized);
+            ApSession.Locations.ScoutLocationsAsync(
                 AP.Enums.HintCreationPolicy.None,
                 randomizedLocations.Select(l => l.Key.AsId).ToArray()
             ).ContinueWith(OnLocationsScouted);
@@ -559,7 +617,6 @@ public partial class StateTracker : ArchipelagoFeature
         // Some other setup
         RecalcWinItems();
         NotifyFoundRegion(gameData.MenuRegionName, PlayerManager.GetLocalPlayerAgent());
-        ApSession?.SetClientState(AP.Enums.ArchipelagoClientState.ClientReady);
         OnStateChange?.Invoke(this);
     }
 
@@ -630,87 +687,6 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Wraps around a randomization test result, and informs on how an entity is or is not randomized
-    /// </summary>
-    public struct RandTest
-    {
-        public enum eType
-        {
-            /// <summary>
-            /// This is not randomized, but should still be treated like it is
-            /// </summary>
-            Randomlike = 1,
-
-            /// <summary>
-            /// This is randomized. If a location, the contained item is also randomized
-            /// </summary>
-            Randomized = 2,
-
-            /// <summary>
-            /// This is a location which contains no item, but is a candidate for randomization
-            /// </summary>
-            RandomizedEmptyLocation = 4,
-
-            /// <summary>
-            /// This location is not allowed to be randomized due to its tag(s) being blacklisted
-            /// </summary>
-            LocationBlacklisted = 6,
-
-            /// <summary>
-            /// There is no whitelist tag allowing this location to be randomized
-            /// </summary>
-            LocationNotWhitelisted = 8,
-
-            /// <summary>
-            /// This item has a non-null required expedition AND that expedition is not enabled
-            /// </summary>
-            ItemExpeditionNotRandomized = 10,
-
-            /// <summary>
-            /// This item (or the item contained by this location) is not allowed to be randomized due to its tag(s) being blacklisted
-            /// </summary>
-            ItemBlacklisted = 12,
-
-            /// <summary>
-            /// There is no whitelist tag allowing this item (or the item contained by this location) to be randomized
-            /// </summary>
-            ItemNotWhitelisted = 14,
-        }
-
-        public RandTest(eType type) { m_value = type; }
-
-        /// <summary>
-        /// The packed result type of the randomization test
-        /// </summary>
-        private readonly eType m_value;
-
-        /// <summary>
-        /// The unpacked result type for the test, ignoring the RandomLike bit
-        /// </summary>
-        public eType Type => m_value & ~eType.Randomlike;
-
-        /// <summary>
-        /// True if the randomization type is "Randomized"
-        /// </summary>
-        public bool IsRandomized => Type == eType.Randomized;
-
-        /// <summary>
-        /// True if the randomization type is "Randomlike"
-        /// </summary>
-        public bool IsRandomLike => (m_value & eType.Randomlike) == eType.Randomlike;
-
-        /// <summary>
-        /// True if the randomization is either "Randomized" or "Randomlike"
-        /// </summary>
-        public bool IsTreatedAsRandom => IsRandomized || IsRandomLike;
-
-        /// <summary>
-        /// True if this result represents an empty location
-        /// </summary>
-        public bool IsEmptyLocation => Type == eType.RandomizedEmptyLocation;
-    }
-
-    /// <summary>
     /// Test the randomization properties of a location
     /// </summary>
     /// <param name="loc">The location to test</param>
@@ -724,14 +700,9 @@ public partial class StateTracker : ArchipelagoFeature
             result = RandTest.eType.LocationBlacklisted;
         else if (!gameData.AnyTagMatches(WhitelistTags, loc))
             result = RandTest.eType.LocationNotWhitelisted;
-        else if (loc.ItemID.IsNull)
-            return new RandTest(RandTest.eType.RandomizedEmptyLocation);
         else
-            return TestRandomization(gameData.LookupItem(loc.ItemID));
+            result = RandTest.eType.Randomized;
 
-        bool isRandomLike = !loc.ItemID.IsNull && gameData.LookupItem(loc.ItemID).RandData.IsRandomLike;
-        if (isRandomLike)
-            result |= RandTest.eType.Randomlike;
         return new RandTest(result);
     }
 
@@ -798,25 +769,24 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="location">The location which has been checked</param>
     /// <param name="player">The player who found the location, or null if too inconvenient to identify</param>
     /// <param name="force">Intended for debug. If true, forces the locations to be rediscovered, obtaining another copy of their item</param>
-    /// <returns>The randomization result of the item. Randomized and randomlike items should be blocked from being picked up</returns>
-    public RandTest NotifyFoundLocation(LocationID id, PlayerAgent? player, bool force = false)
+    /// <returns>The location object (for convenience)</returns>
+    public Location NotifyFoundLocation(LocationID id, PlayerAgent? player, bool force = false)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         Location location = gameData.LookupLocation(id);
-        RandTest randomization = TestRandomization(location);
 
-        if (!FoundLocations.Add(id))
-            return randomization;
+        if (!FoundLocations.Add(id)) return location;
+
         FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(location.NameTag).Name}");
 
-        if (randomization.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
+        if (location.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
             CollectItem(location.ItemID, id, player);
 
         if (ApSession != null) // We must notify, but we'll reject the item on inbound
             ApSession.Locations.CompleteLocationChecksAsync(id.AsId).ContinueWith(OnLocationChecksCompleted);
         
         UpdateLocationCounts();
-        return randomization;
+        return location;
     }
 
     /// <summary>
@@ -832,13 +802,12 @@ public partial class StateTracker : ArchipelagoFeature
         foreach (var id in ids)
         {
             Location loc = gameData.LookupLocation(id);
-            RandTest randomization = TestRandomization(loc);
 
             if (!FoundLocations.Add(id))
                 continue;
             FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(loc.NameTag).Name}");
 
-            if (randomization.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
+            if (loc.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
                 CollectItem(loc.ItemID, id, player);
 
             if (ApSession != null)
@@ -876,10 +845,12 @@ public partial class StateTracker : ArchipelagoFeature
                 if (!locations[index].ItemID.IsNull)
                     FeatureLogger.Error("Overwriting item during floating items placement!"); // In case there's an error in my math
                 locations[index].ItemID = items.Dequeue();
+                locations[index].RandMode = new(RandTest.eType.Randomized);
                 count -= 1.0;
 
                 Game.Data data = MidManager.GetProcessedGameData();
                 data.TryLookupLocation(locations[index].NameTag, out var loc);
+                //FeatureLogger.Warning($"Distributed item {locations[index].ItemID} into location {loc.ID}");
             }
         }
     }
@@ -1376,6 +1347,7 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
+            RecalcWinItems();
             //Game.Data data = MidManager.GetProcessedGameData();
             //RandomizationTag target = data.Tag_FreeCheckpoints.SelfResolve();
             //foreach (var locPair in data.GetAllLocations())
@@ -1433,14 +1405,52 @@ public partial class StateTracker : ArchipelagoFeature
                 {
                     LocationID locId = new() { AsId = itemInfo.LocationId };
                     Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
-                    if (!TestRandomization(loc).IsRandomized)
+                    if (!loc.RandMode.IsRandomized)
                         continue;
                 }
 
                 // Actually collecting the item
                 CollectItem(id);
+
+                //// Chat updates
+                //string message;
+                //if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot)
+                //    message = $"Collected item {itemInfo.ItemDisplayName}";
+                //else
+                //    message = $"Received item {itemInfo.ItemDisplayName} from {itemInfo.Player.Name}";
+                //StateTracker.LogForPlayer(message);
             }
         }
+    }
+
+    /// <summary>
+    /// Convenience helper to write a log message for the player.
+    /// These messages are placed in the local player's chat.
+    /// </summary>
+    public static void LogForPlayer(string message)
+    {
+        var logs = Enumerable.Empty<PUI_GameEventLog>()
+            .Append(MainMenuGuiLayer.Current.PageLoadout?.m_gameEventLog)
+            .Append(MainMenuGuiLayer.Current.PageMap?.m_gameEventLog)
+            .Append(GuiManager.PlayerLayer?.m_gameEventLog)
+        ;
+        
+        foreach (var log in logs)
+        {
+            if (log == null) continue;
+            log.AddLogItem(message);
+            log.UpdateHeightOffset();
+        }
+    }
+
+    /// <summary>
+    /// Prevent all chats from clearing themselves when the level ends.
+    /// This results in chat messages persisting between expeditions.
+    /// </summary>
+    [ArchivePatch(typeof(PUI_GameEventLog), nameof(PUI_GameEventLog.OnLevelCleanup))]
+    public static class PUI_GameEventLog__OnLevelCleanup__Patch
+    {
+        public static bool Prefix() => false;
     }
 
     /// <summary>
@@ -1507,12 +1517,12 @@ public partial class StateTracker : ArchipelagoFeature
 
             List<KeyedLocation> randomizedLocations = locations
                 .Select(id => new KeyedLocation(id, gameData.LookupLocation(id)))
-                .Where(l => stateTracker.TestRandomization(l.Location).IsTreatedAsRandom)
+                .Where(l => l.Location.RandMode.IsTreatedAsRandom)
                 .Where(l => !(l.RandData.IsExcluded || l.RandData.IsTrap))
                 .ToList();
             int foundCount = randomizedLocations.Count(l => stateTracker.HasLocation(l.ID));
 
-            __instance.m_artifactHeatText.SetText($"Items: {foundCount} / {randomizedLocations.Count}");
+            __instance.m_artifactHeatText.SetText($"Found Items: {foundCount} / {randomizedLocations.Count}");
 
             Color color;
             if (randomizedLocations.Count == 0)
@@ -1558,12 +1568,8 @@ public partial class StateTracker : ArchipelagoFeature
 
         foreach (var item in items)
         {
-            try
-            {
-                if (item?.m_expIcon?.DataBlock != null)
-                    item.m_expIcon.SetArtifactHeat(1f);
-            }
-            catch { } // This throw a lot when the game is just starting. Not sure why
+            if (item?.m_expIcon?.DataBlock != null)
+                item.m_expIcon.SetArtifactHeat(1f);
         }
 
         // This is a comparably expensive operation
@@ -1608,9 +1614,7 @@ public partial class StateTracker : ArchipelagoFeature
     public static class RundownManager__OnExpeditionEnded__Patch
     {
         public static void Postfix()
-        {
-            UpdateLocationCounts();
-        }
+            => UpdateLocationCounts();
     }
 
 }

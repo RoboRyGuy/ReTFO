@@ -26,7 +26,7 @@ public static class TerminalLogHelper_Tags
 }
 
 // Utility for associating logs with locations so that those locations get checked when the log is read
-[InjectToIl2Cpp, EnableFeatureByDefault]
+[InjectToIl2Cpp, AutomatedFeature, EnableFeatureByDefault]
 public class TerminalLogHelper : ArchipelagoFeature
 {
     public override string Name => "Terminal Log Helper";
@@ -76,7 +76,7 @@ public class TerminalLogHelper : ArchipelagoFeature
         }
 
         Location loc = gameData.LookupLocation(locationId);
-        if (!StateTracker.Get().TestRandomization(loc).IsTreatedAsRandom) return;
+        if (!loc.RandMode.IsTreatedAsRandom) return;
 
         var log = terminal.m_localLogs.entries[entry].value;
         log.FileContent = new()

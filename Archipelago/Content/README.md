@@ -4,26 +4,37 @@ An Archipelago plugin for GTFO! Allows players to use the Archipelago software t
 
 The source for this mod can currently be found in my ReTFO repository, which contains all my GTFO mods: https://github.com/RoboRyGuy/ReTFO
 
+The AP World source (and releases) can be found in a different repository: https://github.com/RoboRyGuy/Archipelago-GTFO
+
 ## Getting Started
+
+*These steps have changed compared to version 0.0.1*
 
 Currently, this mod requires some extra steps compared to other Archipelago integrations; this is intended
 to allow future support of modded rundowns, though this may change. 
 
-1. Create a new modded profile in your preferred mod client. Include Archipelago and its dependencies in your mod list.
-  - It is strongly recommended you also install CConsole at this time, in order to get past any bugs or improperly-balanced sections.
+1. Download and add the APWorld file to your Archipelago installation.
+2. Create a new modded profile in your preferred mod client. Include Archipelago and its dependencies in your mod list.
+    - It is strongly recommended you also install CConsole at this time, in order to get past any bugs or improperly-balanced sections.
+    - If you wish to play with any other mods, you should install them now. If you add more later, you should restart from this step.
 2. Launch the game.
-3. In the main menu, select "Export MID Data". This will create a new file in your Downloads folder called "moddedInstanceData.ini"
-4. Rename this file to your player name in Archipelago. For instance, I would rename mine to "RoboRyGuy.ini"
-5. Create your YAML config per usual. Some guidance on this is included below.
-6. Place both your YAML config and the Modded Instance Data files into the Players folder.
-7. From here, generate and host as normal.
-8. You can use the "Network Settings" button in GTFO to configure the server address.
+3. In the main menu, select "Export MID Data". This will create a new file in your Downloads folder. This file's name will start with "GTFO-" and end with ".ini"
+    - The name of this file represents the mods you installed, and acts as a sort of "subworld" for Archipelago.
+    - If the Archipelago client recognizes your mod set, it will name it accordingly.
+    - Otherwise, it will use a psuedo-random hash to identify your mods as a unique GTFO world.
+    - At this time, only the vanilla mod set is named.
+4. Move this file to your Players folder, the same folder you would place a YAML file in.
+5. With this file in your Players folder, you can now launch the Options Editor. An entry for GTFO will now appear.
+6. Create your YAML config per usual. Some guidance on this is included below.
+7. To generate, you will need both the file exported from GTFO and your YAML. Place both into the Players folder.
+8. From here, generate and host as normal.
+9. You can use the "Network Settings" button in GTFO to configure the server address.
 
 ## Cautions
 
 - Currently, there is no support for multiplayer - attempt it at your own risk.
-- Certain levels, such as R8C2, are prone to logic errors. Later levels in general are more likely to fail
-- There is no difficulty balancing - it is assumed the player is extremely capable
+- There are still logic errors in the game. The most notable is R8A2, due to the one-way nature of the secondary.
+- There is no difficulty balancing at this time - it is assumed the player is capable of soloing all alarms and other hazards.
 - Survival objectives, such as R8E1, have checks related to simply surviving. This is technically possible
   to do even if all the doors are locked, and as such is currently allowed in the logic. With that said,
   if you choose to add such a level to your requirements, be aware that this may be necssary; for that reason,
@@ -31,16 +42,18 @@ to allow future support of modded rundowns, though this may change.
   hallway and simply wait out the 10 minutes, which checks 3 randomizable locations)
 - Certain softlocks are possible; for example, you can accidentally bring necessary items to another dimension
   and leave them there, which is generally impossible in vanilla. These simply force you to restart the expedition.
+- It is also possible to cancel item retrievals from the terminal at this time. If you are claiming one or more items
+  from the terminal, wait until they are all claimed before entering another command
 
 ## Supported Items and Locations
 
 At this time, many items and locations are supported. In general, if you receive an item, it will be 
-placed "into the terminal system". You can use the custom AP command to retrieve the item. The custom AP
+placed "into the terminal system". You can use the custom AP command to "claim", or retrieve, the item. The custom AP
 command is also required to perform location checks, depending on how many floating items are randomized.
 
 Some of the randomized items:
 
-- Many progression-locking pickups, such as Keys, Objective Pickups (IDs, Data Cubes), and Big Pickups (MWP, Cell, Fog Turbine)
+- Many progression-realted pickups, such as Keys, Objective Pickups (IDs, Data Cubes), and Big Pickups (MWP, Cell, Fog Turbine)
   can be randomized. Attempting to pick them up will despawn them and grant an item; if they are received, you can spawn
   them in at any time from any terminal (if you're in the correct expedition)
 - Certain events, including door unlock events, custom scan events, warp events, and win events are randomized.
@@ -50,10 +63,10 @@ Some of the randomized items:
   is received as an item, you can check it from the terminal or see it in some new, custom UI which displays it
 - Certain scans, specifically Generator Cluster scans, Dimension Portal scans, and HSU scans, can be randomized.
 
-An additional set of "floating" items is also included
+An additional set of "floating" items is also included:
 
 - Expedition unlocks, if randomized, prevent access to an expedition until found. If not randomized,
-  all expeditions are traversable immediately upon start (this will perhaps change in the future)
+  all expeditions are unlocked immediately upon start (this will perhaps change in the future)
 - Gear items can be locked, preventing them from being equipped. If a gear item is received while in an expedition,
   one copy is sent the terminal, allowing up to one player to equip it. (This works but is a little buggy-looking)
   Currently, bots are not checked correctly, so they can spawn in with illegal gear if it was equipped beforehand.
@@ -110,11 +123,13 @@ Note that there is no support for requiring PE objectives at this time.
 #### whitelist
 
 This is a set of tags which enable items and locations for randomization. Items and locations
-which are either in the whitelist or which have tags which are children of the whitelist will
-be randomized (unless they are on the blacklist). *Randomization only occurs if both the item
-and its vanilla spawn location are randomized.* For simplicity, I recommend putting either 
-"All Items" or "All Locations" to help ensure one of the pair is randomized, and then filtering
-the other half as desired.
+which are either in the whitelist or which are children of tags in the whitelist will be 
+randomized (unless they are on the blacklist). *Randomization only occurs if both the item
+and its vanilla spawn location are randomized.* For simplicity, I recommend putting either at
+least one of either "All Items" or "All Locations" to help ensure one of the pair is randomized, 
+and then filtering the other half as desired.
+
+You may also use "All" to enable all items and locations for randomization.
 
 #### blacklist
 
@@ -128,15 +143,15 @@ instead of creating new items, it instead pulls matching items out of the random
 to the player. 
 
 This also supports the tagging system; if you specify a parent tag, the desired number of child items
-are randomly selected from all available items and moved to the starting invetory, removing them from the game.
+are randomly selected from all available items and moved to the starting inventory, removing them from the game.
 
-Each item removed in this manner is replaced with a dud "Empty" item which does nothing.
+Each item removed in this manner is replaced with a filler item, "Empty", which does nothing.
 
 #### early_items
 
 This works exactly the same as start_items, but instead of moving items to the start inventory it marks
 them as early items for the fill system. This can cause fill errors if insufficient early spots are
-available.
+available, so use with caution.
 
 ## Example YAML
 
@@ -163,8 +178,6 @@ GTFO:
   - All
   blacklist: []
   early_items: {
-    "Primary Gear Items": 3,
-    "Special Gear Items": 1,
     "Expedition Unlock Items": 1 
   }
   local_items: []
@@ -187,13 +200,33 @@ for 7 exepditions, including R1B1, R6A1, ..., R8E1 to reach the goal.
 
 Because all expedition unlocks are randomized, the player must specify at least one starting expedition. 
 In this case, they're having Archipelago randomly pick one of their expeditions and add it as a starting item. 
+If they fail to add a starting expedition, Archipelago will randomly choose any of the expeditions and add it.
 
 Because all gear items are randomized, the player must specify at least one starting gear item for each slot.
 In this case, they're having Archipelago randomly pick an item for each slot (melee, primary, special, and tool).
+If they fail to add staring gear, temporary gear will be added in-game, which will be lost as soon as gear is found.
 
-To aid with exploration, the player has asked Archipelago to randomly select 3 primaaries, one special, and one
-expedition unlock to be added as early items.
+To aid the fill system, the player has added one additional expeditin unlock to the early items. This helps ensure
+that they have options when it comes to exploration.
 
 It should also be noted that, since all items are randomized, the player starts with 3 locked lobby slots, meaning
 they will have to find the lobby slot unlocks as they play before humans or bots can aid them. If this is harder than 
 desired, one could add `"Unlock Lobby Slot Items": 1` to either the early or start items to ensure they quickly have allies.
+
+## Death Link
+
+This mod integration supports Death Link, though it hasn't been tested. The settings
+for Death Link are not tied to the YAML config and can be changed at any time in the mod
+settings in-game. See there for more details on ways to punish yourself for others' mistakes.
+
+## Energy Link
+
+This mod integrates Energy Link. Picking up a Warden Artifact will add energy to your team;
+equipping a Booster costs energy. This is also not very tested, but theoretically works :)
+
+## Mod Support
+
+This integrations aims to be compatible with modded rundowns. With that said, at this time, attempt it at your
+own risk; I need to get vanilla working before I will devote bandwidth to ensuring modded rundowns can work.
+The more similar a mod is to Vanilla GTFO, the more likely it'll work; specifically, mods like AWO or which use
+custom event triggers are more likely to cause errors.

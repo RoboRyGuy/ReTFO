@@ -1,7 +1,10 @@
 ﻿{
-  "name": "Beta-Archipelago",
-  "version_number": "0.0.1",
+  "name": "BetaArchipelago",
+  "version_number": "0.0.2",
   "website_url": "https://github.com/RoboRyGuy/ReTFO",
-  "description": "Gives items thermal vision.",
-  "dependencies": [ ]
+  "description": "Archipelago integration for GTFO",
+  "dependencies": [
+    "AuriRex-TheArchive_Core-2025.2.2",
+    "dakkhuza-MTFO-4.6.3"
+  ]
 }

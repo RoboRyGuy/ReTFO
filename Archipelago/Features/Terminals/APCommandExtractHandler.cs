@@ -62,7 +62,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Terminal.Data data, int count)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Extract Location #{count}", "A location checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_TerminalExtractLocations));
 
-        public static LocationData MakeRandData() => new LocationData();
+        public static LocationData MakeRandData() => new LocationData() { IsEmpty = true };
     }
 
     // Make the item codes used for extract / release

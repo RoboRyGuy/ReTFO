@@ -45,7 +45,7 @@ public static class TerminalPasswordHandler_Tags
 
 
 // Handles terminal password and the related utilities
-[EnableFeatureByDefault, InjectToIl2Cpp]
+[EnableFeatureByDefault, AutomatedFeature, InjectToIl2Cpp]
 public class TerminalPasswordHandler : ArchipelagoFeature
 {
     public override string Name => "Terminal Password Handler";

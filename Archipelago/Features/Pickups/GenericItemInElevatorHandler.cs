@@ -70,10 +70,10 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// When spawning items in the cargo cage, claim our generic item in elevator
+    /// When the level starts, claim our item from the cargo cage
     /// </summary>
-    [ArchivePatch(typeof(LG_SpawnItemsInCargoCageJob), nameof(LG_SpawnItemsInCargoCageJob.Build))]
-    public static class LG_SpawnItemsInCargoCageJob__Build__Patch
+    [ArchivePatch(typeof(WardenObjectiveManager), nameof(WardenObjectiveManager.OnLocalPlayerStartExpedition))]
+    public static class WardenObjectiveManager__OnLocalPlayerStartExpedition__Patch
     {
         public static void Postfix()
         {
@@ -87,7 +87,14 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
                     FeatureLogger.Error("Failed to associate generic item in elevator!");
                     return;
                 }
+                
                 var comp = ElevatorCage.Current.m_cargoCage.m_itemsToMoveToCargo[0].GetComponentInChildren<CarryItemPickup_Core>();
+                if (comp == null)
+                {
+                    FeatureLogger.Error("Failed to find generic item in elevator during build!");
+                    return;
+                }
+
                 if (comp.ItemDataBlock.persistentID != data.Objective.GenericItemFromStart)
                     FeatureLogger.Warning("Associated incorrect item type with generic item from start!");
                 PickupHelper.AssociateItem(comp, loc.ID);

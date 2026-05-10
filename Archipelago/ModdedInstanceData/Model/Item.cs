@@ -60,6 +60,11 @@ public class Item
     public ItemData RandData { get; init; }
 
     /// <summary>
+    /// The current randomization mode of this item, with some added data
+    /// </summary>
+    public RandTest RandMode { get; set; }
+
+    /// <summary>
     /// Optional; if not null, this item can only be randomized if the supplied expedition 
     /// is randomized. Typically used by floating items to help ensure only relevant floating
     /// items are randomized.
@@ -282,10 +287,11 @@ public struct ItemData
         RandomLike = 1 << 6,
 
         /// <summary>
+        /// This item defaults to being collected if not in the randomized.
         /// If the item is randomized, <see cref="Item.OnItemLost(StateTracker)"/> will be called 
         ///  at the start of the session so the floating item can prep the world.
         /// </summary>
-        LoseOnStart = 1 << 7,
+        CollectedByDefault = 1 << 7,
     }
 
     /// <summary>
@@ -383,15 +389,16 @@ public struct ItemData
     }
 
     /// <summary>
-    /// Set or write the DoLoseOnStart bit
+    /// Set or write the CollectedByDefault bit
     /// </summary>
-    public bool DoLoseOnStart
+    [DataMember]
+    public bool CollectedByDefault
     {
-        get => (m_value & eType.LoseOnStart) != 0;
+        get => (m_value & eType.CollectedByDefault) != 0;
         init
         {
-            if (value) m_value |= eType.LoseOnStart;
-            else m_value &= ~eType.LoseOnStart;
+            if (value) m_value |= eType.CollectedByDefault;
+            else m_value &= ~eType.CollectedByDefault;
         }
     }
 

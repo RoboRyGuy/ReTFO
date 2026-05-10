@@ -156,7 +156,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
         if (Config.DoShowMessages && data.Cause != null)
-            GuiManager.PlayerLayer.m_gameEventLog.AddLogItem($"<#F0F>[Death]</color> {data.Cause}");
+            StateTracker.LogForPlayer($"<#F0F>[Death]</color> {data.Cause}");
             //PlayerChatManager.WantToSentTextMessage(PlayerManager.GetLocalPlayerAgent(), data.Cause);
     
         const uint SingleEnemyWave = 30; // Vanilla survival wave settings which spawns a single enemy (filtered to weakling)
@@ -321,7 +321,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         FeatureLogger.Debug("Sending DeathLink event: " + cause);
         s_service?.SendDeathLink(new DeathLink(HostName, cause));
         if (Config.DoShowMessages)
-            GuiManager.PlayerLayer.m_gameEventLog.AddLogItem($"<#F0F>[Death]</color> {cause}");
+            StateTracker.LogForPlayer($"<#F0F>[Death]</color> {cause}");
     }
 
     /// <summary>

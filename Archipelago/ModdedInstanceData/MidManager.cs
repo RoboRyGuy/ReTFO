@@ -9,10 +9,11 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ReTFO.Archipelago.ModdedInstanceData;
 
-using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 using UnityEngine.Playables;
@@ -147,6 +148,7 @@ public class MidManager
     protected Dictionary<Type, Processor> m_processorLookup { get; set; } = new();
     protected Game.Data? m_gameData { get; set; } = null;
     protected Game.Processor m_gameProcessor { get; set; } = new();
+    protected Dictionary<string, string> m_namedHashes { get; set; } = new() { { "MzziAfuqTdt3IHLkyJxp8raEKsKLTAOsFgJ1KbPdCuc=", "Vanilla-0_0_2" } };
 
     public MidManager()
     {
@@ -212,6 +214,17 @@ public class MidManager
     }
 
     /// <summary>
+    /// Attempts to name a specific hash.
+    /// When game data is processed, if the resulting hash normally used to name
+    ///  it matches a name in the named hash dictionary, it will use that name instead.
+    /// </summary>
+    /// <param name="hash">The hash to name</param>
+    /// <param name="name">The name to use instead</param>
+    /// <returns>True if successfull, false if that hash is already named</returns>
+    public bool NameHash(string hash, string name)
+        => m_namedHashes.TryAdd(hash, name);
+
+    /// <summary>
     /// Invalidate the current modded instance data, if there is any.
     /// This can cause issues if the GameData datablocks are not properly regenerated
     /// </summary>
@@ -243,22 +256,58 @@ public class MidManager
     }
 
     /// <summary>
-    /// Process the contained game data now. Please only do this as needed
+    /// Process the contained game data immediately. Please only do this as needed
     /// </summary>
     public void ProcessData()
     {
         if (IsProcessed) return;
         else if (IsProcessing) throw new NotSupportedException("Process data request received while already processing!");
 
+        FeatureLogger.Notice("Beginning MID generation");
         IsProcessing = true;
-        
+
         // Get all our entities
         var gameData = GetUnprocessedGameData();
+        Event.Processor processor = gameData.EventProcessor;
         m_gameProcessor.Process(gameData);
         gameData.CleanUp(); // Trims lists
 
         // Check that the game is winnable and such
-        DoGraphTraversal(gameData, true, null, null, true);
+        FeatureLogger.Notice("Checking for winability");
+        if (DoGraphTraversal(gameData, true, null, null, true))
+            FeatureLogger.Success("Game is beatable!");
+        else
+            FeatureLogger.Fail("Game is not beatable!");
+
+        // Creating the game's name
+        using SHA256 sha = SHA256.Create();
+        byte[] delim = [ 0 ];
+
+        IEnumerable<RandomizationTag> getNameTags(KeyValuePair<LocationID, Location> loc)
+        {
+            yield return loc.Value.NameTag;
+            if (!loc.Value.RandData.IsEmpty) 
+                yield return gameData.LookupItem(loc.Value.ItemID).NameTag;
+        }
+        var strings = Enumerable.Empty<string>()
+            .Concat(gameData.GetAllExpeditions().Select(e => e.Key))
+            .Concat(gameData.GetAllLocations().SelectMany(getNameTags).Select(t => gameData.LookupTagDef(t).Name))
+            .Concat(gameData.GetAllFloatingItemIds().Select(i => gameData.LookupTagDef(gameData.LookupItem(i).NameTag)).Select(t => t.Name))
+        ;
+
+        foreach (string s in strings)
+        {
+            var bytes = Encoding.UTF8.GetBytes(s);
+            sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+            sha.TransformBlock(delim, 0, delim.Length, null, 0);
+        }
+
+        sha.TransformFinalBlock(delim, 0, 0);
+        string hash = Convert.ToBase64String(sha.Hash!);
+        if (m_namedHashes.TryGetValue(hash, out var name))
+            gameData.Name = name;
+        else
+            gameData.Name = hash.Substring(0, 10);
 
         // Marking the data complete
         // This is used during graph traversal to ensure the path reqs are calculated and
@@ -267,6 +316,9 @@ public class MidManager
 
         IsProcessing = false;
         IsProcessed = true;
+        FeatureLogger.Success("MID generation completed!");
+        FeatureLogger.Success($"World Hash: {hash}");
+        FeatureLogger.Success($"World Name: {gameData.Name}");
 
         // We've most likely touched these blocks, so we're going to mark them dirty. Not sure if this really does anything
         RundownDataBlock.FileDirty = true;
@@ -287,16 +339,18 @@ public class MidManager
     /// <summary>
     /// Export game data as a JSON file to the designated path.
     /// </summary>
-    /// <param name="filename">
-    /// The full path of the file to export to.
-    /// If null, defaults to a file in the downloads folder.
+    /// <param name="directory">
+    /// The full path of the directory to export to.
+    /// If null, defaults to the downloads folder.
     /// </param>
-    public void ExportMidData(string? filename = null)
+    public void ExportMidData(string? directory = null)
     {
-        if (filename == null)
-            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "moddedInstanceData.ini");
-
         Game.Data gameData = GetProcessedGameData();
+
+        if (directory == null)
+            directory = SHGetKnownFolderPath(DownloadsGUID, 0);
+        string filename = System.IO.Path.Combine(directory, $"GTFO-{gameData.Name}.ini");
+
         DoGraphTraversal(gameData, true, null, null, false);
 
         // Identify regions rechable by all possible expeditions
@@ -329,9 +383,9 @@ public class MidManager
             eData.Add(new() { Name = pair.Key, ReachableRegions = reachableRegionIds.ToList() });
         }
 
-
         var dumpData = new
         {
+            Name = gameData.Name,
             Expeditions = eData,
             Tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
             Regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
@@ -438,15 +492,6 @@ public class MidManager
         int usedItemCount(RegionID region, RandomizationTag tag) => gameData.IsComplete ? 0 : usedItemsPerRegion[region.AsIndex].Item1?.GetValueOrDefault(tag, 0) ?? 0;
         int usedCatsCount(RegionID region, RandomizationTag tag) => gameData.IsComplete ? 0 : usedItemsPerRegion[region.AsIndex].Item2?.GetValueOrDefault(tag, 0) ?? 0;
 
-        int calcCount(RegionID region, Path.RequiredItem item)
-        {
-            if (item.Type == Path.RequiredItem.eType.None) return 0;
-            else if (item.Type == Path.RequiredItem.eType.Item)
-                return itemCount(item.Target) - usedItemCount(region, item.Target);
-            else
-                return catsCount(item.Target) - usedCatsCount(region, item.Target);
-        }
-
         // Starting state
         RegionID startingRegionID = gameData.MenuRegion;
         ReadOnlyRegion startingRegion = gameData.LookupRegion(startingRegionID);
@@ -485,10 +530,21 @@ public class MidManager
                 }
 
                 // Checking if path is traversable
-                int mainCount = calcCount(path.StartingRegion, path.ReqItem);
-                int alternateCount = calcCount(path.StartingRegion, path.AlternateItem);
+                int mainCount;
+                if (path.ReqItem.Type == Path.RequiredItem.eType.Item)
+                    mainCount = itemCount(path.ReqItem.Target) - usedItemCount(path.StartingRegion, path.ReqItem.Target);
+                else if (path.ReqItem.Type == Path.RequiredItem.eType.Category)
+                    mainCount = catsCount(path.ReqItem.Target) - usedCatsCount(path.StartingRegion, path.ReqItem.Target);
+                else mainCount = 0;
 
-                if ((path.ReqItem.Type == Path.RequiredItem.eType.None) || (mainCount > 0) || (alternateCount > 0))
+                int alternateCount ;
+                if (path.AlternateItem.Type == Path.RequiredItem.eType.Item)
+                    alternateCount = itemCount(path.AlternateItem.Target);
+                else if (path.AlternateItem.Type == Path.RequiredItem.eType.Category)
+                    alternateCount = catsCount(path.AlternateItem.Target);
+                else alternateCount = 0;
+
+                if ((path.ReqItem.Type == Path.RequiredItem.eType.None) || (mainCount >= path.ReqCount) || (alternateCount >= 1))
                 {
                     setReachable(path.EndingRegion);
                     ++newCount;
@@ -501,7 +557,7 @@ public class MidManager
                         {
                             Path.RequiredItem reqItem;
                             int reqCount;
-                            if (mainCount > 0)
+                            if (mainCount >= path.ReqCount)
                             {
                                 reqItem = path.ReqItem;
                                 reqCount = (int)path.ReqCount;
@@ -520,12 +576,11 @@ public class MidManager
                                 oldDict = usedItemsPerRegion[path.StartingRegion.AsIndex].Item1;
                                 usedItemsPerRegion[path.EndingRegion.AsIndex] = Tuple.Create(dict, usedItemsPerRegion[path.StartingRegion.AsIndex].Item2)!;
                             }
-                            else if (reqItem.Type == Path.RequiredItem.eType.Category)
+                            else // if (reqItem.Type == Path.RequiredItem.eType.Category)
                             {
                                 oldDict = usedItemsPerRegion[path.StartingRegion.AsIndex].Item2;
                                 usedItemsPerRegion[path.EndingRegion.AsIndex] = Tuple.Create(usedItemsPerRegion[path.StartingRegion.AsIndex].Item1, dict)!;
                             }
-                            else throw new NotSupportedException("Expected path req to be Item or Category!");
 
                             foreach (var pair in oldDict ?? Enumerable.Empty<KeyValuePair<RandomizationTag, int>>())
                                 dict.Add(pair.Key, pair.Value);
@@ -537,10 +592,11 @@ public class MidManager
                         if (doProcessing && path.ReqItem.Type != Path.RequiredItem.eType.None)
                         {
                             uint count;
-                            if (path.ReqItem.Type == Path.RequiredItem.eType.Item) count = (uint)usedItemCount(path.EndingRegion, path.ReqItem.Target);
-                            else if (path.ReqItem.Type == Path.RequiredItem.eType.Category) count = (uint)usedCatsCount(path.EndingRegion, path.ReqItem.Target);
-                            else throw new NotSupportedException("Expected path req to be Item or Category!");
-                            gameData.SetPathReqCount(queuedPaths[i], count);
+                            if (path.ReqItem.Type == Path.RequiredItem.eType.Item) 
+                                count = (uint)usedItemCount(path.StartingRegion, path.ReqItem.Target);
+                            else // if (path.ReqItem.Type == Path.RequiredItem.eType.Category) 
+                                count = (uint)usedCatsCount(path.StartingRegion, path.ReqItem.Target);
+                            gameData.SetPathReqCount(queuedPaths[i], count + path.ReqCount);
                         }
                     }
 
@@ -572,8 +628,6 @@ public class MidManager
 
         // "Pretty" formatting for debugging
         if (requiredItems.Count == 0) return true;
-        if (!logDebugInfo) return false;
-
         if (!logDebugInfo) return false;
 
         FeatureLogger.Error($"Graph traversal failed for game!");
@@ -626,7 +680,7 @@ public class MidManager
                 ConsoleManager.ConsoleStream.WriteLine($"  No required item!");
             else if (path.ReqItem.Type == Path.RequiredItem.eType.Item)
                 ConsoleManager.ConsoleStream.WriteLine($"  Item:  {(usedItemCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount).ToString("000")}x {gameData.LookupTagDef(path.ReqItem.Target).Name}");
-            if (path.ReqItem.Type == Path.RequiredItem.eType.Category)
+            else //(path.ReqItem.Type == Path.RequiredItem.eType.Category)
                 ConsoleManager.ConsoleStream.WriteLine($"  Cats:  {(usedCatsCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount).ToString("000")}x {gameData.LookupTagDef(path.ReqItem.Target).Name}");
             if (path.AlternateItem.Type != Path.RequiredItem.eType.None)
                 ConsoleManager.ConsoleStream.WriteLine($"  Alt:   001x {gameData.LookupTagDef(path.AlternateItem.Target).Name}");
@@ -642,14 +696,14 @@ public class MidManager
         HashSet<RandomizationTag> neededTags = queuedPaths.Select(gameData.LookupPath).SelectMany(p =>
             Enumerable.Empty<RandomizationTag>().Append(p.ReqItem.Target).Append(p.AlternateItem.Target)
         ).ToHashSet();
-            
+
         printed = false;
         foreach (var loc in gameData.GetAllLocations().Select(pair => pair.Value))
         {
             if (loc.ItemID.IsNull) continue;
-            Item item = gameData.LookupItem(loc.ItemID);
-            if (!gameData.AnyTagMatches(neededTags, item)) continue;
             if (loc.OwningRegionIds.All(getReachable)) continue;
+            Item item = gameData.LookupItem(loc.ItemID);
+            if (!gameData.TagMatches(neededTags, item.PathReqs.Target)) continue;
 
             ConsoleManager.ConsoleStream.WriteLine();
             ConsoleManager.ConsoleStream.WriteLine($"  Name: {gameData.LookupTagDef(loc.NameTag).Name}");

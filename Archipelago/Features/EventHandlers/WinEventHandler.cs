@@ -144,9 +144,11 @@ public class WinEventHandler : ArchipelagoFeature
                 continue;
             ++count;
 
+            var item = GetInstantWinItem(data, e.Type == eWardenObjectiveEventType.WinOnDeath);
+            FeatureLogger.Notice($"Adding instant win item: {data.LookupTagDef(item.NameTag).Name}");
+
             EventHelper.ConvertToCheckLocationEvent(
-                data, e, count, 
-                GetInstantWinItem(data, e.Type == eWardenObjectiveEventType.WinOnDeath).ID
+                data, e, count, item.ID
             );
         }
     }

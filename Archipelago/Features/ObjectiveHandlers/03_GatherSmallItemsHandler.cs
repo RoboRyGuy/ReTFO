@@ -39,10 +39,10 @@ public static class GatherSmallItemsHandler_Tags
 }
 
 
-[EnableFeatureByDefault, InjectToIl2Cpp]
+[EnableFeatureByDefault, AutomatedFeature, InjectToIl2Cpp]
 public class GatherSmallItemsHandler : ArchipelagoFeature
 {
-    public override string Name => "Reactor Gather Small Pickups Handler";
+    public override string Name => "Gather Small Pickups Handler";
     public override string Description
         => "Handles the GatherSmallItems objective type.\n"
         + "Example: R1B1";

@@ -36,7 +36,7 @@ internal class InjectToIl2Cpp : Attribute
 [BepInDependency(ArchiveMod.GUID)]
 public class Plugin : BasePlugin
 {
-    public const string Name = "Beat-Archipelago";  // Plugin name
+    public const string Name = "BetaArchipelago";   // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
     public const string Version = "0.0.1";          // Plugin version, can be used by System.Version
@@ -158,12 +158,7 @@ public class Plugin : BasePlugin
     /// <summary>
     /// Tracks Archipelago state and syncs both with AP server and lobby members
     /// </summary>
-    private StateTracker? m_stateTracker = null;
-    public StateTracker StateTracker 
-    { 
-        get => m_stateTracker ??= ArchipelagoFeatureHelper.GetFeature<StateTracker>(); 
-        protected set => m_stateTracker = value; 
-    }
+    public StateTracker? StateTracker { get; internal set; } = null;
 
     /// <summary>
     /// Manager for Modded instance data, manages generating it and such

@@ -66,10 +66,11 @@ public class SecDoorHandler : ArchipelagoFeature
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
         {   // Must power a specific generator with a cell
             path.ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID).PathReqs;
+            path.ReqCount = 1u;
         }
         else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Locked_No_Key)
         {   // Can only be unlocked by an event force unlocking it
-            path.ReqItem = data.RequiresAltItemReq;
+            path.ReqItem = new(Path.RequiredItem.eType.Blocked, data.Tag_Never);
             path.ReqCount = 1u;
         }
         path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(data).PathReqs;
@@ -113,7 +114,7 @@ public class SecDoorHandler : ArchipelagoFeature
         }
         else
         {   // Can only unlock via an event
-            path.ReqItem = data.RequiresAltItemReq;
+            path.ReqItem = new(Path.RequiredItem.eType.Blocked, data.Tag_Never);
             path.ReqCount = 1u;
         }
         path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(targetZone).PathReqs;

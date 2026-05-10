@@ -71,7 +71,7 @@ public class PickupHelper : ArchipelagoFeature
     public override string Name => "Pickups Helper";
     public override string Description 
         => "Provides utilites used by other features to manage pickups (including big pickups)";
-    public override FeatureGroup Group => FeatureGroups.EventHandlers;
+    public override FeatureGroup Group => FeatureGroups.PickupHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
     {
@@ -166,8 +166,7 @@ public class PickupHelper : ArchipelagoFeature
 
         StateTracker stateTracker = StateTracker.Get();
         Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(locationId);
-        var randomization = stateTracker.TestRandomization(loc);
-        if (despawnIfFound && stateTracker.HasLocation(locationId) && randomization.IsTreatedAsRandom)
+        if (despawnIfFound && stateTracker.HasLocation(locationId) && loc.RandMode.IsTreatedAsRandom)
         {
             // Try to despawn the item
             if (item.ReplicationWrapper != null)
@@ -182,7 +181,7 @@ public class PickupHelper : ArchipelagoFeature
                 UnityEngine.Object.Destroy(item.gameObject);
             }
         }
-        else if (randomization.IsRandomized)
+        else if (loc.RandMode.IsRandomized)
         {
             // Set the name on the item to match the name Archipelago gave it
             Interact_Pickup_PickupItem? pickup = item.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
@@ -335,8 +334,8 @@ public class PickupHelper : ArchipelagoFeature
 
             StateTracker stateTracker = StateTracker.Get();
             PlayerAgent agent = player.PlayerAgent.Cast<PlayerAgent>();
-            var randomization = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
-            if (randomization.IsTreatedAsRandom)
+            var location = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
+            if (location.RandMode.IsTreatedAsRandom)
             {
                 player = null!; // Prevent the pickup (and send it to the void)
 

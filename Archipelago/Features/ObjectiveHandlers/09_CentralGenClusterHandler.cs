@@ -66,7 +66,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Objective.Data data, int count)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Central Gen Cell Location #{count}", "A particular cell spawn location", data.Tag_CentralGenCellLocations_ByObjective));
 
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
+        public static LocationData MakeRandData() => new LocationData() { };
     }
 
     /// <summary>
@@ -348,7 +348,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
 
                 if (data.TryLookupLocation(GenCluster_ScanLocation.MakeTag(data), out var loc))
                 {
-                    if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).IsTreatedAsRandom)
+                    if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandMode.IsTreatedAsRandom)
                         return false;
                 }
                 else

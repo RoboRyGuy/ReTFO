@@ -39,7 +39,7 @@ public static class EventHelper_Tags
     }
 }
 
-[EnableFeatureByDefault, InjectToIl2Cpp]
+[EnableFeatureByDefault, AutomatedFeature, InjectToIl2Cpp]
 public class EventHelper : ArchipelagoFeature
 {
     public override string Name => "Events Helper";
@@ -176,32 +176,46 @@ public class EventHelper : ArchipelagoFeature
         public static bool Prefix(ref WardenObjectiveEventData eData, float currentDuration)
         {
             WardenObjectiveEventData inputEvent = eData;
-            Action? action = null;
+            bool checkCondition()
+                => (inputEvent.Condition != null && inputEvent.Condition.ConditionIndex >= 0)
+                && (WorldEventManager.GetCondition(inputEvent.Condition.ConditionIndex) != inputEvent.Condition.IsTrue);
 
             if (eData.Type == CheckRegionEventType)
             {
+                if (!checkCondition()) return false;
+
+                // Fetch ID
                 byte[] bytes = new byte[8];
                 BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
                 BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
                 RegionID id = new() { AsId = BitConverter.ToInt64(bytes) };
-                action = () =>
-                {
-                    StateTracker.Get().NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
-                };
+
+                // Perform the region callback
+                void regionCallback() => StateTracker.Get().NotifyFoundRegion(Expedition.Data.FromCurrentExpedition().LookupRegion(id).Name, null);
+                if (currentDuration >= inputEvent.Delay) regionCallback();
+                else TriggerDelayedWorldEvent(regionCallback, inputEvent.Delay - currentDuration);
+
+                return false;
             }
             else if (eData.Type == CheckLocationEventType)
             {
+                if (checkCondition()) return false;
+
+                // Fetch ID
                 byte[] bytes = new byte[8];
                 BitConverter.GetBytes(inputEvent.EnemyID).CopyTo(bytes, 0);
                 BitConverter.GetBytes(inputEvent.FogSetting).CopyTo(bytes, 4);
                 LocationID id = new() { AsId = BitConverter.ToInt64(bytes) };
 
-                action = () => StateTracker.Get().NotifyFoundLocation(id, null);
+                // Set up our location to be discovered
+                void locationCallback() => StateTracker.Get().NotifyFoundLocation(id, null);
+                if (currentDuration >= inputEvent.Delay) locationCallback();
+                else TriggerDelayedWorldEvent(locationCallback, inputEvent.Delay - currentDuration);
 
-                // Check if the location is randomized. If not, continue with the original event
+                // Check if the location is randomized. If not, spawp in the original event
                 StateTracker stateTracker = StateTracker.Get();
                 Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(id);
-                if (!stateTracker.TestRandomization(loc).IsTreatedAsRandom)
+                if (!loc.RandMode.IsTreatedAsRandom)
                 {
                     if (loc is EventLocation eLoc)
                         eData = eLoc.SourceEvent;
@@ -209,25 +223,10 @@ public class EventHelper : ArchipelagoFeature
                         FeatureLogger.Error($"Failed to retrieve original event data from event for location: [{id.AsId}] {stateTracker.MidManager.GetProcessedGameData().LookupTagDef(loc.NameTag).Name}");
                     return true;
                 }
-            }
-            
-            if (action != null) // This is one of our custom event types
-            {
-                // Note that .Enabled is not used to indicate an event is enabled
-                // It's probably used by a different subevent which I don't care to track down
-                if (eData.Condition != null && eData.Condition.ConditionIndex >= 0)
-                {
-                    if (WorldEventManager.GetCondition(eData.Condition.ConditionIndex) != eData.Condition.IsTrue)
-                        return false;
-                }
 
-                if (eData.Delay > currentDuration)
-                    TriggerDelayedWorldEvent(action, eData.Delay - currentDuration);
-                else
-                    action.Invoke();
                 return false;
             }
-
+            
             // Wasn't our custom event, so proceed as usual
             return true;
         }

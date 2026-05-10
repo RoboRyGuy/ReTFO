@@ -6,6 +6,7 @@ using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -13,6 +14,8 @@ namespace ReTFO.Archipelago.Features.FloatingItems;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using ReTFO.Archipelago.Utilities;
+using System.Linq;
 
 public static class LockGearHandler_Tags
 { 
@@ -131,7 +134,7 @@ public class LockGearHandler : ArchipelagoFeature
             return new TagResolver(data, gd => gd.LookupOrCreateTag(block.name, "A specific gear item", gd.Tag_GearItems_ByType(idRange.GetCompID(eGearComponent.BaseItem))));
         }
 
-        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, DoLoseOnStart = true };
+        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
 
         public PlayerOfflineGearDataBlock Block { get; set; }
 
@@ -240,6 +243,7 @@ public class LockGearHandler : ArchipelagoFeature
             }
             else foreach (var player in SNetwork.SNet.LobbyPlayers)
             {
+                if (!player.IsLocal) continue;
                 PlayerBackpack backpack = PlayerBackpackManager.GetBackpack(player);
                 if (backpack.Slots[(int)slot].GearIDRange.IsEqual(ids))
                     PlayerBackpackManager.Current.EquipSyncGear((InventorySlot)slot, gearList[0], player);
@@ -315,6 +319,23 @@ public class LockGearHandler : ArchipelagoFeature
             if (block.Type == eOfflineGearType.SpawnedInLevel) continue;
             if (!block.internalEnabled) continue;
             data.AddFloatingItem(GetGearItem(data, block).ID);
+        }
+    }
+
+
+    /// <summary>
+    /// Prevent bots from equipping invalid gear.
+    /// Typically they will equip their last used gear, so this will let us prevent that.
+    /// </summary>
+    [ArchivePatch(typeof(PlayerBackpackManager), nameof(PlayerBackpackManager.EquipBotGear), [ typeof(SNetwork.SNet_Player), typeof(GearIDRange) ])]
+    public static class PlayerBackpackManager__EquipBotGear__Patch
+    {
+        public static void Prefix(ref GearIDRange gearSetup)
+        {
+            GearIDRange localGear = gearSetup;
+            ItemDataBlock itemData = ItemDataBlock.GetBlock(gearSetup.GetCompID(eGearComponent.BaseItem));
+            if (!GearManager.Current.m_gearPerSlot[(int)itemData.inventorySlot].Any(g => g.IsEqual(localGear)))
+                gearSetup = GearManager.Current.m_gearPerSlot[(int)itemData.inventorySlot].First();
         }
     }
 }
