@@ -55,6 +55,7 @@ public partial class StateTracker : ArchipelagoFeature
     List<string> GameTags = [ "DeathLink", "EnergyLink" ];
     public Guid SessionGuid { get; protected set; } = new();
     protected Task<AP.Packets.RoomInfoPacket>? ConnectTask { get; set; } = null;
+    protected Task<AP.LoginResult>? LoginTask { get; set; } = null;
     public event Action<StateTracker>? OnStateChange;
 
     // Things set up at initial sync
@@ -246,7 +247,7 @@ public partial class StateTracker : ArchipelagoFeature
             //"R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
         ]);
         WhitelistTags = [ MidManager.GetProcessedGameData().Tag_All ];
-        BlacklistTags = new();
+        BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks ];
         RequiresSecondaries = true;
         RequiresOverloads = true;
 
@@ -282,14 +283,14 @@ public partial class StateTracker : ArchipelagoFeature
             return;
         }
 
-        else if (ConnectTask != null)
+        if (ConnectTask != null)
         {
             FeatureLogger.Warning("Cannot start new connection; currently waiting to connect to Archipelago");
             return;
         }
 
         CurrentState = eState.HostConnecting;
-        SessionGuid = new();
+        SessionGuid = Guid.NewGuid();
         ApSession = AP.ArchipelagoSessionFactory.CreateSession(Config.ServerAddress, Config.Port);
         ApSession.Locations.CheckedLocationsUpdated += (locs) => 
         {
@@ -301,39 +302,87 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Callback to handle connecting
+    /// Handle a failed connection due to connection, login, or authentication
     /// </summary>
-    /// <param name="connectResult">The connect task this is a callback for</param>
-    protected void PostConnect(Task<AP.Packets.RoomInfoPacket> connectResult)
+    /// <param name="debugName">A string describing the action being attempted</param>
+    protected void HandleFailedConnection(string debugName)
     {
-        // In case we fail at any time
-        ConnectTask = null;
-        CurrentState = eState.CleanState;
+        FeatureLogger.Error($"Failed to {debugName} to Archipelago Host!");
+        if (CurrentState == eState.HostConnecting)
+        {
+            ApSession = null;
+            CurrentState = eState.CleanState;
+        }
+        else if (CurrentState == eState.HostReconnecting)
+        {
+            ConnectTask = ReconnectDelayed();
+        }
+        else
+        {
+            FeatureLogger.Warning($" -> Failed to {debugName} while not in connecting state?");
+        }
+    }
 
+    /// <summary>
+    /// Attempt to reconnect after a specified delay
+    /// </summary>
+    /// <param name="delay">The delay, in milliseconds</param>
+    protected async Task<AP.Packets.RoomInfoPacket> ReconnectDelayed(int delay=2500)
+    {
+        FeatureLogger.Notice($"Attempting to reconnect to {Config.ServerAddress}...");
+        await Task.Delay(delay).ConfigureAwait(false);
+        return await ApSession!.ConnectAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Handle the connection task result and, if possible, attempt to connect to Archipelago
+    /// </summary>
+    public void HandleConnectionResult(Task<AP.Packets.RoomInfoPacket> connectResult)
+    {
+        ConnectTask = null;
+        
         if (!connectResult.IsCompletedSuccessfully)
         {
-            FeatureLogger.Error("Failed to connect to Archipelago Host!");
-            ApSession = null;
+            HandleFailedConnection("connect");
             return;
         }
 
-        // Blocking call
-        AP.LoginResult loginResult = ApSession!.TryConnectAndLogin(
+        LoginTask = ApSession!.LoginAsync(
             $"GTFO ({MidManager.GetProcessedGameData().Name})",
             Config.Username,
             AP.Enums.ItemsHandlingFlags.AllItems,
-            version: APVersion,
             tags: GameTags.ToArray(),
             uuid: SessionGuid.ToString(),
             password: Config.HasPassword ? Config.Password : null,
             requestSlotData: true
         );
+    }
+
+    /// <summary>
+    /// Callback to handle logging in
+    /// </summary>
+    /// <param name="connectResult">The connect task this is a callback for</param>
+    protected void HandleLoginResult(Task<AP.LoginResult> result)
+    {
+        LoginTask = null;
+
+        if (!result.IsCompletedSuccessfully)
+        {
+            HandleFailedConnection("login");
+            return;
+        }
+
+        AP.LoginResult loginResult = result.Result;
+        if (ApSession == null) throw new NullReferenceException(nameof(ApSession));
 
         if (!loginResult.Successful || loginResult is not AP.LoginSuccessful loginSuccessful)
         {
-            FeatureLogger.Error("Login to Archipelago failed!");
-            ApSession.Socket.DisconnectAsync();
-            ApSession = null;
+            HandleFailedConnection("authenticate");
+            if (loginResult is AP.LoginFailure failure)
+            {
+                foreach (string message in failure.Errors)
+                    FeatureLogger.Error($" -> Error response: {message}");
+            }
             return;
         }
         ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientPlaying);
@@ -382,65 +431,18 @@ public partial class StateTracker : ArchipelagoFeature
             return;
         }
 
-        CurrentState = eState.HostConnected;
-        ConnectTask = null;
-        ConnectCommon();
-        ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientReady);
-        FoundLocations.UnionWith(ApSession.Locations.AllLocationsChecked.Select(v => new LocationID() { AsId= v }));
-    }
-
-    /// <summary>
-    /// Similar to PostConnect, but used when reconnecting during a game
-    /// </summary>
-    /// <param name="connectResult"></param>
-    protected void PostReconnect(Task<AP.Packets.RoomInfoPacket> connectResult)
-    {
-        if (connectResult.IsCompletedSuccessfully)
+        if (CurrentState == eState.HostConnecting)
         {
-            AP.LoginResult loginResult = ApSession!.TryConnectAndLogin(
-                $"GTFO ({MidManager.GetProcessedGameData().Name})",
-                Config.Username,
-                AP.Enums.ItemsHandlingFlags.AllItems,
-                version: APVersion,
-                tags: GameTags.ToArray(),
-                uuid: SessionGuid.ToString(),
-                password: Config.HasPassword ? Config.Password : null,
-                requestSlotData: false
-            );
-
-            if (loginResult.Successful && loginResult is AP.LoginSuccessful loginSuccessful)
-            {
-                // Reset our session item counts so we don't overcollect items
-                SessionItemCounts.Clear();
-                RecalcWinItems();
-                
-                // Send location checks to ensure checks made while offline are tracked
-                ApSession.Locations.CompleteLocationChecksAsync(FoundLocations.Select(l => l.AsId).ToArray())
-                    .ContinueWith(OnLocationChecksCompleted);
-
-                ConnectTask = null;
-                CurrentState = eState.HostConnected;
-                ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientPlaying);
-                FeatureLogger.Success("Reconnect was successful!");
-                FoundLocations.UnionWith(ApSession.Locations.AllLocationsChecked.Select(v => new LocationID() { AsId = v }));
-                return;
-            }
+            CurrentState = eState.HostConnected;
+            ConnectCommon();
+            ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientReady);
         }
-
-        async Task<AP.Packets.RoomInfoPacket> TaskWrapper()
+        else if (CurrentState == eState.HostReconnecting)
         {
-            await Task.Delay(2500);
-            var task = ApSession!.ConnectAsync();
-            await task;
-            if (task.IsCompletedSuccessfully)
-                return task.Result;
-            else if (task.Exception != null)
-                throw task.Exception;
-            else throw new Exception("Connect task failed for unknown reason");
+            CurrentState = eState.HostConnected;
+            ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientPlaying);
         }
-
-        FeatureLogger.Warning("Failed to reconnect to Archipelago; retrying!");
-        ConnectTask = TaskWrapper();
+        FoundLocations.UnionWith(ApSession.Locations.AllLocationsChecked.Select(v => new LocationID() { AsId = v }));
     }
 
     /// <summary>
@@ -1345,31 +1347,16 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public override void Update()
     {
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            RecalcWinItems();
-            //Game.Data data = MidManager.GetProcessedGameData();
-            //RandomizationTag target = data.Tag_FreeCheckpoints.SelfResolve();
-            //foreach (var locPair in data.GetAllLocations())
-            //{
-            //    if (locPair.Value.ItemID.IsNull) continue;
-            //    Item item = data.LookupItem(locPair.Value.ItemID);
-            //    if (data.TagMatches(target, item))
-            //        FeatureLogger.Warning($"Item found in {data.LookupTagDef(locPair.Value.NameTag).Name}");
-            //}
-
-            //DeathLinkHandler.TryTriggerDeathLink(new AP.BounceFeatures.DeathLink.DeathLink("Kyle", "Killed by a debug event"));
-        }
+        //if (Input.GetKeyDown(KeyCode.J))
+        //{
+        //    FeatureLogger.Info("Ran custom code");
+        //    MainMenuGuiLayer.Current.PageRundownNew.ResetRundownSelection();
+        //}
 
         if (ConnectTask?.IsCompleted ?? false)
-        {
-            if (CurrentState == eState.HostConnecting)
-                PostConnect(ConnectTask);
-            else if (CurrentState == eState.HostReconnecting)
-                PostReconnect(ConnectTask);
-            else
-                throw new NotSupportedException($"Expected connecting or reconnecting state, got \"{Enum.GetName(CurrentState)}\"");
-        }
+            HandleConnectionResult(ConnectTask);
+        if (LoginTask?.IsCompleted ?? false)
+            HandleLoginResult(LoginTask);
 
         if (ApSession == null)
             return;

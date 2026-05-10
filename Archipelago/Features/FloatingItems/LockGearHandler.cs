@@ -322,7 +322,6 @@ public class LockGearHandler : ArchipelagoFeature
         }
     }
 
-
     /// <summary>
     /// Prevent bots from equipping invalid gear.
     /// Typically they will equip their last used gear, so this will let us prevent that.

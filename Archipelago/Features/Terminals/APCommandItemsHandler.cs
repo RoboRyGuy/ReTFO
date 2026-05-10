@@ -86,18 +86,24 @@ public class APCommandItemsHandler : ArchipelagoFeature
         }
 
         public override string HelpText
-            => "List the items currently available to YOU"
+            => "List the items currently available to YOU. You may optionally provide a single text filter, which is matched by name."
             + "\nNote: Available items will vary by expedition";
 
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
-            terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, "Fetching currently available items", ItemsDelay, onWaitDoneSound: TerminalSoundType.Positive);
+            terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, $"Fetching currently available items{((param2?.Length == 0) ? "" : $" matching filter \"{param2}\"")}", ItemsDelay, onWaitDoneSound: TerminalSoundType.Positive);
 
             StateTracker stateTracker = StateTracker.Get();
-            var items = stateTracker.ItemsInTerminalSystem;
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
 
-            if (items.Count == 0)
+            IEnumerable<Tuple<ItemID, string>> items;
+            if ((param2?.Length ?? 0) == 0)
+                items = stateTracker.ItemsInTerminalSystem;
+            else
+                items = stateTracker.ItemsInTerminalSystem.Where(pair => gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2!, StringComparison.OrdinalIgnoreCase));
+
+
+            if (!items.Any())
             {
                 terminal.AddLine(string.Empty);
                 terminal.AddLine("   -- NO ITEMS FOUND --");
@@ -186,16 +192,34 @@ public class APCommandItemsHandler : ArchipelagoFeature
             }
             else
             {
-                terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, firstMessage, ClaimAllDelay, onWaitDoneSound: TerminalSoundType.Positive);
+                // Isolate actions and remove items
+                void postMessage()
+                    => terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, firstMessage, ClaimAllDelay, onWaitDoneSound: TerminalSoundType.Positive);
 
+                List<Action> claimActions = pairs.SelectMany(p => gameData.LookupItem(p.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal)).ToList();
+                stateTracker.ItemsInTerminalSystem.RemoveAll(predicate);
+
+                // Add actions to queue if it exists
+                foreach (var d in terminal.m_command.OnEndOfQueue?.GetInvocationList() ?? Enumerable.Empty<Il2CppSystem.Delegate>())
+                {
+                    Il2CppAction? action = d.Target.TryCast<Il2CppAction>();
+                    if (action == null) continue;
+                    if (action.WrappedAction?.Target is ClaimItemsHelper existingHelper)
+                    {
+                        existingHelper.claimActions.AddRange(claimActions.Prepend(postMessage));
+                        return;
+                    }
+                }
+
+                // No queue exists, so we'll create a new one
+                postMessage();
                 var helper = new ClaimItemsHelper()
                 {
                     terminal = terminal,
                     currentIndex = 0,
-                    claimActions = pairs.SelectMany(p => gameData.LookupItem(p.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal)).ToList(),
+                    claimActions = claimActions,
                 };
                 terminal.m_command.OnEndOfQueue += helper.thisAction;
-                stateTracker.ItemsInTerminalSystem.RemoveAll(predicate);
             }
         }
     }
@@ -216,13 +240,14 @@ public class APCommandItemsHandler : ArchipelagoFeature
 
 
     // Prevent the command interpreter from unsubscribing our helper from OnEndOfQueue
+    // This is a rather inefficient way to handle it, but it's the only one I've found that works
     [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.UpdateTerminalScreen))]
     private static class DontUnscubscribeMePatch
     {
         // For some reason, __state doesn't work here, so we're doing this manually
-        private static ClaimItemsHelper? __state = null;
+        //private static ClaimItemsHelper? __state = null;
 
-        public static void Prefix(LG_ComputerTerminalCommandInterpreter __instance)
+        public static void Prefix(LG_ComputerTerminalCommandInterpreter __instance, ref ClaimItemsHelper? __state)
         {
             __state = null;
             if (__instance.OnEndOfQueue == null) return;
@@ -238,12 +263,17 @@ public class APCommandItemsHandler : ArchipelagoFeature
             }
         }
 
-        public static void Postfix(LG_ComputerTerminalCommandInterpreter __instance)
+        public static void Postfix(LG_ComputerTerminalCommandInterpreter __instance, ClaimItemsHelper? __state)
         {
             if (__state == null || __state.currentIndex >= __state.claimActions.Count) return;
 
             // Checks if it contains the helper already
-            if (__instance.OnEndOfQueue?.GetInvocationList().Any(i => i.Target.Pointer == __state.thisAction.Pointer) ?? false)
+            if ((__instance.OnEndOfQueue?.Pointer ?? IntPtr.Zero) == __state.thisAction.Pointer)
+                return;
+
+            var list = __instance.OnEndOfQueue?.GetInvocationList();
+
+            if (__instance.OnEndOfQueue?.GetInvocationList().Any(i => i.Pointer == __state.thisAction.Pointer) ?? false)
                 return;
 
             __instance.OnEndOfQueue += __state.thisAction;

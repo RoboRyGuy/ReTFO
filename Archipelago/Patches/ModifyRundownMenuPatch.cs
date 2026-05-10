@@ -1,7 +1,6 @@
 ﻿
 using CellMenu;
 using HarmonyLib;
-using Il2CppInterop.Runtime;
 using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -69,9 +68,6 @@ internal static class ModifyRundownMenuPatch
     [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.Setup)), HarmonyPostfix]
     public static void PostMenuSetup(CM_PageRundown_New __instance)
     {
-        // Marking the selection as revealed allowes the Join Lobby button to operate
-        __instance.m_selectionIsRevealed = true;
-
         // Removing the connect callback so pressing the button does not open the rundown
         var connectButton = __instance.m_buttonConnect;
         foreach (var action in connectButton.OnBtnPressCallback.GetInvocationList())
@@ -83,6 +79,13 @@ internal static class ModifyRundownMenuPatch
 
         // Convenient time to setup replication
         StateTracker.Get().SetupReplication();
+    }
+
+    [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.OnCortexDone)), HarmonyPostfix]
+    public static void PostSelectionRevealed(CM_PageRundown_New __instance)
+    {
+        // Marking the selection as revealed allows the Join Lobby button to appear
+        __instance.m_selectionIsRevealed = true;
     }
 
 }

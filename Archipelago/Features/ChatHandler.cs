@@ -132,18 +132,14 @@ public class ChatHandler : ArchipelagoFeature
     {
         public static void Postfix(Player.PlayerAgent? fromPlayer, string? message, Player.PlayerAgent? toPlayer)
         {
-            var func = () =>
-            {
-                if (message == null) return;
-                if (toPlayer != null) return; // Sending a direct message (somehow?)
-                StateTracker st = StateTracker.Get();
-                if (st.ApSession == null) return;
-                if (!(fromPlayer?.IsLocallyOwned ?? true))
-                    st.ApSession!.Say($"{fromPlayer.Owner.NickName}: {message}");
-                else
-                    st.ApSession!.Say(message);
-            };
-            func();
+            if (message == null) return;
+            if (toPlayer != null) return; // Sending a direct message (somehow?)
+            StateTracker st = StateTracker.Get();
+            if (st.ApSession == null) return;
+            if (!(fromPlayer?.IsLocallyOwned ?? true))
+                st.ApSession!.Say($"{fromPlayer.Owner.NickName}: {message}");
+            else
+                st.ApSession!.Say(message);
         }
     }
 
