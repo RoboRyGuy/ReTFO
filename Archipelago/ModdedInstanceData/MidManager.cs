@@ -16,7 +16,6 @@ namespace ReTFO.Archipelago.ModdedInstanceData;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using UnityEngine.Playables;
 
 /// <summary>
 /// Wraps modded instance data; creates it and manages its lifetime.
@@ -148,7 +147,7 @@ public class MidManager
     protected Dictionary<Type, Processor> m_processorLookup { get; set; } = new();
     protected Game.Data? m_gameData { get; set; } = null;
     protected Game.Processor m_gameProcessor { get; set; } = new();
-    protected Dictionary<string, string> m_namedHashes { get; set; } = new() { { "MzziAfuqTdt3IHLkyJxp8raEKsKLTAOsFgJ1KbPdCuc=", "Vanilla-0_0_2" } };
+    protected Dictionary<string, string> m_namedHashes { get; set; } = new() { { "MzziAfuqTdt3IHLkyJxp8raEKsKLTAOsFgJ1KbPdCuc=", "Vanilla-0_0_3" } };
 
     public MidManager()
     {
