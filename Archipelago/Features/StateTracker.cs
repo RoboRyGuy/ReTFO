@@ -888,7 +888,7 @@ public partial class StateTracker : ArchipelagoFeature
         if (newExpeditions.Count < 12)
             numRundowns = 1;
         else
-            numRundowns = newExpeditions.Count / 10;
+            numRundowns = (int)Math.Ceiling(newExpeditions.Count * .1);
         numRundowns = Math.Min(numRundowns, MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections.Count);
 
         System.Random random = new(RootSeed.GetHashCode());
