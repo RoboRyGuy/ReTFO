@@ -131,7 +131,37 @@ public class LockGearHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Game.Data data, PlayerOfflineGearDataBlock block)
         {
             GearIDRange idRange = new(block.GearJSON);
-            return new TagResolver(data, gd => gd.LookupOrCreateTag(block.name, "A specific gear item", gd.Tag_GearItems_ByType(idRange.GetCompID(eGearComponent.BaseItem))));
+            string name = idRange.PublicGearName.ToString();
+
+            GearCategoryDataBlock category = GearCategoryDataBlock.GetBlock(idRange.GetCompID(eGearComponent.Category));
+            if (category != null)
+            {
+                name = category.PublicName.ToString();
+
+                ArchetypeDataBlock archetype = ArchetypeDataBlock.GetBlock(
+                    idRange.GetCompID(eGearComponent.FireMode) switch
+                    {
+                        (uint)eWeaponFireMode.Auto                 => category.AutoArchetype,
+                        (uint)eWeaponFireMode.Burst                => category.BurstArchetype,
+                        (uint)eWeaponFireMode.Semi                 => category.SemiArchetype,
+                        (uint)eWeaponFireMode.SemiBurst            => category.SemiBurstArchetype,
+
+                        // I believe these are statically set?
+                        (uint)eWeaponFireMode.SentryGunAuto        => 6,  // Burst Sentry
+                        (uint)eWeaponFireMode.SentryGunBurst       => 24, // HEL Auto Sentry
+                        (uint)eWeaponFireMode.SentryGunSemi        => 23, // Sniper Sentry
+                        (uint)eWeaponFireMode.SentryGunShotgunSemi => 25, // Shotgun Sentry
+
+                        // 0 is never used
+                        _ => 0u,
+                    }
+                );
+                if (archetype != null)
+                    name = archetype.PublicName.ToString();
+            }
+
+            name = $"{name} (Gear #{block.persistentID})";
+            return new TagResolver(data, gd => gd.LookupOrCreateTag(name, "A specific gear item", gd.Tag_GearItems_ByType(idRange.GetCompID(eGearComponent.BaseItem))));
         }
 
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
