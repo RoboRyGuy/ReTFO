@@ -434,6 +434,11 @@ public partial class StateTracker : ArchipelagoFeature
     ArchipelagoStateReplicator? m_stateReplicator = null;
 
     /// <summary>
+    /// If we're attempting to client connect, this is the lobby we're trying to join.
+    /// </summary>
+    SNet_Lobby? m_delayedLobby = null;
+
+    /// <summary>
     /// Simple update enumerator which will be used as a coroutine
     /// </summary>
     private class UpdateStateEnumerator : IEnumerator
@@ -534,28 +539,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// Receive an init state, expected when first joining a lobby
     /// </summary>
     /// <param name="state">The init state being received</param>
-    public void ReceiveInitState(pArchipelagoInitState state)
-    {
-        if (SNet.IsMaster)
-        {
-            FeatureLogger.Warning("Receive init state, but this is master. Ignoring!");
-            return;
-        }
-
-        if (CurrentState != eState.ClientConnect)
-        {
-            FeatureLogger.Warning("Receive init state but wasn't expecting it. Ignoring!");
-            return;
-        }
-
-        RootSeed = state.RootSeed;
-        Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
-        WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
-        BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
-        CurrentState = eState.ClientConnect;
-
-        ConnectCommon();
-    }
+    public void ReceiveInitState(pArchipelagoInitState state) => ClientConnect(state);
 
     /// <summary>
     /// Receive a general state, expected periodically to ensure good sync
@@ -624,21 +608,56 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Patch which sends init packet when players join the lobby
     /// </summary>
-    [ArchivePatch(typeof(SNet_Lobby_STEAM), nameof(SNet_Lobby_STEAM.PlayerJoined), new Type[] { typeof(SNet_Player), typeof(CSteamID) })]
+    [ArchivePatch(typeof(SNet_Lobby_STEAM), nameof(SNet_Lobby_STEAM.PlayerJoined), [ typeof(SNet_Player), typeof(Steamworks.CSteamID) ])]
     public static class SNet_Lobby_STEAM__PlayerJoined__Patch
     {
         public static void Prefix(SNet_Player player)
         {
+            if (!SNet.IsMaster) return;
             if ((player?.Pointer ?? IntPtr.Zero) == IntPtr.Zero) return;
+            if (player!.IsLocal) return;
+
             StateTracker stateTracker = StateTracker.Get();
-            if (SNet.IsMaster)
-            {
-                stateTracker.m_stateReplicator!.SendInit(player);
-                stateTracker.m_stateReplicator!.SendGeneral(player);
-            }
+            stateTracker.m_stateReplicator!.SendInit(player);
+            stateTracker.m_stateReplicator!.SendGeneral(player);
         }
     }
-    
+
+    /// <summary>
+    /// Prevent us from joining a lobby before we've finished the client setup process
+    /// </summary>
+    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.OnJoinedLobby))]
+    public static class SNet_LobbyManager__OnJoinedLobby__Patch
+    {
+        public static bool Prefix(SNet_LobbyManager __instance, SNet_Lobby lobby)
+        {
+            var func = () =>
+            {
+                StateTracker stateTracker = StateTracker.Get();
+                if (stateTracker.CurrentState == eState.ClientConnect)
+                {
+                    FeatureLogger.Success("Lobby join request approved");
+                    stateTracker.m_delayedLobby = null;
+                    return true;
+                }
+                else if (stateTracker.CurrentState != eState.CleanState)
+                {
+                    FeatureLogger.Error("Refused attempt to join lobby while not in a clean state!");
+                    __instance.LeaveLobby();
+                    stateTracker.m_delayedLobby = null;
+                }
+                else
+                {
+                    FeatureLogger.Notice("Received lobby join request; state is prepped to join; waiting for AP sync before joining.");
+                    stateTracker.m_delayedLobby = lobby;
+                }
+
+                return false;
+            };
+            return func();
+        }
+    }
+
     /// <summary>
     /// Patch which ensures migration fails, since we really don't support that
     /// </summary>

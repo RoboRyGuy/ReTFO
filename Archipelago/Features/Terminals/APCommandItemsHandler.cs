@@ -244,9 +244,6 @@ public class APCommandItemsHandler : ArchipelagoFeature
     [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.UpdateTerminalScreen))]
     private static class DontUnscubscribeMePatch
     {
-        // For some reason, __state doesn't work here, so we're doing this manually
-        //private static ClaimItemsHelper? __state = null;
-
         public static void Prefix(LG_ComputerTerminalCommandInterpreter __instance, ref ClaimItemsHelper? __state)
         {
             __state = null;

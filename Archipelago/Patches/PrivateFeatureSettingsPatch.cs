@@ -11,7 +11,7 @@ using TheArchive.Features.Dev;
 namespace ReTFO.Archipelago.Patches;
 
 /// <summary>
-/// Modifies the Archive's ModSettings feature to allow some string settings to be private
+/// Modifies the Archive's ModSettings feature to allow string settings to be private
 /// </summary>
 [HarmonyPatch, InjectToIl2Cpp]
 public static class PrivateFeatureSettingsPatch
@@ -24,6 +24,9 @@ public static class PrivateFeatureSettingsPatch
         public bool IsCurrentlyPrivate { get; }
     }
 
+    /// <summary>
+    /// Wrapper around the an input receiver which will signal if we need to make the the input private
+    /// </summary>
     [InjectToIl2Cpp(typeof(iStringInputReceiver))]
     private class WrappedCustomStringReceiver : Il2CppSystem.Object
     {
@@ -49,6 +52,9 @@ public static class PrivateFeatureSettingsPatch
         public Func<bool>? IsCurrentlyPrivate { get; set; } = null;
     }
 
+    /// <summary>
+    /// When TheArchive creates the receiver, catch it and replace it with our wrapper if necessary
+    /// </summary>
     [HarmonyPatch]
     public static class ModSettings__SettingsCreationHelper__CreateStringSetting__Patch
     {
@@ -81,6 +87,9 @@ public static class PrivateFeatureSettingsPatch
         }
     }
     
+    /// <summary>
+    /// When input fields update, detect our wrapper and hide the field if necessary
+    /// </summary>
     [HarmonyPatch]
     public static class CM_SettingsInputField__Patch
     {
@@ -88,9 +97,10 @@ public static class PrivateFeatureSettingsPatch
         public static void PostUpdate(CM_SettingsInputField __instance)
         {
             if (__instance.m_readingActive) return;
+        
             WrappedCustomStringReceiver? receiver = new Il2CppSystem.Object(__instance.m_stringReceiver.Pointer).TryCast<WrappedCustomStringReceiver>();
             if (receiver == null) return;
-
+        
             if (receiver.IsCurrentlyPrivate?.Invoke() ?? true)
                 __instance.m_text.SetText(new string('*', __instance.m_text.text.Length));
             else

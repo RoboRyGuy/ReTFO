@@ -26,7 +26,7 @@ public static class UnlockExpeditionHandler_Tags
 }
 
 // Handles the UnlockExpedition item, and the path between menu and the expedition's first zone
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, AutomatedFeature]
 public class UnlockExpeditionHandler : ArchipelagoFeature
 {
     public override string Name => "Unlock Expedition Handler";

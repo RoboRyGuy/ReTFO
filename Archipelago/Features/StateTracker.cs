@@ -23,7 +23,6 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
-using PlayFab.AdminModels;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -145,7 +144,7 @@ public partial class StateTracker : ArchipelagoFeature
         public bool UseDebugMode { get; set; } = false;
 
         [FSDisplayName("Hide Connection Details")]
-        [FSDescription("Hide connection details while not editing them. For streamers.")]
+        [FSDescription("For streamers. Hides connection details while not editing them. Also prevents them from being logged.")]
         public bool HideConnectionDetails { get; set; } = true;
 
         [FSDisplayName("Server Address")]
@@ -269,19 +268,37 @@ public partial class StateTracker : ArchipelagoFeature
         RequiresSecondaries = true;
         RequiresOverloads = true;
 
-        ConnectCommon();
+        SetupMultiworld();
 
         FeatureLogger.Notice("Due to fake connect, removing all expedition locks.");
         UnlockExpeditionHandler.UnlockAll();
     }
 
     /// <summary>
-    /// Enter the client connect state, where this user receives Archipelago data from the lobby host
+    /// Enter the client connect state, where this user receives Archipelago data from the lobby host.
+    /// This is invoked by <see cref="ReceiveInitState(pArchipelagoInitState)"/>
     /// </summary>
-    public void ClientConnect()
+    public void ClientConnect(pArchipelagoInitState state)
     {
-        // TODO
-        throw new NotImplementedException("Client connect is not yet implemented!");
+        if (SNetwork.SNet.IsMaster)
+        {
+            FeatureLogger.Warning("Received init packet, but this is master. Ignoring!");
+            return;
+        }
+
+        if (CurrentState != eState.CleanState)
+        {
+            FeatureLogger.Warning($"Received init packet, but currently in state {Enum.GetName(CurrentState)}. Ignoring!");
+            return;
+        }
+
+        RootSeed = state.RootSeed;
+        Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
+        WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
+        BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
+        CurrentState = eState.ClientConnect;
+
+        SetupMultiworld();
     }
 
     /// <summary>
@@ -320,12 +337,18 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Handle a failed connection due to connection, login, or authentication
+    /// Handle a failed connection due to various reasons (failed to connect, send login, or authenticate)
     /// </summary>
-    /// <param name="debugName">A string describing the action being attempted</param>
-    protected void HandleFailedConnection(string debugName)
+    /// <param name="debugName">A string describing the action being attempted which failed</param>
+    protected void HandleFailedConnection(string debugName, Exception? exception)
     {
         FeatureLogger.Error($"Failed to {debugName} to Archipelago Host!");
+        if (exception != null)
+        {
+            FeatureLogger.Error("Encountered the following exception:");
+            FeatureLogger.Exception(exception);
+        }
+
         if (CurrentState == eState.HostConnecting)
         {
             ApSession = null;
@@ -361,7 +384,16 @@ public partial class StateTracker : ArchipelagoFeature
         
         if (!connectResult.IsCompletedSuccessfully)
         {
-            HandleFailedConnection("connect");
+            // Playing it safe - not sure if the exception will contain address information
+            string uri = ApSession?.Socket.Uri.ToString() ?? "null!";
+            HandleFailedConnection("connect", Config.HideConnectionDetails ? new Exception("Exception hidden because HideConnectionDetails is enabled!") : connectResult.Exception);
+            if (Config.HideConnectionDetails)
+                FeatureLogger.Error("Connection debug hidden due to HideConnectionDetails");
+            else
+            {
+                FeatureLogger.Error($"Address: {Config.ServerAddress}:{Config.Port}");
+                FeatureLogger.Error($"Calculated URI: {uri}");
+            }
             return;
         }
 
@@ -381,26 +413,37 @@ public partial class StateTracker : ArchipelagoFeature
     /// Callback to handle logging in
     /// </summary>
     /// <param name="connectResult">The connect task this is a callback for</param>
-    protected void HandleLoginResult(Task<AP.LoginResult> result)
+    protected void HandleLoginResult(Task<AP.LoginResult> loginTask)
     {
         LoginTask = null;
 
-        if (!result.IsCompletedSuccessfully)
+        if (!loginTask.IsCompletedSuccessfully)
         {
-            HandleFailedConnection("login");
+            HandleFailedConnection("login", Config.HideConnectionDetails ? new Exception("Exception hidden because HideConnectionDetails is enabled!") : loginTask.Exception);
             return;
         }
 
-        AP.LoginResult loginResult = result.Result;
+        AP.LoginResult loginResult = loginTask.Result;
         if (ApSession == null) throw new NullReferenceException(nameof(ApSession));
 
         if (!loginResult.Successful || loginResult is not AP.LoginSuccessful loginSuccessful)
         {
-            HandleFailedConnection("authenticate");
-            if (loginResult is AP.LoginFailure failure)
+            HandleFailedConnection("authenticate", null);
+            if (Config.HideConnectionDetails)
+                FeatureLogger.Error("Connection debug is hidden because HideConnectionDetails is enabled.");
+            else
             {
-                foreach (string message in failure.Errors)
-                    FeatureLogger.Error($" -> Error response: {message}");
+                if (loginResult is AP.LoginFailure failure)
+                {
+                    foreach (string message in failure.Errors)
+                        FeatureLogger.Error($" -> Error response: {message}");
+                }
+
+                FeatureLogger.Error("Tried to connect with following information:");
+                FeatureLogger.Error($"Username: {Config.Username}");
+                FeatureLogger.Error(Config.HasPassword ? $"Password: {Config.Password}" : "No password");
+                string? name = MidManager.GetProcessedGameData().Name;
+                FeatureLogger.Error($"Game: {(name == null ? "GTFO" : $"GTFO ({name})")}");
             }
             return;
         }
@@ -453,7 +496,7 @@ public partial class StateTracker : ArchipelagoFeature
         if (CurrentState == eState.HostConnecting)
         {
             CurrentState = eState.HostConnected;
-            ConnectCommon();
+            SetupMultiworld();
             ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientReady);
         }
         else if (CurrentState == eState.HostReconnecting)
@@ -465,9 +508,9 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Common code for the connect calls
+    /// Set up the multiworld using the current slot data
     /// </summary>
-    protected void ConnectCommon()
+    protected void SetupMultiworld()
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         WhitelistTags.Add(gameData.Tag_Always); // Just in case
@@ -643,12 +686,14 @@ public partial class StateTracker : ArchipelagoFeature
 
     /// <summary>
     /// Immediately recalculate the win items required by the current settings.
-    /// This is a relatively expensive operation, especially if many items have
-    ///  been collected already.
+    /// This is relatively expensive, so avoid calling it if possible. It's currently
+    ///  only called on connect and reconnect, when the item counts are reset.
     /// </summary>
     public void RecalcWinItems()
     {
         NeededWinItems.Clear();
+        if (CurrentState == eState.ClientConnect) return; // Calculating this might be bad as a client
+
         Game.Data data = MidManager.GetProcessedGameData();
 
         // Get the set of tags matching our win items
@@ -699,11 +744,11 @@ public partial class StateTracker : ArchipelagoFeature
     public void Reset()
     {
         Globals.Global.ActiveRundownIds = null;
+        ApSession?.Socket.DisconnectAsync();
+        ApSession = null;
         MainMenuGuiLayer.Current.PageRundownNew.ResetElements();
         if (SNetwork.SNet.Lobbies.IsInLobby)
             SNetwork.SNet.Lobbies.LeaveLobby();
-        ApSession?.Socket.DisconnectAsync();
-        ApSession = null;
         CurrentState = eState.CleanState;
     }
 
