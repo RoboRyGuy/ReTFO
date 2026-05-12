@@ -159,7 +159,7 @@ public partial class StateTracker : ArchipelagoFeature
         public ushort Port { get; set; } = 38281;
 
         [FSDisplayName("Slot Name")]
-        [FSDescription("Slot in the server to try to connect to\nAnalagous to a username")]
+        [FSDescription("Slot in the server to try to connect to.")]
         [PrivateFeatureSettingsPatch.FSOptionallyPrivate]
         public string Username { get; set; } = "admin";
 
@@ -173,12 +173,29 @@ public partial class StateTracker : ArchipelagoFeature
         public string Password { get; set; } = "Password";
 
         [FSDisplayName("Export MID Data")]
-        [FSDescription("Export the MID data file for server-side randomization.")]
+        [FSDescription(
+            "Export the MID data file to your Downloads folder. The MID data file is a \".ini\" file which can be used to create APWorlds for modded rundowns." 
+            + "\nTo use the MID file, place it into the Players folder (the same folder you normally place YAMLs) and restart the launcher."
+            + " This will add a new GTFO world which can then be used to play your modded game. This sub-world can be reused by any players"
+            + " running the same mods as you, and should be left in the Players folder at least until your game is generated."
+        )]
         public FButton ExportMidDataButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportMidData(null));
 
         [FSDisplayName("Export Tags to CSV")]
-        [FSDescription("Export all tag data to a CSV file (for your perusal)")]
-        public FButton ExportTagsButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportTags(null));
+        [FSDescription(
+            "Export all tag data as a CSV file to your Downloads folder." 
+            + "\nThe CSV export is for an Excel-style viewing of tags, and is easier to parse programmatically."
+        )]
+        public FButton ExportTagsToCSVButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportTagsToCSV(null));
+
+        [FSDisplayName("Export Tags to JSON")]
+        [FSDescription(
+            "Export all tag data as a JSON file to your Downloads folder." 
+            + "\nThe JSON export is for hierarchal viewing of the tags, and can make viewing tags easier if"
+            + " you have a good JSON viewer (such as VS Code). Several websites also have good JSON viewers"
+            + " available for free online without needing to download or install anything."
+        )]
+        public FButton ExportTagsToJSONButton { get; set; } = new FButton("Export", callback: () => StateTracker.Get().MidManager.ExportTagsToJSON(null));
     }
 
     /// <summary>
@@ -348,8 +365,9 @@ public partial class StateTracker : ArchipelagoFeature
             return;
         }
 
+        string? name = MidManager.GetProcessedGameData().Name;
         LoginTask = ApSession!.LoginAsync(
-            $"GTFO ({MidManager.GetProcessedGameData().Name})",
+            name == null ? "GTFO" : $"GTFO ({name})",
             Config.Username,
             AP.Enums.ItemsHandlingFlags.AllItems,
             tags: GameTags.ToArray(),

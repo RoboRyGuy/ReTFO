@@ -177,13 +177,13 @@ public static class RootRandomizationTags
         /// The best example of an unlock item is the expedition unlock item
         /// </summary>
         public TagResolver Tag_UnlockItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Unlock Items", "Base randomization tag for unlock items, which are floating items required to enter a swath of regions. For example, expedition unlocks.", null));
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Unlock Items", "Used internally to identify items needed to access certain groups of regions.", null));
 
         /// <summary>
         /// Base tag for goal items. A player must collect all available goal items for AP to consider the slot won.
         /// </summary>
         public TagResolver Tag_GoalItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Goal Items", "Base randomization tag for goal items, which are items AP uses to determine if a player won. All available goal items must be collected for AP to consider the slot won.", gd.Tag_Never));
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Goal Items", "Used internally to identify \"goal\" items. All available goal items must be collected for AP to consider the slot won.", gd.Tag_Never));
 
         /// <summary>
         /// Items which are "optional", as in they don't exist if they're not randomized in.
@@ -191,7 +191,7 @@ public static class RootRandomizationTags
         ///  but it is not handled that way internally.
         /// </summary>
         public TagResolver Tag_OptionalItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Optional Items", "Floating items which, if not randomized, will be starting items", gd.Tag_AllItems));
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Optional Items", "Items which only exist if they are randomized.", gd.Tag_AllItems));
 
         /// <summary>
         /// Tag matching items which trigger scans

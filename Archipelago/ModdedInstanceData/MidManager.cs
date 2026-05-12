@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -147,7 +148,10 @@ public class MidManager
     protected Dictionary<Type, Processor> m_processorLookup { get; set; } = new();
     protected Game.Data? m_gameData { get; set; } = null;
     protected Game.Processor m_gameProcessor { get; set; } = new();
-    protected Dictionary<string, string> m_namedHashes { get; set; } = new() { { "MzziAfuqTdt3IHLkyJxp8raEKsKLTAOsFgJ1KbPdCuc=", "Vanilla-0_0_3" } };
+    protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
+    { 
+        { "dtqog4kKf1OF3OWoXJQXbHsPk4oZzCzPM1qfGav9Hvg=", null } // Vanilla game hash. Null is reserved for vanilla
+    };
 
     public MidManager()
     {
@@ -282,18 +286,12 @@ public class MidManager
         using SHA256 sha = SHA256.Create();
         byte[] delim = [ 0 ];
 
-        IEnumerable<RandomizationTag> getNameTags(KeyValuePair<LocationID, Location> loc)
-        {
-            yield return loc.Value.NameTag;
-            if (!loc.Value.RandData.IsEmpty) 
-                yield return gameData.LookupItem(loc.Value.ItemID).NameTag;
-        }
         var strings = Enumerable.Empty<string>()
             .Concat(gameData.GetAllExpeditions().Select(e => e.Key))
-            .Concat(gameData.GetAllLocations().SelectMany(getNameTags).Select(t => gameData.LookupTagDef(t).Name))
-            .Concat(gameData.GetAllFloatingItemIds().Select(i => gameData.LookupTagDef(gameData.LookupItem(i).NameTag)).Select(t => t.Name))
+            .Concat(gameData.GetAllRegions().Select(r => r.Value.Name))
+            .Concat(gameData.GetAllPaths().Select(p => p.Value.Name ?? "null"))
+            .Concat(gameData.GetAllTags().Select(t => t.Value.Name))
         ;
-
         foreach (string s in strings)
         {
             var bytes = Encoding.UTF8.GetBytes(s);
@@ -315,9 +313,12 @@ public class MidManager
 
         IsProcessing = false;
         IsProcessed = true;
-        FeatureLogger.Success("MID generation completed!");
-        FeatureLogger.Success($"World Hash: {hash}");
-        FeatureLogger.Success($"World Name: {gameData.Name}");
+        FeatureLogger.Notice("MID generation completed!");
+        FeatureLogger.Notice($"World Hash: {hash}");
+        if (gameData.Name == null)
+            FeatureLogger.Notice("World is Vanilla");
+        else
+            FeatureLogger.Notice($"World Name: {gameData.Name}");
 
         // We've most likely touched these blocks, so we're going to mark them dirty. Not sure if this really does anything
         RundownDataBlock.FileDirty = true;
@@ -348,7 +349,7 @@ public class MidManager
 
         if (directory == null)
             directory = SHGetKnownFolderPath(DownloadsGUID, 0);
-        string filename = System.IO.Path.Combine(directory, $"GTFO-{gameData.Name}.ini");
+        string filename = System.IO.Path.Combine(directory, gameData.Name == null ? "GTFO.ini" : $"GTFO-{gameData.Name}.ini");
 
         DoGraphTraversal(gameData, true, null, null, false);
 
@@ -384,7 +385,6 @@ public class MidManager
 
         var dumpData = new
         {
-            Name = gameData.Name,
             Expeditions = eData,
             Tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
             Regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
@@ -394,14 +394,11 @@ public class MidManager
             FloatingItems = gameData.GetAllFloatingItemIds(),
         };
 
-        JsonSerializerSettings settings = new()
-        {
-            Formatting = Formatting.Indented,
-        };
+        JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
         settings.Converters.Add(new Clonesoft.Json.Converters.StringEnumConverter());
         settings.Converters.Add(new SimplifiedListConverter<long>(20));   // Compress long lists of longs (unpacked IDs) for readability
         settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
-        settings.Converters.Add(new IdConverter());             // Convert IDs to longs
+        settings.Converters.Add(new IdConverter());                       // Convert IDs to longs
         Type[] containerTypes = [ typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem) ];
         Type[] inlinedTypes = [ typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), typeof(Path), typeof(Location), typeof(Item) ];
         settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
@@ -416,7 +413,7 @@ public class MidManager
     /// The full path of the file to export to.
     /// If null, defaults to a file in the downloads folder.
     /// </param>
-    public void ExportTags(string? filename = null)
+    public void ExportTagsToCSV(string? filename = null)
     {
         if (filename == null)
             filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "gtfoTags.csv");
@@ -425,6 +422,69 @@ public class MidManager
             .Concat(GetProcessedGameData().GetAllTags().Select(pair => $"\"{pair.Key.AsId.ToString()}\"\"{pair.Value.Name}\",\"{pair.Value.Parent}\",\"{pair.Value.Description}\""));
         
         File.WriteAllLines(filename, text);
+    }
+
+    /// <summary>
+    /// Struct used to help serialize tags for JSON (for hierarchal viewing)
+    /// </summary>
+    [DataContract]
+    private struct JsonTag
+    {
+        [DataMember] public RandomizationTag ID { get; init; }
+        [DataMember] public string Name { get; init; }
+        [DataMember] public string Description { get; init; }
+        private List<JsonTag>? m_children;
+        [DataMember(EmitDefaultValue = false)] public List<JsonTag>? Children
+        { 
+            get => m_children; 
+            init => m_children = (value?.Count ?? 0) == 0 ? null : value; 
+        }
+    }
+
+    /// <summary>
+    /// Export tags as a JSON to the designated path
+    /// </summary>
+    /// <param name="filename">
+    /// The full path of the file to export to.
+    /// If null, defaults to a file in the downloads folder.
+    /// </param>
+    public void ExportTagsToJSON(string? filename = null)
+    {
+        if (filename == null)
+            filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "gtfoTags.json");
+
+        Game.Data data = GetProcessedGameData();
+
+        // Create lookup to greatly accelerate this process
+        Dictionary<RandomizationTag, List<RandomizationTag>?> tagsByParent = new();
+        foreach (var tag in data.GetAllTags())
+        {
+            if (tagsByParent.TryGetValue(tag.Value.Parent, out var list))
+                list!.Add(tag.Key);
+            else
+                tagsByParent.Add(tag.Value.Parent, new() { tag.Key });
+        }
+
+        // Helper to create hierarchal structure
+        List<JsonTag> MakeJsonRecursive(RandomizationTag parentTag)
+        {
+            return (tagsByParent.GetValueOrDefault(parentTag, null) ?? Enumerable.Empty<RandomizationTag>())
+                .Select(t => new KeyedRandomizationTag(t, data.LookupTagDef(t)))
+                .Select(t => new JsonTag()
+                {
+                    ID = t.ID,
+                    Name = t.Definition.Name,
+                    Description = t.Definition.Description,
+                    Children = MakeJsonRecursive(t.ID)
+                }).ToList();
+        }
+
+        // Output to file as JSON
+        var obj = new { Tags = MakeJsonRecursive(new RandomizationTag()) };
+        JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
+        settings.Converters.Add(new IdConverter());
+        string json = JsonConvert.SerializeObject(obj, settings);
+        File.WriteAllText(filename, json);
     }
 
     /// <summary>

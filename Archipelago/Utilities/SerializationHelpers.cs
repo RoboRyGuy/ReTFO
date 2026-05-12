@@ -190,7 +190,7 @@ public static class SerializationHelpers
 
     /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, ICollection{long})"/>
     /// <param name="count">The count of how many values will be written. This will not be checked!</param>
-    public static unsafe void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<long> values, int count)
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<long> values, int count)
         => Write7BitEncodedArray(bytes, ref index, values.Cast<ulong>(), count);
 
     /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, IEnumerable{long}, int)"/>

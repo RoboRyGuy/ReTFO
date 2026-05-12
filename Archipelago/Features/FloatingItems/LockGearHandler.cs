@@ -316,14 +316,19 @@ public class LockGearHandler : ArchipelagoFeature
                     ids,
                     new Action<BackpackItem>((backpackItem) =>
                     {
-                        ItemEquippable? weapon = backpackItem.TryCast<ItemEquippable>();
+                        ItemEquippable? weapon = backpackItem.Instance.TryCast<ItemEquippable>();
                         if (weapon == null) return; // This is probably safe
-                        if (weapon.AmmoType == AmmoType.None) return;
-                        pack.AmmoStorage.SetAmmo(weapon.AmmoType, .5f);
+                        if (weapon.AmmoType != AmmoType.Standard
+                            && weapon.AmmoType != AmmoType.Special
+                            && weapon.AmmoType != AmmoType.Class
+                        ) return;
+
+                        float desiredAmmo = .5f * (weapon.AmmoType switch { AmmoType.Standard => 460f, AmmoType.Special => 230f, AmmoType.Class => 150f, _ => throw new ArgumentException() });
+                        if (pack.AmmoStorage.GetAmmoInPack(weapon.AmmoType) < desiredAmmo)
+                            pack.AmmoStorage.SetAmmo(weapon.AmmoType, desiredAmmo);
 
                         BulletWeapon? gun = weapon.TryCast<BulletWeapon>();
-                        if (gun != null)
-                            gun.SetCurrentClipRel(1f);
+                        if (gun != null) gun.SetCurrentClipRel(1f);
                     })
                 );
                 terminal.AddLine($"Gear item \"{Block.name}\" has been given to {player.NickName}");

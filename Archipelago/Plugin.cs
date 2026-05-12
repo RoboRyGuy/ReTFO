@@ -1,11 +1,9 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using CellMenu;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes;
 using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
@@ -39,7 +37,7 @@ public class Plugin : BasePlugin
     public const string Name = "BetaArchipelago";   // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "0.0.3";          // Plugin version, can be used by System.Version
+    public const string Version = "0.0.4";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;

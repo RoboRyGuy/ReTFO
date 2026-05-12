@@ -2,7 +2,6 @@
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
@@ -73,11 +72,11 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             : base(MakeTag(expedition), MakeRandData())
         {
             ExpeditionData = expedition;
-            Tag2 = expedition.Tag_UnlockItems_ByExpedition;
+            Tag2 = expedition.Tag_UnlockItems_ByExpedition; // Used internally for path traversal checks
         }
 
         public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", gd.Tag_ExpeditionUnlocks));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", data.Tag_ExpeditionUnlocks));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true, CollectedByDefault = true };
 
