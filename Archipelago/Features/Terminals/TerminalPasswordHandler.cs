@@ -94,9 +94,8 @@ public class TerminalPasswordHandler : ArchipelagoFeature
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
-            Expedition.Data expedition = Expedition.Data.FromCurrentExpedition();
-            if (TerminalData.IsSameExpedition(expedition))
-                OnStartExpeditionWithItem(stateTracker, expedition);
+            if (TerminalData.IsCurrentlyInExpedition())
+                OnStartExpeditionWithItem(stateTracker, TerminalData);
         }
 
         public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
