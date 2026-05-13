@@ -111,9 +111,14 @@ public static class Expedition
         /// <summary>
         /// Get expedition data for the currently loaded expedition. Throws if not in an expedition
         /// </summary>
-        /// <returns></returns>
         public static Data FromCurrentExpedition()
             => Data.FromExpedition(RundownManager.ActiveExpedition);
+
+        /// <summary>
+        /// Get expedition data for the currently loaded expedition. Returns null if there is no current expedition
+        /// </summary>
+        public static Data? TryFromCurrentExpedition() 
+            => Data.TryFromExpedition(RundownManager.Current?.m_actExp);
 
         /// <summary>
         /// Get expedition data for any given expedition
@@ -141,10 +146,10 @@ public static class Expedition
         /// <summary>
         /// Attempt to find registered expedition data for the requested expedition.
         /// Returns null if it fails, but otherwise logs no errors.
-        public static Data? TryFromExpedition(ExpeditionInTierData expedition)
+        public static Data? TryFromExpedition(ExpeditionInTierData? expedition)
         {
             Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
-            string? expeditionName = expedition.Descriptive?.Prefix;
+            string? expeditionName = expedition?.Descriptive?.Prefix;
             if (expeditionName == null || !gameData.TryLookupExpedition(expeditionName, out Expedition.Data? data))
                 return null;
             else return data;

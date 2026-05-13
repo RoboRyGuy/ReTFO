@@ -1478,42 +1478,43 @@ public partial class StateTracker : ArchipelagoFeature
 
         while (ApSession.Items.Any())
         {
-            AP.Models.ItemInfo itemInfo = ApSession.Items.DequeueItem();
-
-            // Add to our session count.
-            ItemID id = new ItemID() { AsId = itemInfo.ItemId };
-            int newCount = SessionItemCounts.GetValueOrDefault(id, 0) + 1;
-            SessionItemCounts[id] = newCount;
-
-            // Check if this is a needed item, and, if it is, update our win conditions
-            if (NeededWinItems.Remove(id) && NeededWinItems.Count == 0)
+            try
             {
-                ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientGoal);
-                FeatureLogger.Success("Congratulations, you have won the game!");
-            }
+                AP.Models.ItemInfo itemInfo = ApSession.Items.DequeueItem();
 
-            // If the session count is now greater, we also add to our actual count
-            if (newCount > ActualItemCounts.GetValueOrDefault(id, 0))
-            {
-                // If this item is from our game and is not randomized, we do not process receiving it
-                if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot)
+                // Add to our session count.
+                ItemID id = new ItemID() { AsId = itemInfo.ItemId };
+                int newCount = SessionItemCounts.GetValueOrDefault(id, 0) + 1;
+                SessionItemCounts[id] = newCount;
+
+                // Check if this is a needed item, and, if it is, update our win conditions
+                if (NeededWinItems.Remove(id) && NeededWinItems.Count == 0)
                 {
-                    LocationID locId = new() { AsId = itemInfo.LocationId };
-                    Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
-                    if (!loc.RandMode.IsRandomized)
-                        continue;
+                    ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientGoal);
+                    FeatureLogger.Success("Congratulations, you have won the game!");
                 }
 
-                // Actually collecting the item
-                CollectItem(id);
+                // If the session count is now greater, we also add to our actual count
+                if (newCount > ActualItemCounts.GetValueOrDefault(id, 0))
+                {
+                    // If this item is from our game and is not randomized, we do not process receiving it
+                    if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot)
+                    {
+                        LocationID locId = new() { AsId = itemInfo.LocationId };
+                        Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
+                        if (!loc.RandMode.IsRandomized)
+                            continue;
+                    }
 
-                //// Chat updates
-                //string message;
-                //if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot)
-                //    message = $"Collected item {itemInfo.ItemDisplayName}";
-                //else
-                //    message = $"Received item {itemInfo.ItemDisplayName} from {itemInfo.Player.Name}";
-                //StateTracker.LogForPlayer(message);
+                    // Actually collecting the item
+                    CollectItem(id);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Using a blue notice to help add breaks between exceptions, since they blend together so well
+                FeatureLogger.Notice("Encountered unexpected exception while receiving items from Archipelago:");
+                FeatureLogger.Exception(ex);
             }
         }
     }
@@ -1534,6 +1535,8 @@ public partial class StateTracker : ArchipelagoFeature
         {
             if (log == null) continue;
             log.AddLogItem(message);
+
+            // This part is important. It somehow prevents crashes :)
             log.UpdateHeightOffset();
         }
     }
@@ -1559,7 +1562,7 @@ public partial class StateTracker : ArchipelagoFeature
             StateTracker self = ArchipelagoFeatureHelper.GetFeature<StateTracker>();
             self.ApSession?.SetClientState(AP.Enums.ArchipelagoClientState.ClientPlaying);
 
-            Expedition.Data? expeditionData = Expedition.Data.FromCurrentExpedition();
+            Expedition.Data? expeditionData = Expedition.Data.TryFromCurrentExpedition();
             if (expeditionData == null)
                 FeatureLogger.Error("Failed to identify expedition on drop; skipping relevant events");
             else
