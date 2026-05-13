@@ -1,17 +1,20 @@
 ﻿using Archipelago.MultiClient.Net.MessageLog.Messages;
-using JetBrains.Annotations;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Members;
 using TheArchive.Core.Attributes.Feature.Patches;
+using TheArchive.Core.Attributes.Feature.Settings;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
+
+using ReTFO.Archipelago.ModdedInstanceData.Model;
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 [EnableFeatureByDefault]
 public class ChatHandler : ArchipelagoFeature
@@ -50,6 +53,28 @@ public class ChatHandler : ArchipelagoFeature
             st.ApSession.MessageLog.OnMessageReceived -= OnMessageReceived;
     }
 
+    [FeatureConfig]
+    public static Settings Config { get; set; } = null!;
+
+    public class Settings
+    {
+        [FSDisplayName("Hide Non-Randomized Checks")]
+        [FSDescription(
+            "If true, prevent messages for unrandomized from appearing locally, including messages for items"
+            +" which cannot be randomized."
+        )]
+        public bool DoHideTrivialChecks { get; set; } = true;
+
+        [FSDisplayName("Shorten Received Item Messages")]
+        [FSDescription("If true, show a shortened version of all \"X received Y\" messages")]
+        public bool DoShortenReceivedItemMessages { get; set; } = true;
+
+        [FSDisplayName("Show Only My Received Items")]
+        [FSDescription("If true, only show \"X received Y\" messages if you are the recipient")]
+        public bool DoShowOnlyMyRecievedItemMessages { get; set; } = false;
+    }
+
+
     protected void OnStateChanged(StateTracker stateTracker)
     {
         if (stateTracker.ApSession != null)
@@ -68,9 +93,32 @@ public class ChatHandler : ArchipelagoFeature
     /// <summary>
     /// Receive messages from AP and format before presenting
     /// </summary>
-    protected void OnMessageReceived(AP.MessageLog.Messages.LogMessage message)
+    protected void OnMessageReceived(LogMessage message)
     {
         if (message is PlayerSpecificLogMessage pm && pm.IsActivePlayer) return;
+        if (message is ItemSendLogMessage itemSendMessage)
+        {
+            if (Config.DoHideTrivialChecks)
+            {
+                LocationID locId = new() { AsId = itemSendMessage.Item.LocationId };
+                Game.Data data = StateTracker.Get().MidManager.GetProcessedGameData();
+                if (!data.LookupLocation(locId).RandMode.IsRandomized) return;
+            }
+
+            if (Config.DoShowOnlyMyRecievedItemMessages)
+            {
+                if (itemSendMessage.Item.Player.Slot != StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
+                    return;
+            }
+
+            if (Config.DoShortenReceivedItemMessages)
+            {
+                StringBuilder itemSendMessageBuilder = new();
+                if (itemSendMessage.Item.Player.Slot == StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
+                    itemSendMessageBuilder.Append($"<#{ColorToHex(AP.Colors.BuiltInPalettes.Dark.)}")
+            }
+
+        }
 
         StringBuilder output = new();
         foreach (var part in message.Parts)

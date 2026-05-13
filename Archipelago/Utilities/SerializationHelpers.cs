@@ -336,9 +336,16 @@ public static class SerializationHelpers
             FeatureLogger.Error("Serializing a string with '\\0' inside of it!");
 #endif
 
-        return CalcLengthSize(arrSize)
-            + strings.Sum(s => s.Length * sizeof(char) + sizeof(char));
+        return CalcLengthSize(arrSize) + strings.Sum(CalcStringSize);
     }
+
+    /// <summary>
+    /// Calculate the number of bytes needed to serialize a single string.
+    /// </summary>
+    /// <param name="value">The string which would be serialized</param>
+    /// <returns>The size, in bytes</returns>
+    public static int CalcStringSize(string? value)
+        => (value?.Length ?? 0) * sizeof(char) + sizeof(char);
 
     /// <summary>
     /// Write strings to a byte array at the specified index
@@ -351,15 +358,33 @@ public static class SerializationHelpers
         WriteLength(bytes, ref index, strings.Count());
 
         byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, IntPtr.Size * 4).ToPointer();
-        int count = 0;
         foreach (var s in strings)
         {
+            // Optimzied version of WriteString
             s.AsSpan().CopyTo(new Span<char>(pBytes + index, (bytes.Length - index) / sizeof(char)));
             index += sizeof(char) * s.Length;
             *(char*)(pBytes + index) = '\0';
             index += sizeof(char);
-            ++count;
         }
+    }
+
+    /// <summary>
+    /// Write a single string to a byte array at the specified index
+    /// </summary>
+    /// <param name="bytes">The byte array to write to</param>
+    /// <param name="index">The index to write at. Will be moved to the next unwritten byte</param>
+    /// <param name="value">The string to write</param>
+    /// <remarks>
+    /// Null and empty strings are both serialized the same way
+    /// </remarks>
+    public static unsafe void WriteString(Il2CppStructArray<byte> bytes, ref int index, string? value)
+    {
+        byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, IntPtr.Size * 4).ToPointer();
+        value ??= string.Empty;
+        value.AsSpan().CopyTo(new Span<char>(pBytes + index, (bytes.Length - index) / sizeof(char)));
+        index += sizeof(char) * value.Length;
+        *(char*)(pBytes + index) = '\0';
+        index += sizeof(char);
     }
 
     /// <summary>
@@ -376,12 +401,42 @@ public static class SerializationHelpers
         string[] result = new string[count];
         for (count = 0; count < result.Length; count++)
         {
+            // Optimized version of ReadString
             int start = index;
             while (*(char*)(pBytes + index) != '\0')
                 index += sizeof(char);
             result[count] = new Span<char>((char*)(pBytes + start), (index - start) / sizeof(char)).ToString();
             index += sizeof(char);
         }
+        return result;
+    }
+
+    /// <summary>
+    /// Read a str from a byte array
+    /// </summary>
+    /// <param name="bytes">The arrat to read from</param>
+    /// <param name="index">The index to start reading from. Will be moved to the next unread byte</param>
+    /// <returns>The deserialized string</returns>
+    /// <remarks>
+    /// Null and empty strings are serialized the same way; this deserializer will return null instead of an empty string.
+    /// </remarks>
+    public static unsafe string? ReadString(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, IntPtr.Size * 4).ToPointer();
+
+        // Find where the string ends
+        int start = index;
+        while (*(char*)(pBytes + index) != '\0')
+            index += sizeof(char);
+
+        // Extract the string
+        string? result;
+        if (index > start)
+            result = new Span<char>((char*)(pBytes + start), (index - start) / sizeof(char)).ToString();
+        else
+            result = null;
+        index += sizeof(char);
+
         return result;
     }
 

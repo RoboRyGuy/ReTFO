@@ -122,7 +122,14 @@ public partial class StateTracker : ArchipelagoFeature
         FakeConnect,
 
         /// <summary>
-        /// StateTracker is faking a connection as a client so it can connect to a host player
+        /// StateTracker is not connected to AP but is connected as a client to a host
+        ///  who is connected to AP. This is used both when the host is actually
+        ///  connected and when the host is only fake connected,
+        /// </summary>
+        ClientOnly,
+
+        /// <summary>
+        /// StateTracker is both connected to AP and is a client in a lobby
         /// </summary>
         ClientConnect,
     }
@@ -280,29 +287,53 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public void ClientConnect(pArchipelagoInitState state)
     {
-        if (SNetwork.SNet.IsMaster)
+        if (SNetwork.SNet.IsInLobby)
         {
-            FeatureLogger.Warning("Received init packet, but this is master. Ignoring!");
+            FeatureLogger.Warning("Received init packet, but we're already in a lobby. Ignoring!");
             return;
         }
 
-        if (CurrentState != eState.CleanState)
+        if (CurrentState == eState.ClientConnect || CurrentState == eState.ClientOnly)
         {
-            FeatureLogger.Warning($"Received init packet, but currently in state {Enum.GetName(CurrentState)}. Ignoring!");
+            FeatureLogger.Debug("Ignoring init packet; already set up as a client!");
             return;
         }
 
-        RootSeed = state.RootSeed;
-        Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
-        WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
-        BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
-        CurrentState = eState.ClientConnect;
+        if (state.GameName != MidManager.GetProcessedGameData().Name)
+        {
+            FeatureLogger.Error("Cannot connect as client; the master is playing with different mods than us!");
+            return;
+        }
 
-        SetupMultiworld();
+        if (CurrentState == eState.CleanState)
+        {   // We need to set up the multiworld
+            RootSeed = state.RootSeed;
+            Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
+            WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
+            BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
+            CurrentState = eState.ClientOnly;
+            SetupMultiworld();
+        }
+        else
+        {
+            if (RootSeed != state.RootSeed)
+            {
+                FeatureLogger.Error(
+                    "Refused to join as client; root seeds do not match!"
+                    + "This indicates we are likely connected to a different slot."
+                );
+                return;
+            }
+            CurrentState = eState.ClientConnect;
+        }
+
+        // We are officially set up to join the lobby as a client
+        SNetwork.SNet.Lobbies.OnJoinedLobby(m_delayedLobby);
     }
 
     /// <summary>
-    /// Try to start a connection to Archipelago with the current network settings
+    /// Try to start a connection to Archipelago with the current network settings.
+    /// Called by the Connect to Archipelago button in the starting menu.
     /// </summary>
     public void Connect()
     {
@@ -692,7 +723,7 @@ public partial class StateTracker : ArchipelagoFeature
     public void RecalcWinItems()
     {
         NeededWinItems.Clear();
-        if (CurrentState == eState.ClientConnect) return; // Calculating this might be bad as a client
+        if (CurrentState == eState.ClientOnly) return; // Calculating this might be bad as a client
 
         Game.Data data = MidManager.GetProcessedGameData();
 
@@ -1412,16 +1443,23 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public override void Update()
     {
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            Game.Data data = MidManager.GetProcessedGameData();
-            var target = FloatingItems.LockGearHandler.GetGearItem(data, PlayerOfflineGearDataBlock.GetBlock(17u));
-            foreach (var loc in data.GetAllLocations())
-            {
-                if (loc.Value.ItemID.Equals(target.ID))
-                    FeatureLogger.Notice($"Item location: {data.LookupTagDef(loc.Value.NameTag).Name}");
-            }
-        }
+        //if (Input.GetKeyDown(KeyCode.J))
+        //{
+        //    Game.Data data = MidManager.GetProcessedGameData();
+        //    KeyedItem item = LockGearHandler.GetGearItem(data, PlayerOfflineGearDataBlock.GetBlock(4));
+        //    CollectItem(item.ID);
+        //}
+        //else if (Input.GetKey(KeyCode.P))
+        //{
+        //    Game.Data data = MidManager.GetProcessedGameData();
+        //    foreach (var item in CollectedItemCounts)
+        //    {
+        //        if (item.Value == 0) continue;
+        //        string name = data.LookupTagDef(data.LookupItem(item.Key).NameTag).Name;
+        //        if (name.Contains("Gear"))
+        //            UncollectItem(item.Key);
+        //    }
+        //}
 
         if (ConnectTask?.IsCompleted ?? false)
             HandleConnectionResult(ConnectTask);

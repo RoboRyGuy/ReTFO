@@ -4,7 +4,6 @@ using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
-using Steamworks;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -25,6 +24,11 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public struct pArchipelagoInitState
     {
+        /// <summary>
+        /// Name of the Archipelago game
+        /// </summary>
+        public string? GameName;
+
         /// <summary>
         /// Root randomization seed
         /// </summary>
@@ -50,7 +54,8 @@ public partial class StateTracker : ArchipelagoFeature
         /// </summary>
         /// <returns>The size of this struct, when serialized, in bytes</returns>
         public int CalcByteSize()
-            => SerializationHelpers.Calc7BitEncodedSize(RootSeed == 0 ? 1 : RootSeed)
+            => SerializationHelpers.CalcStringSize(GameName)
+            + SerializationHelpers.Calc7BitEncodedSize(RootSeed == 0 ? 1 : RootSeed)
             + SerializationHelpers.CalcStringArraySize(ExpeditionNames)
             + SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[2][] { WhitelistTags, BlacklistTags });
 
@@ -73,6 +78,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="index">The index to write at. This will be moved to the next empty byte</param>
         public void WriteToBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
+            SerializationHelpers.WriteString(bytes, ref index, GameName);
             SerializationHelpers.Write7BitEncodedLong(bytes, ref index, RootSeed);
             SerializationHelpers.WriteStringArray(bytes, ref index, ExpeditionNames);
             SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, new long[2][] { WhitelistTags, BlacklistTags }, WhitelistTags.Length + BlacklistTags.Length);
@@ -87,6 +93,7 @@ public partial class StateTracker : ArchipelagoFeature
         public static pArchipelagoInitState ReadFromBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
             pArchipelagoInitState result = new();
+            result.GameName = SerializationHelpers.ReadString(bytes, ref index);
             result.RootSeed = SerializationHelpers.Read7BitEncodedLong(bytes, ref index);
             result.ExpeditionNames = SerializationHelpers.ReadStringArray(bytes, ref index);
             
@@ -484,6 +491,7 @@ public partial class StateTracker : ArchipelagoFeature
         // Might optimize this later
         pArchipelagoInitState result = new()
         {
+            GameName = MidManager.GetProcessedGameData().Name,
             RootSeed = RootSeed,
             ExpeditionNames = new string[Expeditions.Count],
             WhitelistTags = new long[WhitelistTags.Count],
@@ -589,6 +597,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="interaction">The interaction to receive and handle</param>
     public void ReceiveInteraction(pArchipelagoInteraction interaction)
     {
+        // If we're connected, we can receive these directly from the server
+        if (ApSession != null) return;
+
         switch (interaction.Type)
         {
             case pArchipelagoInteraction.eType.CollectItem:
@@ -634,7 +645,7 @@ public partial class StateTracker : ArchipelagoFeature
             var func = () =>
             {
                 StateTracker stateTracker = StateTracker.Get();
-                if (stateTracker.CurrentState == eState.ClientConnect)
+                if (stateTracker.CurrentState == eState.ClientConnect || stateTracker.CurrentState == eState.ClientOnly)
                 {
                     FeatureLogger.Success("Lobby join request approved");
                     stateTracker.m_delayedLobby = null;
@@ -651,7 +662,6 @@ public partial class StateTracker : ArchipelagoFeature
                     FeatureLogger.Notice("Received lobby join request; state is prepped to join; waiting for AP sync before joining.");
                     stateTracker.m_delayedLobby = lobby;
                 }
-
                 return false;
             };
             return func();
@@ -659,15 +669,36 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Patch which ensures migration fails, since we really don't support that
+    /// If we're connected to AP, we can opt in to be the new migration master.
+    /// Otherwise, refuse.
+    /// This still needs plenty of debugging
     /// </summary>
-    [ArchivePatch(typeof(SNet_MasterManager), nameof(SNet_MasterManager.SearchForMigrationMaster))]
+    [ArchivePatch(typeof(SNet_MasterManager), nameof(SNet_MasterManager.ThisTheNewMasterFoundDuringMigration))]
     public static class SNet_MasterManager__SearchForMigrationMaster__Patch
     {
-        public static bool Prefix()
+        public static bool Prefix(SNet_Player masterPlayer)
         {
-            SNet.MigrationMaster = null;
-            return false;
+            if (masterPlayer.Pointer == SNet.LocalPlayer.Pointer)
+            {
+                StateTracker stateTracker = StateTracker.Get();
+                switch (stateTracker.CurrentState)
+                {
+                    case eState.CleanState:
+                    case eState.ClientOnly:
+                        return false;
+
+                    case eState.HostConnecting:
+                    case eState.HostConnected:
+                    case eState.HostReconnecting:
+                    case eState.FakeConnect:
+                    case eState.ClientConnect:
+                        return true;
+
+                    default:
+                        throw new ArgumentException($"{nameof(stateTracker.CurrentState)} is an unexpected value: {(int)stateTracker.CurrentState}");
+                }
+            }
+            return true;
         }
     }
 }
