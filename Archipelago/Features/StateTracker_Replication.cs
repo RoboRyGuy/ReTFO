@@ -1,10 +1,12 @@
 ﻿using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -196,10 +198,11 @@ public partial class StateTracker : ArchipelagoFeature
     [StructLayout(LayoutKind.Explicit)]
     public struct pArchipelagoInteraction
     {
-        public enum eType : uint
+        public enum eType : ushort
         {
+            CheckRegion,
+            CheckLocation,
             CollectItem,
-            AddItemToTerminal,
         }
 
         /// <summary>
@@ -218,24 +221,39 @@ public partial class StateTracker : ArchipelagoFeature
         public eType Type;
 
         /// <summary>
+        /// A short value associated with the interaction, if applicable
+        /// </summary>
+        [FieldOffset(sizeof(ushort))]
+        public ushort Count;
+
+        /// <summary>
         /// A singular long value associated with the interaction, if applicable
         /// </summary>
-        [FieldOffset(4)]
+        [FieldOffset(2 * sizeof(ushort))]
         public long Value;
+
+        public pArtifactInventoryState ToBytes()
+        {
+            byte[] bytes = new byte[sizeof(int) * 3];
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0, sizeof(int)), (ushort)Type);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0, sizeof(int)), Count);
+            BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(sizeof(int), sizeof(long)), Value);
+            return MemoryMarshal.Read<pArtifactInventoryState>(bytes);
+        }
 
         /// <summary>
         /// Create an interaction from the networked type used for this type
         /// </summary>
         /// <param name="bytes">The net type received from the network</param>
         /// <returns>The converted struct</returns>
-        public static unsafe pArchipelagoInteraction FromBytes(pArtifactInventoryState bytes)
-            => *(pArchipelagoInteraction*)&bytes;
-
-        public unsafe pArtifactInventoryState ToBytes()
+        public static pArchipelagoInteraction FromBytes(pArtifactInventoryState input)
         {
-            // c# won't let me create a pointer to this :(
-            pArchipelagoInteraction state = this;
-            return *(pArtifactInventoryState*)&state;
+            pArchipelagoInteraction result;
+            var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref input, 1)).ToArray();
+            result.Type = (eType)BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(0, sizeof(ushort)));
+            result.Count = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(sizeof(ushort), sizeof(ushort)));
+            result.Value = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(2 * sizeof(ushort), sizeof(long)));
+            return result;
         }
     }
 
@@ -367,9 +385,8 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="interaction">The interaction being received</param>
         private void OnReceiveInteraction(pArtifactInventoryState bytes)
         {
-            // TODO: Do something with the interaction
             pArchipelagoInteraction interaction = pArchipelagoInteraction.FromBytes(bytes);
-            FeatureLogger.Warning("Received interaction, cannot use!");
+            m_owner.ReceiveInteraction(interaction);
         }
 
         /// <summary>
@@ -451,6 +468,7 @@ public partial class StateTracker : ArchipelagoFeature
         public UpdateStateEnumerator(StateTracker owner)
             => m_owner = owner;
 
+        // Enforce a 60 second delay between each state sync
         public object Current => new UnityEngine.WaitForSecondsRealtime(60f);
         
         public bool MoveNext()
@@ -484,7 +502,6 @@ public partial class StateTracker : ArchipelagoFeature
     /// <returns>The current state for the StateTracker</returns>
     public pArchipelagoInitState MakeInitState()
     {
-        // Might optimize this later
         pArchipelagoInitState result = new()
         {
             GameName = MidManager.GetProcessedGameData().Name,
@@ -528,7 +545,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="type">The type of interaction to send</param>
     /// <param name="value">An optional value associated with the interaction type</param>
-    protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0)
+    protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0, ushort count = 0)
     {
         // Check if master
         if (!SNet.IsMaster) return;
@@ -549,13 +566,22 @@ public partial class StateTracker : ArchipelagoFeature
     /// Receive a general state, expected periodically to ensure good sync
     /// </summary>
     /// <param name="state">The state being received</param>
-    /// <param name="isRecall">If the state is the reuslt of a recall</param>
+    /// <param name="isRecall">If the state is the result of a recall</param>
     public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall)
     {
-        if (SNet.IsMaster)
+        if (!isRecall)
         {
-            FeatureLogger.Warning("Ignoring GeneralState packet because this is master!");
-            return;
+            if (ApSession != null)
+            {
+                FeatureLogger.Debug("Ignoring GeneralState packet because we're connected to AP");
+                return;
+            }
+
+            if (CurrentState == eState.FakeConnect)
+            {
+                FeatureLogger.Debug("Ignoring GeneralState packet because we're using FakeConnect");
+                return;
+            }
         }
 
         var gameData = MidManager.GetProcessedGameData();
@@ -565,22 +591,22 @@ public partial class StateTracker : ArchipelagoFeature
         foreach (var id in state.ItemsInTerminalSystem)
             AddItemToTerminal(new ItemID() { AsId = id });
 
-        // Reading state can never lower item counts
         var newItemCounts = state.ItemIds.GroupBy(i => i)
             .ToDictionary(g => new ItemID() { AsId = g.Key }, g => g.Count());
 
+        // Sync item counts
         foreach (var key in ActualItemCounts.Keys.Union(newItemCounts.Keys)) 
         {
             int count = ActualItemCounts.GetValueOrDefault(key, 0);
             int newCount = newItemCounts.GetValueOrDefault(key, 0);
 
             if (isRecall)
-            {
+            {   // Re-do OnObtained item events since items persist past checkpoints
                 for (int i = newCount; i < count; i++)
                     gameData.LookupItem(key).OnItemObtained(this, new LocationID(), null);
             }
             else
-            {
+            {   // Check for items we're missing and try to obtain them
                 for (int i = count; i < newCount; i++)
                     CollectItem(key);
             }
@@ -593,17 +619,36 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="interaction">The interaction to receive and handle</param>
     public void ReceiveInteraction(pArchipelagoInteraction interaction)
     {
-        // If we're connected, we can receive these directly from the server
-        if (ApSession != null) return;
-
         switch (interaction.Type)
         {
             case pArchipelagoInteraction.eType.CollectItem:
-                CollectItem(new ItemID() { AsId = interaction.Value });
+
+                // If we're authoritative on items, we can determine these things ourselves
+                if (ApSession != null) return;
+                if (CurrentState == eState.FakeConnect) return;
+
+                ItemID itemId = new() { AsId = interaction.Value };
+
+                // Note we intentionally truncate the actual item count as a form of lazy rollover support
+                int actualItemCount = (ushort)ActualItemCounts.GetValueOrDefault(itemId, 0);
+                while (actualItemCount++ < interaction.Count)
+                    CollectItem(itemId);
                 break;
 
-            case pArchipelagoInteraction.eType.AddItemToTerminal:
-                AddItemToTerminal(new ItemID() { AsId = interaction.Value });
+            case pArchipelagoInteraction.eType.CheckLocation:
+                LocationID locationId = new() { AsId = interaction.Value };
+                PlayerAgent? locSourcePlayer = null;
+                if (SNet.Replication.TryGetLastSender(out SNet_Player locPlayer))
+                    locSourcePlayer = locPlayer.PlayerAgent?.TryCast<PlayerAgent>();
+                NotifyFoundLocation(locationId, locSourcePlayer);
+                break;
+
+            case pArchipelagoInteraction.eType.CheckRegion:
+                RegionID regionId = new() { AsId = interaction.Value };
+                PlayerAgent? regSourcePlayer = null;
+                if (SNet.Replication.TryGetLastSender(out SNet_Player regPlayer))
+                    regSourcePlayer = regPlayer.PlayerAgent?.TryCast<PlayerAgent>();
+                NotifyFoundRegion(regionId, regSourcePlayer);
                 break;
 
             default:

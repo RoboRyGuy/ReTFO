@@ -836,22 +836,36 @@ public partial class StateTracker : ArchipelagoFeature
                 FeatureLogger.Debug($"Ignoring region because it is not registered: {name}");
             return;
         }
+        NotifyFoundRegion(region.ID, player);
+    }
 
-        if (!FoundRegions.Add(region.ID))
+    /// <summary>
+    /// Notify the state tracker that a region has been found by region ID
+    /// </summary>
+    /// <param name="name">ID of the region which was found</param>
+    /// <param name="player">Player who found the region, or null if too inconvenient to identify</param>
+    public void NotifyFoundRegion(RegionID regionId, PlayerAgent? player)
+    {
+        Game.Data data = MidManager.GetProcessedGameData();
+        ReadOnlyRegion region = data.LookupRegion(regionId);
+
+        if (!FoundRegions.Add(regionId))
             return;
-        FeatureLogger.Debug($"Discovered region [{region.ID.AsId}] {name}");
+
+        FeatureLogger.Debug($"Discovered region [{regionId.AsId}] {region.Name}");
+        SendInteraction(pArchipelagoInteraction.eType.CheckRegion, value: regionId.AsId);
 
         // Check for auto-discover locations
         bool isFoundLocation(LocationID locID)
         {
-            var loc = gameData.LookupLocation(locID);
-            if (!loc.RandData.IsAutoDiscovered) return false;
             if (FoundLocations.Contains(locID)) return false;
+            var loc = data.LookupLocation(locID);
+            if (!loc.RandData.IsAutoDiscovered) return false;
             if (loc.OwningRegionIds.Any(r => !FoundRegions.Contains(r))) return false;
             return true;
         }
 
-        var locs = region.Region.ConnectedLocationIds.Where(isFoundLocation).ToArray();
+        var locs = region.ConnectedLocationIds.Where(isFoundLocation).ToArray();
         if (locs.Length > 0) NotifyFoundLocations(locs, player);
     }
 
@@ -870,6 +884,7 @@ public partial class StateTracker : ArchipelagoFeature
         if (!FoundLocations.Add(id)) return location;
 
         FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(location.NameTag).Name}");
+        SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
 
         if (location.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
             CollectItem(location.ItemID, id, player);
@@ -895,9 +910,11 @@ public partial class StateTracker : ArchipelagoFeature
         {
             Location loc = gameData.LookupLocation(id);
 
-            if (!FoundLocations.Add(id))
+            if (!FoundLocations.Add(id) || force)
                 continue;
+
             FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(loc.NameTag).Name}");
+            SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
 
             if (loc.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
                 CollectItem(loc.ItemID, id, player);
@@ -951,6 +968,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// If synced, overwrite the existing rundown list with new ones for the expedition.
     /// </summary>
     /// <exception cref="NotSupportedException">Thrown for several misc edge cases which should never occur</exception>
+    /// <remarks>
+    /// TODO: Move this to its own handler; add functionality to enable / disable
+    /// </remarks>
     protected void TryOverwriteRundowns()
     {
         if (CurrentState == eState.CleanState) return;
@@ -1337,7 +1357,8 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="id">The item to collect</param>
     /// <param name="sourceLocationId">ID fo the location this item was found in, if found locally (non-randomized)</param>
     /// <param name="player">The player who found the item, if applicable and convenient to identify</param>
-    public void CollectItem(ItemID id, LocationID sourceLocationId = default, PlayerAgent? player = null)
+    /// <param name="skipInteraction">Used internally; prevents the interaction from being sent to all other players</param>
+    public void CollectItem(ItemID id, LocationID sourceLocationId = default, PlayerAgent? player = null, bool skipInteraction = false)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
 
@@ -1352,9 +1373,12 @@ public partial class StateTracker : ArchipelagoFeature
 
         Item item = gameData.LookupItem(id);
         FeatureLogger.Debug($"Collecting item [{id.AsId}] {gameData.LookupTagDef(item.NameTag).Name}");
-        ActualItemCounts[id] = ActualItemCounts.GetValueOrDefault(id, 0) + 1;
+        int newCount = ActualItemCounts.GetValueOrDefault(id, 0) + 1;
+        ActualItemCounts[id] = newCount;
         item.OnItemObtained(this, sourceLocationId, player);
-        SendInteraction(pArchipelagoInteraction.eType.CollectItem, id.AsId);
+
+        if (!skipInteraction)
+            SendInteraction(pArchipelagoInteraction.eType.CollectItem, value: id.AsId, count: (ushort)newCount);
     }
 
     /// <summary>
@@ -1379,7 +1403,7 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         UncollectItem(sourceItem);
-        CollectItem(targetItem);
+        CollectItem(targetItem, skipInteraction: true);
     }
 
     /// <summary>

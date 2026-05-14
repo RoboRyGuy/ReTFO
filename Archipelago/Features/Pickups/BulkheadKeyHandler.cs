@@ -118,7 +118,7 @@ public class BulkheadKeyHandler : ArchipelagoFeature
         {
             // Isolate these so the lambda can capture them
             var wrapper = SpawnItemAsync();
-            var player = terminal.m_localInteractionSource.Owner;
+            var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
             {
