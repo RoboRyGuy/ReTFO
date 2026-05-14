@@ -122,16 +122,15 @@ public partial class StateTracker : ArchipelagoFeature
         FakeConnect,
 
         /// <summary>
-        /// StateTracker is not connected to AP but is connected as a client to a host
-        ///  who is connected to AP. This is used both when the host is actually
-        ///  connected and when the host is only fake connected,
-        /// </summary>
-        ClientOnly,
-
-        /// <summary>
         /// StateTracker is both connected to AP and is a client in a lobby
         /// </summary>
-        ClientConnect,
+        ConnectedClient,
+
+        /// <summary>
+        /// StateTracker is not connected to AP and we are a client in a lobby.
+        /// This means StateTracker is using the host as a proxy to access AP.
+        /// </summary>
+        ProxyClient,
     }
 
     /// <summary>
@@ -287,9 +286,15 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public void ClientConnect(pArchipelagoInitState state)
     {
-        if (CurrentState == eState.ClientConnect || CurrentState == eState.ClientOnly)
+        if (!SNetwork.SNet.Lobbies.WaitingForLobbyResponse)
         {
-            FeatureLogger.Debug("Ignoring init packet; already set up as a client!");
+            FeatureLogger.Debug("Ignoring init packet; not currently waiting to enter a lobby");
+            return;
+        }
+
+        if (CurrentState == eState.ConnectedClient || CurrentState == eState.ProxyClient)
+        {
+            FeatureLogger.Debug("Ignoring init packet; already set up as a client");
             return;
         }
 
@@ -302,28 +307,28 @@ public partial class StateTracker : ArchipelagoFeature
         FeatureLogger.Notice("Received init packet. Preparing to join as client...");
         if (CurrentState == eState.CleanState)
         {   // We need to set up the multiworld
+            FeatureLogger.Notice("Joining as proxy client...");
             RootSeed = state.RootSeed;
             Expeditions = ExpeditionsFromNames(state.ExpeditionNames);
             WhitelistTags = state.WhitelistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
             BlacklistTags = state.BlacklistTags.Select(i => new RandomizationTag() { AsId = i }).ToHashSet();
-            CurrentState = eState.ClientOnly;
+            CurrentState = eState.ProxyClient;
             SetupMultiworld();
         }
         else
         {
+            FeatureLogger.Notice("Joining as a connected client...");
             if (RootSeed != state.RootSeed)
             {
-                FeatureLogger.Error(
-                    "Refused to join as client; root seeds do not match!"
-                    + "This indicates we are likely connected to a different slot or server."
-                );
+                FeatureLogger.Error("Refused to join as client; root seeds do not match! This indicates the host is connected to a different slot or server.");
                 return;
             }
-            CurrentState = eState.ClientConnect;
+            CurrentState = eState.ConnectedClient;
         }
 
         // We are officially set up to join the lobby as a client - just gotta fake a "join allowed" response
         SNetwork.SNet.SessionHub.OnMasterSessionAnswer(cachedMasterAnswer);
+        FeatureLogger.Success("Successfully joined!");
     }
 
     /// <summary>
@@ -718,7 +723,7 @@ public partial class StateTracker : ArchipelagoFeature
     public void RecalcWinItems()
     {
         NeededWinItems.Clear();
-        if (CurrentState == eState.ClientOnly) return; // Calculating this might be bad as a client
+        if (CurrentState == eState.ProxyClient) return; // Calculating this might be bad as a client
 
         Game.Data data = MidManager.GetProcessedGameData();
 
@@ -776,6 +781,7 @@ public partial class StateTracker : ArchipelagoFeature
         if (SNetwork.SNet.Lobbies.IsInLobby)
             SNetwork.SNet.Lobbies.LeaveLobby();
         CurrentState = eState.CleanState;
+        MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
     }
 
     /// <summary>

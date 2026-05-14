@@ -6,98 +6,155 @@ The source for this mod can currently be found in my ReTFO repository, which con
 
 The AP World source (and releases) can be found in a different repository: https://github.com/RoboRyGuy/Archipelago-GTFO
 
+Issues and feedback can be submitted on the APWorld GitHub's issues page: https://github.com/RoboRyGuy/Archipelago-GTFO/issues
+
 ## Getting Started
 
-*These steps have changed compared to version 0.0.1*
+### MID Files and Modded Support
 
-Currently, this mod requires some extra steps compared to other Archipelago integrations; this is intended
-to allow future support of modded rundowns, though this may change. 
+*As of version 0.0.4, the AP World file for GTFO now contains the MID data needed for vanilla worlds.*
+If you wish to play a modded game, you will still need to follow the steps for exporting and a MID
+file. Those steps can be found below in the **Modded Support** section.
 
-1. Download and add the APWorld file to your Archipelago installation.
-2. Create a new modded profile in your preferred mod client. Include Archipelago and its dependencies in your mod list.
+### Standard Setup
+
+Here are the steps required to get started with a vanilla world:
+
+1. Create a new modded profile in your preferred mod client. Include Archipelago and its dependencies in your mod list.
     - It is strongly recommended you also install CConsole at this time, in order to get past any bugs or improperly-balanced sections.
-    - If you wish to play with any other mods, you should install them now. If you add more later, you should restart from this step.
-2. Launch the game.
-3. In the main menu, select "Export MID Data". This will create a new file in your Downloads folder. This file's name will start with "GTFO-" and end with ".ini"
-    - The name of this file represents the mods you installed, and acts as a sort of "subworld" for Archipelago.
-    - If the Archipelago client recognizes your mod set, it will name it accordingly.
-    - Otherwise, it will use a psuedo-random hash to identify your mods as a unique GTFO world.
-    - At this time, only the vanilla mod set is named.
-4. Move this file to your Players folder, the same folder you would place a YAML file in.
-5. With this file in your Players folder, you can now launch the Options Editor. An entry for GTFO will now appear.
-6. Create your YAML config per usual. Some guidance on this is included below.
-7. To generate, you will need both the file exported from GTFO and your YAML. Place both into the Players folder.
-8. From here, generate and host as normal.
-9. You can use the "Network Settings" button in GTFO to configure the server address.
+    - If you wish to play with any other mods, install them now and see the **Modded Support** section for details below
+2. Download and add the APWorld file to your Archipelago installation.
+3. Using your preferred method, create a YAML options file. Help for this can be found below in the YAML section.
+4. Generate and host your multiworld.
+5. Start GTFO using the modded profile you created and enter the *Network Settings* menu from the main menu.
+6. Set your server details as needed.
+7. Return to the main menu (using the *Rundown* button at the top) and connect!
 
 ## Cautions
 
-- Currently, there is no support for multiplayer - attempt it at your own risk.
-- There are still logic errors in the game. The most notable is R8A2, due to the one-way nature of the secondary.
-- There is no difficulty balancing at this time - it is assumed the player is capable of soloing all alarms and other hazards.
-- Survival objectives, such as R8E1, have checks related to simply surviving. This is technically possible
-  to do even if all the doors are locked, and as such is currently allowed in the logic. With that said,
-  if you choose to add such a level to your requirements, be aware that this may be necssary; for that reason,
-  consider cheesing these. (Again using R8E1 as an example, you can stand on the big pipe tunnel in the first 
-  hallway and simply wait out the 10 minutes, which checks 3 randomizable locations)
+- There are still a handful of a logic errors in the game which are known but not fixed at this time.
+  - You may sometimes be told you can complete secondary and overload when you need another bulkhead key.
+    This shouldn't prevent you from getting more checks, including checks needed to actually clear the sector.
+  - If you randomize warps, levels like R6B1 will be considered beatable without the return warp.
+    Again, for R6B1 this shouldn't prevent you from getting other necessary checks, but can be confusing.
+    There may be other levels I have no considered where this is more of a problem.
+  - If you find logic errors, I'd appreciate if you report them on the GitHub issues page for the AP World: 
+    https://github.com/RoboRyGuy/Archipelago-GTFO/issues
+- There is no difficulty balancing at this time - it is assumed the player is capable of soloing all alarms and 
+  other hazards with the worst possible gear. Keep this in mind as you pick levels and starting items.
+- Survival objectives, such as R8E1, have checks related to simply surviving (normally, these checks unlock doors). 
+  This is technically possible to do even if all the doors are locked, and as such is currently allowed in the 
+  logic. With that said, if you choose to add such a level to your requirements, be aware that this may be necessary; 
+  for that reason, consider cheesing these. (Again using R8E1 as an example, you can stand on the big pipe 
+  tunnel in the first hallway and simply wait out the 10 minutes, which checks 3 randomizable locations)
 - Certain softlocks are possible; for example, you can accidentally bring necessary items to another dimension
   and leave them there, which is generally impossible in vanilla. These simply force you to restart the expedition.
 
-## Supported Items and Locations
+## The AP Command
 
-At this time, many items and locations are supported. In general, if you receive an item, it will be 
-placed "into the terminal system". You can use the custom AP command to "claim", or retrieve, the item. The custom AP
-command is also required to perform location checks using the EXTRACT and RELEASE commands, depending on how 
-many floating items are randomized.
+On each and every terminal is a new command called `AP`. This command will be essential for using items.
+It is strongly recommended you take a look at the command in-game using the `AP HELP` sub-command; this should
+give you enough information to get started.
+
+## Items and Locations
+
+A wide collection of items and locations are currently supported. You have the option
+to enable or disable randomization of each individual location and item in the game.
+The below describes the behaviour of locations and items when they are enabled.
+
+Locations:
+- Picking up progression pickups, such as keys or IDs, as well as most big pickups,
+  including cells, fog turbines, the MWP, etc will check a location and despawn the item.
+  Note that if events are tied to picking up an item, they will not trigger when you attempt
+  to pick it up.
+- When certain events trigger (for example, by opening a door or completing special scans), the 
+  event is cancelled and a location is checked instead. This includes events which unlock or open 
+  doors, warp the team to a different dimension, start scans, or immediately clear the expedition.
+- On each terminal is up to 3 location checks which can be completed using the `AP EXTRACT` and `AP RELEASE`
+  sub-commands. These are added to account for items which are not normally collectibles, for example
+  expedition unlocks, gear unlocks, and lobby slot unlocks. The more of these items you enable (and the
+  fewer terminals you have access too), the more the terminals will be filled up.
+- Any time you would learn a reactor code (checking a log or seeing it on-screen), you instead
+  get a location check.
+- Learning a terminal's password or password part is also a check in the same manner.
+- Certain progression scans (Gen Cluster ending scans, HSU scans, and Dimension Portal scans)
+  are checks; the trigger which would normally start the scan instead checks a location.
+- Entering certain zones / "regions" will check locations. Most of these checks are for control
+  locations used by logic to ensure beatability; however, some of these are randomized. Most notably,
+  during a GatherSmallItems objective (for example, R1B1) you will automatically get checks for
+  entering a Zone with fewer than the max count of objective items in it (in R1B1, this would be 3).
 
 Some of the randomized items:
 
-- Many progression-realted pickups, such as Keys, Objective Pickups (IDs, Data Cubes), and Big Pickups (MWP, Cell, Fog Turbine)
-  can be randomized. Attempting to pick them up will despawn them and grant an item; if they are received, you can spawn
-  them in at any time from any terminal (if you're in the correct expedition)
-- Certain events, including door unlock events, custom scan events, warp events, and win events are randomized.
-  When these events would trigger, you instead receive an item; if you receive the event as an item, you can
-  trigger it from a terminal (except for door unlocks, which immediately unlock the relevant door). 
-- Reactor codes and terminal passwords are randomized. Viewing the code will grant an item; when the code
-  is received as an item, you can check it from the terminal or see it in some new, custom UI which displays it
-- Certain scans, specifically Generator Cluster scans, Dimension Portal scans, and HSU scans, can be randomized.
+- Many progression-related pickups, such as keys, objective oickups (IDs, data cubes), and big pickups 
+  such as cells, fog turbines, and MWPs are supported. These items will be received into the terminal
+  system and can be spawned in using a terminal.
+- Certain events, including door unlock events, custom scan events, warp events, and win events.
+  For most events, it must be manually triggered from a terminal; door unlock events will automatically
+  unlock the relevant door when received or when the expedition is started.
+- Reactor codes and terminal passwords received from other players will show up in custom UI in the top left
+  once you enter the zone containing the reactor or terminal. They can also be viewed at the terminal.
+- Certain progression scans (Gen Cluster ending scans, HSU scans, and Dimension Portal scans).
+  Once obtained, these scans can be started from a terminal.
 
-An additional set of "floating" items is also included:
+An additional set of "floating" or "optional" items:
 
 - Expedition unlocks, if randomized, prevent access to an expedition until found. If not randomized,
   all expeditions are unlocked immediately upon start (this will perhaps change in the future)
 - Gear items can be locked, preventing them from being equipped. If a gear item is received while in an expedition,
-  one copy is sent the terminal, allowing up to one player to equip it. (This works but is a little buggy-looking)
-  Currently, bots are not checked correctly, so they can spawn in with illegal gear if it was equipped beforehand.
+  one copy is sent the terminal, allowing up to one player to equip it.
+  Notably, if you do not start with a gear item available for a slot (ie by adding it as a starting item) you
+  are given default gear for that slot. *As soon as you gain a gear item, the default gear is lost and everyone
+  is forced to switch to the new gear*. It's recommended you specify your starting gear when you create
+  the multiworld if you want to avoid this.
 - Lobby slots, if randomized, become unusable until the corresponding unlock item is found.
-- If randomized, a free checkpoint can be found for every enabled expedition. If obtained, you can activate
-  the checkpoint at any terminal while in the level, only once during the level.
+- If randomized, a free checkpoint can be found for every enabled expedition. Once obtained, you can activate
+  the checkpoint at any terminal while in the level, once per attempt at the level. This works the same
+  as any other checkpoint, but does not require a team scan to activate.
+
+## Random-like Items
+
+A limited set of items are marked as "Random-like", the most notable of which are bulkhead keys and cells.
+These items will always behave as if they're randomized, even if not actually randomized. This means that
+the first time you pick one up, it will try to behave normally; however, if you restart the expedition, it'll
+act as if you were sent it via the multiworld. For most items, this simply means you must retrieve it from
+the terminal.
+
+Random-like items exist to prevent logic errors. Archipelago has a hard time reasoning about these items because
+they are both consumable and can be used in multiple places. GTFO's nature as a game where the expeditions can be
+replayed means we give Archipelago much more breathing space by treating these items as "random-like".
 
 ## Configuring your YAML
 
 ### Tagging
 
-The YAML file supports six options at this time (as well as some options common to all Archipelago games).
 The key to the YAML is a tagging system. All items and locations each have a single, unique tag identifying them.
 Each tag has a parent, creating a tree which meets at the root tag "All". When using tags in the options,
 you can choose to either specify the leaf tags (which each correlate to a single item or location), or you can
 choose a common parent to affect groups of items and locations.
 
 As an example of tag hierarchy: The item "R1A1 ZONE_52 Colored Key" is the tag for the key required to unlock the door
-to Zone 52 in R1A1, which is the checkpoint door. This tag is a child of "Colored Key Items", which is a parent of all
-colored keys. This tag, in turn, is a child of "Small Pickup Items", which is a child of "Pickup Items", which is a child
-of "All Items", which is a child of "All".
+to Zone 52 in R1A1. This tag has the following hierarchy:
 
 "All" > "All Items" > "Pickup Items" > "Small Pickup Items" > "Colored Key Items" > "R1A1 ZONE_52 Colored Key"
 
-If you want to enable randomization of this key, you could whitelist any of these tags; if you whitelist just the
-leaf tag ("R1A1 ZONE_52 Colored Key"), you will only randomize the single item; as you move up the tree,
-you randomize more and more related items.
+If you want to enable randomization of this key, you could whitelist any of these tags:
+- Whitelisting the "leaf" tag ("R1A1 ZONE_52 Colored Key") will randomize just this one key
+- Whitelisting "Colored Key Items" will randomize all colored keys
+- Whitelisting "Small Pickup Items" will randomize all small pickup items, including colored keys, bulkhead keys,
+  objective pickups such as IDs, and more.
+- So on and so forth.
 
 A full list of tags can be exported from the Network Settings menu. This will dump all tag names, IDs, descriptions, 
 and parents to either a JSON file or a CSV file for your purusal. Both of these are normal text files which can be
 opened in a text editor (such as Notepad), though you may prefer to open the JSON file in VS Code or an online viewer
-and the CSV file in Excel or Google Sheets.
+and the CSV file in Excel or Google Sheets. I personally believe the JSON file is easier to read.
+
+### Error Handling
+
+At this time, generating will do everything it can to force a successful generation and will log errors
+for any problems it encounters. These logs are easy to miss since the generation window closes itself
+when generation is successful. If you're encountering issues, check the generation logs.
 
 ### Options
 
@@ -108,6 +165,8 @@ At this time, the following options are supported:
 A list of expedition names, for example "R1A1", "R8E2", and so forth.
 Each expedition name must be unique. Each name listed will be added as a playable level, and
 you will be required to clear its main (and potentially side) objectives to clear the goal.
+You are able to specify expeditions which are not normally playable, if you know their names :)
+For example, "T" would add the tutorial expedition as a required playable level.
 
 #### require_secondaries
 
@@ -137,7 +196,7 @@ You may also use "All" to enable all items and locations for randomization.
 This is a set of tags which disables items and locations for randomization. This works exactly
 the same as the whitelist, except it disables items. The blacklist overrules the whitelist.
 
-#### start_items
+#### start_inventory
 
 GTFO supports its own custom start_items option. This works slightly differently from normal start items;
 instead of creating new items, it instead pulls matching items out of the randomization pool to give them
@@ -174,21 +233,24 @@ GTFO:
   - R4D2
   - R8E1
   require_secondaries: true
-  require_overloads: true
+  require_overloads: false
   whitelist:
-  - All
-  blacklist: []
+  - "All"
+  blacklist: 
+  - "Scan Items"
+  - "Warp Items"
   early_items: {
     "Expedition Unlock Items": 1 
   }
   local_items: []
   non_local_items: []
   start_items: { 
+    "Expedition Unlock Items": 1,
+    "Unlock Lobby Slot Items": 1,
     "Melee Gear Items": 1,
     "Primary Gear Items": 1,
     "Special Gear Items": 1,
-    "Tool Gear Items": 1,
-    "Expedition Unlock Items": 1 
+    "Tool Gear Items": 1
   }
   start_hints: []
   start_location_hints: []
@@ -196,11 +258,14 @@ GTFO:
   priority_locations: []
 ```
 
-This file is configured for player RoboRyGuy. The game is set to "GTFO (Vanilla-0_0_3)", which is the MID generated
-by Archipelago when no other notable mods are installed.
+This YAML selects 7 expeditions to clear, and requirs the player complete all secondaries (but not overloads) on
+those expeditions. Note that checks will still appear inside the overload of these expeditions, and that those
+checks may be necessary to clear the game.
 
-This file enables randomization of all supported items. The player will have to beat all objectives
-for 7 exepditions, including R1B1, R6A1, ..., R8E1 to reach the goal. 
+In the whitelist is "All", and in the blacklist is "Scan Items" and "Warp Items". The blacklist overrules the
+whitelist; therefore, all items and locations except items matching the "Scan Items" and "Warp Items" tags will
+be randomized. This also means locations which normally contain "Scan Items" and "Warp Items" will not be randomized,
+which results in them acting the same as they would in vanilla.
 
 Because all expedition unlocks are randomized, the player must specify at least one starting expedition. 
 In this case, they're having Archipelago randomly pick one of their expeditions and add it as a starting item. 
@@ -211,11 +276,8 @@ In this case, they're having Archipelago randomly pick an item for each slot (me
 If they fail to add staring gear, temporary gear will be added in-game, which will be lost as soon as gear is found.
 
 To aid the fill system, the player has added one additional expedition unlock to the early items. This helps ensure
-that they have options when it comes to exploration.
-
-It should also be noted that, since all items are randomized, the player starts with 3 locked lobby slots, meaning
-they will have to find the lobby slot unlocks as they play before humans or bots can aid them. If this is harder than 
-desired, one could add `"Unlock Lobby Slot Items": 1` to either the early or start items to ensure they quickly have allies.
+that they have options when it comes to exploration. Other items, such as gear, can be added to the early items
+list; however, if too much is added Archipelago will fail to generate due to lack of space in the early game.
 
 ## Death Link
 
@@ -225,12 +287,39 @@ settings in-game. See there for more details on ways to punish yourself for othe
 
 ## Energy Link
 
-This integrates Energy Link. Picking up a Warden Artifact will add energy to your team;
+This integration uses Energy Link. Picking up a Warden Artifact will add energy to your team;
 equipping a Booster costs energy. This is also not very tested, but theoretically works :)
 
-## Mod Support
+## Modded Support
 
-This integrations aims to be compatible with modded rundowns. With that said, at this time, attempt it at your
-own risk; I need to get vanilla working before I will devote bandwidth to ensuring modded rundowns can work.
-The more similar a mod is to Vanilla GTFO, the more likely it'll work; specifically, mods like AWO or which use
-custom event triggers are more likely to cause errors.
+This integrations aims to be compatible with modded rundowns. With that said, not much testing has been
+done to ensure it works. 
+
+To create a modded game, you will need a file called the MID file. This is a file with the name "GTFO-abcdefhij.ini"
+which contains a list of everything Archipelago needs to generate a game for this world. To create this file,
+start the game with all your mods enabled and go to the Network Settings. There will be a button which allows
+you to export the MID file; this outputs it to your Downloads folder.
+
+Take the MID file and place it in your Players folder, then restart the Archipelago client. This adds your modded
+world as a new APWorld, and it can be treated the same. If you are having someone else perform the generation
+of your game, supply them with both the MID file and your YAML; both go in the Players folder.
+
+MID files are uniquely named to represent the set of mods in your game. If two sets of players generate a MID
+file with the same name, there is a 1/(2^60) chance that the games are incompatible. In other words, it is
+extremely likely they can share the file with no issues.
+
+It is also worth noting that the "Vanilla" MID file uses the reserved name "GTFO.ini". If your generated MID file
+has this name, you do not need a MID file.
+
+### More Details
+
+When the game generates MID data (which it does at startup), it will output logs around errors, issues, etc.
+These include some common errors (like how R8E1 has no extraction point) and some assumptions being made
+in order to aid generation. It will also output logs with the name of the game and its unique hash. The 
+MID's file name is the hash truncated to 60 bits; the full 256 bit hash is what gets logged, and can be 
+used to check for uniqueness if you feel that you've somehow beaten the 1 in a quintillion odds of getting 
+non-compatible games with the same name.
+
+If you'd like to see these logs (as well as other logs output by Archipelago), I recommend going into 
+BepInEx.cfg and disabling Unity Log Listening. This will significantly reduce the number of logs sent to 
+the console.

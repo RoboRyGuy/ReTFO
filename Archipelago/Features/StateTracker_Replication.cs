@@ -724,14 +724,14 @@ public partial class StateTracker : ArchipelagoFeature
                 switch (stateTracker.CurrentState)
                 {
                     case eState.CleanState:
-                    case eState.ClientOnly:
+                    case eState.ProxyClient:
                         return false;
 
                     case eState.HostConnecting:
                     case eState.HostConnected:
                     case eState.HostReconnecting:
                     case eState.FakeConnect:
-                    case eState.ClientConnect:
+                    case eState.ConnectedClient:
                         return true;
 
                     default:

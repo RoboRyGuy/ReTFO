@@ -20,3 +20,9 @@ Third Alpha Release of Beta-Archipelago.
 - Fixed ITEMS subcommand. It is now much more durable and does not give all items instantly
 - Fixed main menu; it now shows with entering sub menus
 - Probably some other fixes/changes too
+
+## Version 0.0.4
+
+Fourth Alpha Release of Beta-Archipelago.
+- Began adding official support for Multiplayer
+  - Multiplayer supports three modes: Parallel play, Multi-connected, and Proxy-connected
