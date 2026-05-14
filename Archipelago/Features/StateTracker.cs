@@ -1336,21 +1336,6 @@ public partial class StateTracker : ArchipelagoFeature
     public bool HasLocation(LocationID id) => FoundLocations.Contains(id);
 
     /// <summary>
-    /// Immediately collect an item, bypassing lcoation checks and so forth
-    /// </summary>
-    /// <param name="itemName">Name of the item</param>
-    /// <param name="sourceLocationId">ID of the location this item was found in, if found locally (non-randomized)</param>
-    /// <param name="player">The player who found the item, if applicable and convenient to identify</param>
-    public void CollectItem(RandomizationTag itemName, LocationID sourceLocationId = default, PlayerAgent? player = null)
-    {
-        Game.Data gameData = MidManager.GetProcessedGameData();
-        if (gameData.TryLookupItem(itemName, out KeyedItem item))
-            CollectItem(item.ID, sourceLocationId, player);
-        else
-            FeatureLogger.Error($"Failed to find and collect item: {gameData.LookupTagDef(itemName).Name}");
-    }
-
-    /// <summary>
     /// Immediately collect an item
     /// Only checks against queued items; all other checks are skipped
     /// </summary>
