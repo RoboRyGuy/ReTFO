@@ -65,7 +65,7 @@ public static class Expedition
                 => x != null ? y?.IsSameExpedition(x) ?? false : y == null;
 
             public override int GetHashCode([DisallowNull] Expedition.Data obj)
-                => obj.GetHashCode();
+                => Tuple.Create(obj.Rundown.Pointer, obj.ExpeditionTier, obj.ExpeditionIndex).GetHashCode();
         }
 
         /// <summary>

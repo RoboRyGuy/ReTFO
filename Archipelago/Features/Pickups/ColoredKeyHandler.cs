@@ -188,7 +188,7 @@ public class ColoredKeyHandler : ArchipelagoFeature
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
             AsyncItemSpawnWrapper wrapper = TrySpawnKey();
-            var player = terminal.m_localInteractionSource.Owner;
+            var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
             {

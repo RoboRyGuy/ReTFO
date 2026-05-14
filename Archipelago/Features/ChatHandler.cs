@@ -111,12 +111,12 @@ public class ChatHandler : ArchipelagoFeature
                     return;
             }
 
-            if (Config.DoShortenReceivedItemMessages)
-            {
-                StringBuilder itemSendMessageBuilder = new();
-                if (itemSendMessage.Item.Player.Slot == StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
-                    itemSendMessageBuilder.Append($"<#{ColorToHex(AP.Colors.BuiltInPalettes.Dark.)}")
-            }
+            //if (Config.DoShortenReceivedItemMessages)
+            //{
+            //    StringBuilder itemSendMessageBuilder = new();
+            //    if (itemSendMessage.Item.Player.Slot == StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
+            //        itemSendMessageBuilder.Append($"<#{ColorToHex(AP.Colors.BuiltInPalettes.Dark.)}")
+            //}
 
         }
 

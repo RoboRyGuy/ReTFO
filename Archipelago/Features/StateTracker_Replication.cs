@@ -94,6 +94,7 @@ public partial class StateTracker : ArchipelagoFeature
         {
             pArchipelagoInitState result = new();
             result.GameName = SerializationHelpers.ReadString(bytes, ref index);
+            result.GameName = null;
             result.RootSeed = SerializationHelpers.Read7BitEncodedLong(bytes, ref index);
             result.ExpeditionNames = SerializationHelpers.ReadStringArray(bytes, ref index);
             
@@ -441,11 +442,6 @@ public partial class StateTracker : ArchipelagoFeature
     ArchipelagoStateReplicator? m_stateReplicator = null;
 
     /// <summary>
-    /// If we're attempting to client connect, this is the lobby we're trying to join.
-    /// </summary>
-    SNet_Lobby? m_delayedLobby = null;
-
-    /// <summary>
     /// Simple update enumerator which will be used as a coroutine
     /// </summary>
     private class UpdateStateEnumerator : IEnumerator
@@ -617,51 +613,50 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Patch which sends init packet when players join the lobby
+    /// Patch which sends init packet when players request to join the lobby
     /// </summary>
-    [ArchivePatch(typeof(SNet_Lobby_STEAM), nameof(SNet_Lobby_STEAM.PlayerJoined), [ typeof(SNet_Player), typeof(Steamworks.CSteamID) ])]
-    public static class SNet_Lobby_STEAM__PlayerJoined__Patch
+    [ArchivePatch(typeof(SNet_SessionHub), nameof(SNet_SessionHub.AddPlayerToSession))]
+    public static class SNet_SessionHub__AddPlayerToSession__Patch
     {
-        public static void Prefix(SNet_Player player)
+        public static void Prefix(SNet_SessionHub __instance, SNet_Player player)
         {
-            if (!SNet.IsMaster) return;
-            if ((player?.Pointer ?? IntPtr.Zero) == IntPtr.Zero) return;
-            if (player!.IsLocal) return;
+            var func = () =>
+            {
+                if (!SNet.IsMaster) return;
+                if (SNet.SessionHub.PlayersInSession.Any(p => p.Pointer == player.Pointer)) return;
 
-            StateTracker stateTracker = StateTracker.Get();
-            stateTracker.m_stateReplicator!.SendInit(player);
-            stateTracker.m_stateReplicator!.SendGeneral(player);
+                FeatureLogger.Notice($"Adding new player to session; sending init packet: {player.NickName}");
+                StateTracker.Get().m_stateReplicator?.SendInit(player);
+            };
+            func();
         }
     }
+
+    pMasterAnswer cachedMasterAnswer = new();
+    bool allowConnection = false;
 
     /// <summary>
     /// Prevent us from joining a lobby before we've finished the client setup process
     /// </summary>
-    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.OnJoinedLobby))]
-    public static class SNet_LobbyManager__OnJoinedLobby__Patch
+    [ArchivePatch(typeof(SNet_SessionHub), nameof(SNet_SessionHub.OnMasterSessionAnswer))]
+    public static class SNet_SessionHub__OnMasterSessionAnswer__Patch
     {
-        public static bool Prefix(SNet_LobbyManager __instance, SNet_Lobby lobby)
+        public static bool Prefix(SNet_SessionHub __instance, pMasterAnswer data)
         {
             var func = () =>
             {
+                FeatureLogger.Notice($"Received Master Answer: {Enum.GetName(data.answer)}");
+
                 StateTracker stateTracker = StateTracker.Get();
-                if (stateTracker.CurrentState == eState.ClientConnect || stateTracker.CurrentState == eState.ClientOnly)
+                if (stateTracker.allowConnection)
                 {
-                    FeatureLogger.Success("Lobby join request approved");
-                    stateTracker.m_delayedLobby = null;
+                    FeatureLogger.Notice("Client connection allowed!");
+                    stateTracker.allowConnection = false;
                     return true;
                 }
-                else if (stateTracker.CurrentState != eState.CleanState)
-                {
-                    FeatureLogger.Error("Refused attempt to join lobby while not in a clean state!");
-                    __instance.LeaveLobby();
-                    stateTracker.m_delayedLobby = null;
-                }
-                else
-                {
-                    FeatureLogger.Notice("Received lobby join request; state is prepped to join; waiting for AP sync before joining.");
-                    stateTracker.m_delayedLobby = lobby;
-                }
+
+                FeatureLogger.Notice("Received master answer; caching and blocking for now");
+                stateTracker.cachedMasterAnswer = data;
                 return false;
             };
             return func();

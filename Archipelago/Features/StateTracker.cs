@@ -271,7 +271,7 @@ public partial class StateTracker : ArchipelagoFeature
             //"R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
         ]);
         WhitelistTags = [ MidManager.GetProcessedGameData().Tag_All ];
-        BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks ];
+        BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks, MidManager.GetProcessedGameData().Tag_LobbySlotUnlocks ];
         RequiresSecondaries = true;
         RequiresOverloads = true;
 
@@ -287,12 +287,6 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public void ClientConnect(pArchipelagoInitState state)
     {
-        if (SNetwork.SNet.IsInLobby)
-        {
-            FeatureLogger.Warning("Received init packet, but we're already in a lobby. Ignoring!");
-            return;
-        }
-
         if (CurrentState == eState.ClientConnect || CurrentState == eState.ClientOnly)
         {
             FeatureLogger.Debug("Ignoring init packet; already set up as a client!");
@@ -301,10 +295,11 @@ public partial class StateTracker : ArchipelagoFeature
 
         if (state.GameName != MidManager.GetProcessedGameData().Name)
         {
-            FeatureLogger.Error("Cannot connect as client; the master is playing with different mods than us!");
+            FeatureLogger.Error("Cannot connect as client; the host is playing with different mods than us!");
             return;
         }
 
+        FeatureLogger.Notice("Received init packet. Preparing to join as client...");
         if (CurrentState == eState.CleanState)
         {   // We need to set up the multiworld
             RootSeed = state.RootSeed;
@@ -320,15 +315,15 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 FeatureLogger.Error(
                     "Refused to join as client; root seeds do not match!"
-                    + "This indicates we are likely connected to a different slot."
+                    + "This indicates we are likely connected to a different slot or server."
                 );
                 return;
             }
             CurrentState = eState.ClientConnect;
         }
 
-        // We are officially set up to join the lobby as a client
-        SNetwork.SNet.Lobbies.OnJoinedLobby(m_delayedLobby);
+        // We are officially set up to join the lobby as a client - just gotta fake a "join allowed" response
+        SNetwork.SNet.SessionHub.OnMasterSessionAnswer(cachedMasterAnswer);
     }
 
     /// <summary>

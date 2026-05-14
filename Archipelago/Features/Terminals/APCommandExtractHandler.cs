@@ -13,6 +13,9 @@ namespace ReTFO.Archipelago.Features.Terminals;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 
 public static class APCommandExtractHandler_Tags
 {
@@ -72,7 +75,21 @@ public class APCommandExtractHandler : ArchipelagoFeature
         if (terminalData == null)
             return Enumerable.Empty<Tuple<string, KeyedLocation>>();
 
-        Random random = new(Tuple.Create(Plugin.Get().StateTracker.RootSeed, terminalData.TerminalName.GetHashCode()).GetHashCode());
+        // Creating a deterministic hash based on the terminal name and the root seed
+        // This gives use a unique random seed and ensures the same codes are generated for all players
+        SHA256 hash = SHA256.Create();
+        Span<byte> buffer = stackalloc byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(buffer, stateTracker.RootSeed);
+        hash.TransformBlock(buffer.ToArray(), 0, 8, null, 0);
+        byte[] bytes = Encoding.UTF8.GetBytes(terminalData.TerminalName);
+        hash.TransformFinalBlock(bytes, 0, bytes.Length);
+        bytes = hash.Hash!;
+        int result = 0;
+        const int chunkSize = sizeof(int);
+        for (int i = 0; i < bytes.Length; i += chunkSize)
+            result ^= BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(i, chunkSize));
+
+        Random random = new(result);
         char r()
         {
             int choice = (int)(36d * random.NextDouble());

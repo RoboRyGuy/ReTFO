@@ -159,7 +159,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 null,
                 null
             );
-            var player = terminal.m_localInteractionSource.Owner;
+            var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
             {

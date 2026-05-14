@@ -148,12 +148,12 @@ public class LockGearHandler : ArchipelagoFeature
                         (uint)eWeaponFireMode.SemiBurst            => category.SemiBurstArchetype,
 
                         // I believe these are statically set?
-                        (uint)eWeaponFireMode.SentryGunAuto        => 6,  // Burst Sentry
-                        (uint)eWeaponFireMode.SentryGunBurst       => 24, // HEL Auto Sentry
-                        (uint)eWeaponFireMode.SentryGunSemi        => 23, // Sniper Sentry
-                        (uint)eWeaponFireMode.SentryGunShotgunSemi => 25, // Shotgun Sentry
+                        (uint)eWeaponFireMode.SentryGunAuto        => 52, // Burst Sentry
+                        (uint)eWeaponFireMode.SentryGunBurst       => 55, // HEL Auto Sentry
+                        (uint)eWeaponFireMode.SentryGunSemi        => 57, // Sniper Sentry
+                        (uint)eWeaponFireMode.SentryGunShotgunSemi => 58, // Shotgun Sentry
 
-                        // 0 is never used
+                        // 0 is never used, so it should return a null archetype
                         _ => 0u,
                     }
                 );
@@ -381,7 +381,7 @@ public class LockGearHandler : ArchipelagoFeature
 
         public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
-            var player = terminal.m_localInteractionSource.Owner;
+            var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
             {
