@@ -946,17 +946,17 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Patch which sends init packet when players request to join the lobby
+    /// Patch which sends init packet when players join the lobby
     /// </summary>
     [ArchivePatch(typeof(SNet_SessionHub), nameof(SNet_SessionHub.AddPlayerToSession))]
     public static class SNet_SessionHub__AddPlayerToSession__Patch
     {
         public static void Prefix(SNet_SessionHub __instance, SNet_Player player)
         {
-            if (!SNet.IsMaster) return;
+            if (!SNet.IsMaster || player.IsBot) return;
             if (SNet.SessionHub.PlayersInSession.Any(p => p.Pointer == player.Pointer)) return;
 
-            FeatureLogger.Notice($"New player requesting to join session; sending init packet: {player.NickName}");
+            FeatureLogger.Notice($"New player is joining session; sending init packet: {player.NickName}");
             StateTracker.Get().m_stateReplicator?.SendInit(player);
         }
     }
@@ -969,10 +969,11 @@ public partial class StateTracker : ArchipelagoFeature
     {
         public static void Postfix(SNet_SessionHub __instance, SNet_Player player)
         {
-            if (!SNet.IsMaster) return;
+            if (!SNet.IsMaster || player.IsBot) return;
+            StateTracker st = StateTracker.Get();
+            if (st.ApSession == null) return;
 
             FeatureLogger.Notice($"Adding new player to session; sending sync packets: {player.NickName}");
-            StateTracker st = StateTracker.Get();
             st.m_stateReplicator?.SendGeneral(player);
             st.m_stateReplicator?.SendScouting(player: player);
         }

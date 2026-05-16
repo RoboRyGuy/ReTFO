@@ -84,6 +84,20 @@ internal static class ModifyRundownMenuPatch
     }
 
     /// <summary>
+    /// Executes after MTFO disables matchmaking. We overwrite the matchmaking button with the reset button
+    /// </summary>
+    [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.Intro_RevealRundown)), HarmonyAfter(MTFO.MTFO.GUID)]
+    public static class AddResetButtonPatch
+    {
+        public static void Postfix(CM_PageRundown_New __instance)
+        {
+            __instance.m_matchmakeAllButton.SetVisible(true);
+            __instance.m_matchmakeAllButton.SetText("<#F0F>EXIT ARCHIPELAGO</color>");
+            __instance.m_matchmakeAllButton.OnBtnPressCallback = new Il2CppAction_int((_) => StateTracker.Get().Reset());
+        }
+    }
+
+    /// <summary>
     /// Setting "m_selectionIsRevealed" allows the JoinLobby button to work
     /// </summary>
     [HarmonyPatch]

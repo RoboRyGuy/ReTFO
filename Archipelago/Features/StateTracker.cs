@@ -23,6 +23,7 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
+using FluffyUnderware.DevTools.Extensions;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -177,10 +178,6 @@ public partial class StateTracker : ArchipelagoFeature
         [FSDescription("The password to use when connecting to Archipelago")]
         [PrivateFeatureSettingsPatch.FSOptionallyPrivate]
         public string Password { get; set; } = "Password";
-
-        [FSDisplayName("Reset to Menu")]
-        [FSDescription("Disconnect from the lobby and Archipelago; reset to the menu.")]
-        public FButton ResetButton { get; set; } = new FButton("Reset", callback: () => StateTracker.Get().Reset());
 
         [FSDisplayName("Empty Trash")]
         [FSDescription("Unmark any trash items, revealing their checks in the expedition location counts.")]
@@ -795,14 +792,29 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public void Reset()
     {
-        Globals.Global.ActiveRundownIds = null;
         ApSession?.Socket.DisconnectAsync();
         ApSession = null;
-        MainMenuGuiLayer.Current.PageRundownNew.ResetElements();
-        if (SNetwork.SNet.Lobbies.IsInLobby)
-            SNetwork.SNet.Lobbies.LeaveLobby();
+
+        SNetwork.SNet.Lobbies.LeaveLobby();
+
+        //CM_MenuBar.__c.__9._Setup_b__42_3(); // Exit expedition button callback
+        uint id = Globals.Global.ActiveRundownIds[0];
+        Globals.Global.ActiveRundownIds = new(1);
+        Globals.Global.ActiveRundownIds[0] = id;
+
+        MainMenuGuiLayer.Current.PageRundownNew.m_isRevealing = false;
+        MainMenuGuiLayer.Current.PageRundownNew.m_rundownIsRevealed = false;
+        MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = false;
+        MainMenuGuiLayer.Current.PageRundownNew.m_dataIsSetup = false;
+        MainMenuGuiLayer.Current.PageRundownNew.m_rundownIntroIsDone = false;
+        MainMenuGuiLayer.Current.PageRundownNew.m_cortexIntroIsDone = false;
+
+        MainMenuGuiLayer.Current.PageRundownNew.m_selectRundownButton.OnBtnPressCallback.Invoke(0);
+        MainMenuGuiLayer.Current.PageRundownNew.PostSetup();
+        MainMenuGuiLayer.Current.ChangePage(eCM_MenuPage.CMP_RUNDOWN_NEW);
+
         CurrentState = eState.CleanState;
-        MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
+        OnStateChange?.Invoke(this);
     }
 
     /// <summary>
@@ -1009,8 +1021,6 @@ public partial class StateTracker : ArchipelagoFeature
             if (count >= 1.0)
             {
                 int index = (int)((i + Math.Abs(RootSeed)) % locCount);
-                if (!locations[index].ItemID.IsNull)
-                    FeatureLogger.Error("Overwriting item during floating items placement!"); // In case there's an error in my math
                 locations[index].ItemID = items.Dequeue();
                 locations[index].RandMode = new(RandTest.eType.Randomized);
                 count -= 1.0;

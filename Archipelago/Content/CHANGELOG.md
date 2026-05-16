@@ -38,4 +38,4 @@ Fourth Alpha Release of Beta-Archipelago.
   - You can now use the `AP TRASH` command to mark all extractable items in a terminal as trash
 - Changed objective item names to no longer include an objective summary (to make the names shorter)
 - Add chat settings to help decrease chat message size and quantity
-- Add a *Reset* button to the settings which can reset the game without restarting it
+- Add a reset button to the Rundown menu which allows players to disconnect from Archipelago
