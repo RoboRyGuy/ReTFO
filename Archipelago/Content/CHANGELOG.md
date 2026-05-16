@@ -26,3 +26,16 @@ Third Alpha Release of Beta-Archipelago.
 Fourth Alpha Release of Beta-Archipelago.
 - Began adding official support for Multiplayer
   - Multiplayer supports three modes: Parallel play, Multi-connected, and Proxy-connected
+- Fixed some sync issues for multiplayer
+- Improved the gear spawn mechanics (at least slightly)
+- Bots no longer reset their gear when returning to the expedition start screen
+- Changed the terminal command names to better convey their intended use
+  - `CLAIM_ALL` has been removed
+  - `CLAIM` now acts like `CLAIM_ALL`
+  - `CLAIM_CODE` now acts `CLAIM` used to act
+  - `CA` is unchanged
+- Added "trash" items system, where locations can be marked as trash to ignore them
+  - You can now use the `AP TRASH` command to mark all extractable items in a terminal as trash
+- Changed objective item names to no longer include an objective summary (to make the names shorter)
+- Add chat settings to help decrease chat message size and quantity
+- Add a *Reset* button to the settings which can reset the game without restarting it

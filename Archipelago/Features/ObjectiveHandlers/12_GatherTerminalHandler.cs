@@ -76,13 +76,6 @@ public class GatherTerminalHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -90,13 +83,13 @@ public class GatherTerminalHandler : ArchipelagoFeature
     {
         // Region reached by executing a command
         public static string CommandExecuted(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} {count} command{(count == 1 ? "" : "s")} executed";
+            => $"{data.ObjectiveName()} {count} command{(count == 1 ? "" : "s")} executed";
     }
 
     private static class GatherTerminals_CommandLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Command Location #{count}", "Location containing a gather terminals command", data.Tag_GatherTerminalsCommandLocations_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Command Location #{count}", "Location containing a gather terminals command", data.Tag_GatherTerminalsCommandLocations_ByObjective));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -111,7 +104,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Command Item #{count}", "Item obtained for completing a gather terminals command", data.Tag_GatherTerminalsCommandItem_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Command Item #{count}", "Item obtained for completing a gather terminals command", data.Tag_GatherTerminalsCommandItem_ByObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -182,7 +175,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
         // Seems like a logical assumption, but it's worth checking
         if (data.Objective.GatherTerminal_RequiredCount > data.Objective.GatherTerminal_SpawnCount)
         {
-            FeatureLogger.Error($"{This.ObjectiveName(data)}: Expected at least as many terminal spawns as required terminals");
+            FeatureLogger.Error($"{data.ObjectiveName()}: Expected at least as many terminal spawns as required terminals");
             return;
         }
 

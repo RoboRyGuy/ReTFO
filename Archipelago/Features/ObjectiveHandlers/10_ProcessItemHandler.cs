@@ -76,13 +76,6 @@ public class ProcessItemHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -90,17 +83,17 @@ public class ProcessItemHandler : ArchipelagoFeature
     {
         // Region reached by obtaining the start item for the objective (typically in the elevator)
         public static string ItemObtained(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Item Obtained";
+            => $"{data.ObjectiveName()} Item Obtained";
 
         // Region reached by processing the item
         public static string ItemProcessed(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Item Processed";
+            => $"{data.ObjectiveName()} Item Processed";
     }
 
     private static class ProcessItem_StartLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Start Location", "Location checked by grabbing a particular big pickup", gd.Tag_ProcessItemStartLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Start Location", "Location checked by grabbing a particular big pickup", gd.Tag_ProcessItemStartLocations));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -108,7 +101,7 @@ public class ProcessItemHandler : ArchipelagoFeature
     private static class ProcessItem_ProcessorLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Processor Location", "Location checked by finding a particular processor", gd.Tag_ProcessItemProcessorLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Processor Location", "Location checked by finding a particular processor", gd.Tag_ProcessItemProcessorLocations));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -122,7 +115,7 @@ public class ProcessItemHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Processor Item", "Item indicating a particular processor is reachable", gd.Tag_ProcessItemProcessorItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Processor Item", "Item indicating a particular processor is reachable", gd.Tag_ProcessItemProcessorItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -202,10 +195,11 @@ public class ProcessItemHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// When spawning items in the cargo cage, claim our starting item if it exists
+    /// Normally we'd patch the relevant job, but that can causes null reference errors
+    ///  for cargo cage items. Fortunately, we can grab them when it's done building
     /// </summary>
-    [ArchivePatch(typeof(LG_SpawnItemsInCargoCageJob), nameof(LG_SpawnItemsInCargoCageJob.Build))]
-    public static class LG_SpawnItemsInCargoCageJob__Build__Patch
+    [ArchivePatch(typeof(LG_Factory), nameof(LG_Factory.FactoryDone))]
+    public static class LG_Factory__FactoryDone__Patch
     {
         public static void Postfix()
         {

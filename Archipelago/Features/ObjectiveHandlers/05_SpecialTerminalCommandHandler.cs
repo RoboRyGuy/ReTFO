@@ -65,13 +65,6 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -79,13 +72,13 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
     {
         // Region reached by executing the special command
         public static string CommandExecuted(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Command Executed";
+            => $"{data.ObjectiveName()} Command Executed";
     }
 
     private static class STCLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Special Command Location", "A special command location for a particular objective", gd.Tag_SpecialCommandLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Special Command Location", "A special command location for a particular objective", gd.Tag_SpecialCommandLocations));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -99,7 +92,7 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Special Command Item", "A special command item for a particular objective", gd.Tag_SpecialCommandItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Special Command Item", "A special command item for a particular objective", gd.Tag_SpecialCommandItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
         

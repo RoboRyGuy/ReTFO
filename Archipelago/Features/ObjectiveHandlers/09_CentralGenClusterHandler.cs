@@ -58,13 +58,55 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    // Implementation of common static methods for objective handlers
+    private static class This
+    {
+        // Which objective This is for
+        public const eWardenObjectiveType ObjectiveType
+            = eWardenObjectiveType.CentralGeneratorCluster;
+
+        // Summary for This objective
+        public static string ObjectiveSummary(Objective.Data data)
+        {
+            CheckIsCorrectObjective(data);
+            return $"{data.Objective.CentralPowerGenClustser_NumberOfGenerators}x Central Gen Cluster";
+        }
+
+        // True if This is the correct objective
+        public static bool IsCorrectObjective(Objective.Data data)
+            => data.Objective.Type == ObjectiveType;
+
+        // Assert This is the correct objective, and log an error if it is not
+        public static void CheckIsCorrectObjective(Objective.Data data)
+        {
+            if (!IsCorrectObjective(data))
+                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+        }
+    }
+
+    // Region names for this objective
+    private static class ThisRegions
+    {
+        // Region reached after finding the gen cluster
+        public static string FoundGenCluster(Objective.Data data)
+            => $"{data.ObjectiveName()} Found Gen Cluster";
+
+        // Region reached after powering a generator
+        public static string PoweredGenerator(Objective.Data data, int count)
+            => $"{data.ObjectiveName()} Powered Generator #{count}";
+
+        // Region reached after completing the final scan
+        public static string CompletedScan(Objective.Data data)
+            => $"{data.ObjectiveName()} Completed Scan";
+    }
+
     /// <summary>
     /// A location containing a cell spawned for a central gen cluster
     /// </summary>
     private static class GenCluster_CellLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Central Gen Cell Location #{count}", "A particular cell spawn location", data.Tag_CentralGenCellLocations_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cell Location #{count}", "A particular cell spawn location", data.Tag_CentralGenCellLocations_ByObjective));
 
         public static LocationData MakeRandData() => new LocationData() { };
     }
@@ -75,7 +117,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     private static class GenCluster_ClusterLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Central Gen Cluster Location", "A particular gen cluster spawn location", gd.Tag_CentralGenClusterLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cluster Location", "A particular gen cluster spawn location", gd.Tag_CentralGenClusterLocations));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -92,7 +134,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Central Gen Cluster Item", "A particular gen cluster", gd.Tag_CentralGenClusterItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cluster Item", "A particular gen cluster", gd.Tag_CentralGenClusterItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -105,7 +147,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     private static class GenCluster_ScanLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Gen Cluster Scan Location", "A particular scan location", gd.Tag_CentralGenScanLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Cluster Scan Location", "A particular scan location", gd.Tag_CentralGenScanLocations));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -122,7 +164,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Gen Cluster Scan Item", "A particular scan item", gd.Tag_CentralGenScanItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Cluster Scan Item", "A particular scan item", gd.Tag_CentralGenScanItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -185,55 +227,6 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         return new(data.AddItem(newItem), newItem);
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
-    {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.CentralGeneratorCluster;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return $"{data.Objective.CentralPowerGenClustser_NumberOfGenerators}x Central Gen Cluster";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
-    }
-
-    // Region names for this objective
-    private static class ThisRegions
-    {
-        // Region reached after finding the gen cluster
-        public static string FoundGenCluster(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Found Gen Cluster";
-
-        // Region reached after powering a generator
-        public static string PoweredGenerator(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Powered Generator #{count}";
-
-        // Region reached after completing the final scan
-        public static string CompletedScan(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Completed Scan";
-    }
-
     // Objective requiring one or more cells be found in the map and used to power a central generator cluster
     [Objective.Callback]
     public void HandleCentralGenGlusterObjective(Objective.Data data)
@@ -269,7 +262,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         }
         if (clusterZone == null)
         {
-            FeatureLogger.Warning($"Failed to find gen cluster for objective: {This.ObjectiveName(data)}");
+            FeatureLogger.Warning($"Failed to find gen cluster for objective: {data.ObjectiveName()}");
             clusterZone = data.FirstZone;
         }
 

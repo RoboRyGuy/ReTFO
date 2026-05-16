@@ -61,26 +61,19 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     private static class ThisRegions
     {
         // Region reached when a shutdown is successfully completed
         public static string CompletedShutdown(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Completed {count} Reactor Startup";
+            => $"{data.ObjectiveName()} Completed {count} Reactor Startup";
     }
 
     private static class ReactorShutdownReactorLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor #{count} Location", "A particular reactor location", gd.Tag_ReactorShutdownReactorLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor #{count} Location", "A particular reactor location", gd.Tag_ReactorShutdownReactorLocations));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -94,7 +87,7 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor", "A particular reactor", gd.Tag_ReactorShutdownReactorItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor", "A particular reactor", gd.Tag_ReactorShutdownReactorItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -137,7 +130,7 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             var targetZone = data.FindZoneByPlacement(placement);
             if (targetZone == null)
             {
-                FeatureLogger.Error($"Failed to find reactor zone by placement: {This.ObjectiveName(data)}");
+                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName()}");
                 continue;
             }
             addReactor(targetZone);
@@ -150,13 +143,13 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             {
                 if (zone.CustomGeo?.Contains("_reactor_", StringComparison.OrdinalIgnoreCase) ?? false)
                 {
-                    FeatureLogger.Debug($"Using geomorph for reactor objective: {This.ObjectiveName(data)}");
+                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName()}");
                     addReactor(zone);
                     break;
                 }
             }
             if (count == 0)
-                FeatureLogger.Error($"No reactor placements: {This.ObjectiveName(data)}");
+                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName()}");
         }
 
         // OnActivateOnSolveItem

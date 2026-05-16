@@ -18,7 +18,7 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 public class APCommandItemsHandler : ArchipelagoFeature
 {
     public override string Name => "AP Item Commands";
-    public override string Description => "Adds the ITEMS, CLAIM, and CLAIM_ALL subcommands to the AP command";
+    public override string Description => "Adds the ITEMS, CLAIM, CA, and CLAIM_CODE subcommands to the AP command";
     public override FeatureGroup Group => FeatureGroups.TerminalHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -33,16 +33,16 @@ public class APCommandItemsHandler : ArchipelagoFeature
 
     private ItemsCommand? m_itemsCommand = null;
     private ClaimCommand? m_claimCommand = null;
-    private ClaimAllCommand? m_claimAllCommand = null;
     private CACommand? m_caCommand = null;
+    private ClaimCode? m_claimCodeCommand = null;
 
     public override void OnEnable()
     {
         base.OnEnable();
         APCommandHandler.RegisterCommand(m_itemsCommand ??= new());
         APCommandHandler.RegisterCommand(m_claimCommand ??= new());
-        APCommandHandler.RegisterCommand(m_claimAllCommand ??= new());
         APCommandHandler.RegisterCommand(m_caCommand ??= new());
+        APCommandHandler.RegisterCommand(m_claimCodeCommand ??= new());
     }
 
     public override void OnDisable()
@@ -50,8 +50,8 @@ public class APCommandItemsHandler : ArchipelagoFeature
         base.OnDisable();
         APCommandHandler.UnregisterCommand(m_itemsCommand ??= new());
         APCommandHandler.UnregisterCommand(m_claimCommand ??= new());
-        APCommandHandler.UnregisterCommand(m_claimAllCommand ??= new());
         APCommandHandler.UnregisterCommand(m_caCommand ??= new());
+        APCommandHandler.UnregisterCommand(m_claimCodeCommand ??= new());
     }
 
     // Helper for invoking callbacks when claiming items from a terminal
@@ -130,57 +130,19 @@ public class APCommandItemsHandler : ArchipelagoFeature
         }
 
         public override string HelpText
-            => "Claim one of YOUR currently-held items using its code";
-
-        public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
-        {
-            StateTracker stateTracker = StateTracker.Get();
-            var pair = stateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0);
-
-            if (pair == null)
-            {
-                terminal.m_command.AddOutput(TerminalLineType.SpinningWaitNoDone, "Searching for item " + param2.ToUpper(), ClaimDelay, onWaitDoneSound: TerminalSoundType.Negative);
-                terminal.m_command.AddOutput("<#F00>Incorrect item code!</color>");
-            }
-            else
-            {
-                terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, "Searching for item " + param2.ToUpper(), ClaimDelay, onWaitDoneSound: TerminalSoundType.Positive);
-
-                var helper = new ClaimItemsHelper()
-                {
-                    terminal = terminal.m_command.m_terminal,
-                    currentIndex = 0,
-                    claimActions = stateTracker.MidManager.GetProcessedGameData().LookupItem(pair.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal).ToList(),
-                };
-                terminal.m_command.OnEndOfQueue += helper.thisAction;
-                stateTracker.ItemsInTerminalSystem.Remove(pair);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Handles the CLAIM_ALL subcommand
-    /// </summary>
-    private class ClaimAllCommand : APCommandHandler.SubCommand
-    {
-        public ClaimAllCommand()
-        {
-            SubCommandName = "CLAIM_ALL";
-        }
-
-        public override string HelpText
             => "Retrieve all of YOUR items. Can optionally include a filter"
-            + "\nExample: `AP CLAIM_ALL KEY` will claim all items with \"KEY\" in their name";
+            + "\nExample: `AP CLAIM KEY` will claim all items with \"KEY\" in their name";
 
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
             StateTracker stateTracker = StateTracker.Get();
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-            bool predicate(Tuple<ItemID, string> pair) => param2 == null ? true : gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2, StringComparison.OrdinalIgnoreCase);
+            bool predicate(Tuple<ItemID, string> pair) 
+                => param2 == null ? true : gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2, StringComparison.OrdinalIgnoreCase);
             var pairs = stateTracker.ItemsInTerminalSystem.Where(predicate).ToList();
             string firstMessage = (param2 == null || param2.Trim().Length == 0)
                 ? "Preparing all items to be claimed"
-                : "Collecting items to be claimed using filter " + param2.ToUpper();
+                : $"Collecting items to be claimed using filter \"{param2.ToUpper()}\"";
 
             if (!pairs.Any())
             {
@@ -227,7 +189,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
     /// <summary>
     /// Handles the CA subcommand
     /// </summary>
-    private class CACommand : ClaimAllCommand
+    private class CACommand : ClaimCommand
     {
         public CACommand()
         {
@@ -235,17 +197,58 @@ public class APCommandItemsHandler : ArchipelagoFeature
         }
 
         public override string HelpText
-            => "Alias for CLAIM_ALL";
+            => "Alias for CLAIM";
     }
 
+    /// <summary>
+    /// Handles the CLAIM_CODE subcommand
+    /// </summary>
+    private class ClaimCode : APCommandHandler.SubCommand
+    {
+        public ClaimCode()
+        {
+            SubCommandName = "CLAIM_CODE";
+        }
 
-    // Prevent the command interpreter from unsubscribing our helper from OnEndOfQueue
-    // This is a rather inefficient way to handle it, but it's the only one I've found that works
+        public override string HelpText
+            => "Claim one of YOUR currently-held items using its code.\nUseful when you want to retrieve exactly one item when items share names.";
+
+        public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
+        {
+            StateTracker stateTracker = StateTracker.Get();
+            var pair = stateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0);
+
+            if (pair == null)
+            {
+                terminal.m_command.AddOutput(TerminalLineType.SpinningWaitNoDone, "Searching for item " + param2.ToUpper(), ClaimDelay, onWaitDoneSound: TerminalSoundType.Negative);
+                terminal.m_command.AddOutput("<#F00>Incorrect item code!</color>");
+            }
+            else
+            {
+                terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, "Searching for item " + param2.ToUpper(), ClaimDelay, onWaitDoneSound: TerminalSoundType.Positive);
+
+                var helper = new ClaimItemsHelper()
+                {
+                    terminal = terminal.m_command.m_terminal,
+                    currentIndex = 0,
+                    claimActions = stateTracker.MidManager.GetProcessedGameData().LookupItem(pair.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal).ToList(),
+                };
+                terminal.m_command.OnEndOfQueue += helper.thisAction;
+                stateTracker.ItemsInTerminalSystem.Remove(pair);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Prevent the command interpreter from unsubscribing our helper from OnEndOfQueue.
+    /// This is a rather inefficient way to handle it, but it's the only one I've found that works.
+    /// </summary>
     [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.UpdateTerminalScreen))]
     private static class DontUnscubscribeMePatch
     {
         public static void Prefix(LG_ComputerTerminalCommandInterpreter __instance, ref ClaimItemsHelper? __state)
         {
+            // Search the callback to find our claim items helper
             __state = null;
             if (__instance.OnEndOfQueue == null) return;
             foreach (var d in __instance.OnEndOfQueue.GetInvocationList())
@@ -264,15 +267,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
         {
             // Check if we even need to restore the state
             if (__state == null || __state.currentIndex >= __state.claimActions.Count) return;
-
-            // Check if callback was wiped yet
             if (__instance.OnEndOfQueue != null) return;
-
-            // Checks if it contains the helper already
-            if ((__instance.OnEndOfQueue?.Pointer ?? IntPtr.Zero) == __state.thisAction.Pointer)
-                return;
-            if (__instance.OnEndOfQueue?.GetInvocationList().Any(i => i.Pointer == __state.thisAction.Pointer) ?? false)
-                return;
 
             // Restore our helper
             __instance.OnEndOfQueue += __state.thisAction;

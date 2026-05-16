@@ -70,10 +70,11 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// When the level starts, claim our item from the cargo cage
+    /// Normally we'd patch the relevant job, but that can causes null reference errors
+    ///  for cargo cage items. Fortunately, we can grab them when it's done building
     /// </summary>
-    [ArchivePatch(typeof(WardenObjectiveManager), nameof(WardenObjectiveManager.OnLocalPlayerStartExpedition))]
-    public static class WardenObjectiveManager__OnLocalPlayerStartExpedition__Patch
+    [ArchivePatch(typeof(LG_Factory), nameof(LG_Factory.FactoryDone))]
+    public static class LG_Factory__FactoryDone__Patch
     {
         public static void Postfix()
         {

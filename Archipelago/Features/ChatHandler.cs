@@ -13,8 +13,11 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using ReTFO.Archipelago.Utilities;
+using SNetwork;
 
 [EnableFeatureByDefault]
 public class ChatHandler : ArchipelagoFeature
@@ -41,7 +44,7 @@ public class ChatHandler : ArchipelagoFeature
                 plugin.StateTracker.ApSession.MessageLog.OnMessageReceived += OnMessageReceived;
         }
         else
-            plugin.LateSetup += (_) => StateTracker.Get().OnStateChange += OnStateChanged;
+            plugin.LateSetup += OnLateSetup;
     }
 
     public override void OnDisable()
@@ -74,6 +77,15 @@ public class ChatHandler : ArchipelagoFeature
         public bool DoShowOnlyMyRecievedItemMessages { get; set; } = false;
     }
 
+    protected void OnLateSetup(SNet_Replicator replicator)
+    {
+        Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData> action = this.OnSNetPacketReceived;
+
+        m_packet = replicator.CreatePacketBytes(
+            Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>>(action)
+        );
+        StateTracker.Get().OnStateChange += OnStateChanged;
+    }
 
     protected void OnStateChanged(StateTracker stateTracker)
     {
@@ -83,12 +95,28 @@ public class ChatHandler : ArchipelagoFeature
 
     private Queue<string> m_messages = new();
     public IEnumerable<string> Messages => m_messages;
+    private SNet_PacketBufferBytes? m_packet = null;
 
     /// <summary>
     /// Constructs a hex color string with one digit per color
     /// </summary>
     public static string ColorToHex(AP.Models.Color color)
         => $"#{(color.R >> 4).ToString("X1")}{(color.G >> 4).ToString("X1")}{(color.B >> 4).ToString("X1")}";
+
+    /// <summary>
+    /// Receive a message from SNet. Intended solely for proxy clients.
+    /// </summary>
+    protected void OnSNetPacketReceived(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
+    {
+        StateTracker stateTracker = StateTracker.Get();
+        if (stateTracker.ApSession != null) return;
+
+        int index = 0;
+        string? message = SerializationHelpers.ReadString(bytes, ref index);
+        if (message == null) return;
+
+        StateTracker.LogForLobby(message, true);
+    }
 
     /// <summary>
     /// Receive messages from AP and format before presenting
@@ -154,12 +182,27 @@ public class ChatHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Marshal messages to the main thread
+    /// Marshal messages to the main thread. Also send over SNet if necessary
     /// </summary>
     public override void Update()
     {
         while (m_messages.TryDequeue(out string? message))
-            StateTracker.LogForPlayer(message);
+        {
+            StateTracker.LogForLobby(message, true);
+            if (SNet.IsMaster)
+            {
+                Il2CppStructArray<byte> bytes = new(SerializationHelpers.CalcStringSize(message));
+                int index = 0;
+                SerializationHelpers.WriteString(bytes, ref index, message);
+                m_packet?.Send(
+                    bytes, 
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendGroup.PlayersInSessionHub,
+                    SNet_SendQuality.Reliable,
+                    (int)SNet_ChannelType.GameNonCritical
+                );
+            }
+        }
     }
 
     /// <summary>

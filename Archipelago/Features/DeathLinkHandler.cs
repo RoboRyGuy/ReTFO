@@ -60,8 +60,8 @@ public class DeathLinkHandler : ArchipelagoFeature
         [FSDescription(
             "What in GTFO triggers a DeathLink event to be sent to the multiverse."
             + "\n\n<u>On Human Player Downed</u>" + "\nWhen the number of human (non-bot) players downed meets or multiples the threshold, or on expedition fail."
-            + "\n\n<u>On Any Downed</u>"          + "\nWhen the number of players (including bots) downed meets or multiples the threshold, or on expedition fail."
-            + "\n\n<u>On Expedition Fail</u>"     + "\nWhen an expedition ends in failure (not success, not abort)."
+            + "\n\n<u>On Any Downed</u>" + "\nWhen the number of players (including bots) downed meets or multiples the threshold, or on expedition fail."
+            + "\n\n<u>On Expedition Fail</u>" + "\nWhen an expedition ends in failure (not success, not abort)."
         )]
         public TriggerType Trigger { get; set; } = TriggerType.OnExpeditionFail;
 
@@ -72,12 +72,12 @@ public class DeathLinkHandler : ArchipelagoFeature
         [FSDisplayName("DeathLink Effect")]
         [FSDescription(
             "What in GTFO happens when a DeathLink event is received from the multiverse."
-            + "\n\n<u>Spawn Tanks</u>"              + "\nSpawn the supplied number of tanks (immediately aggressive)."
-            + "\n\n<u>Spawn Snatchers</u>"          + "\nSpawn the supplied number of snatchers. One is spawned immediately, the rest are chain-spawned in 1-5 minute intervals."
-            + "\n\n<u>Spawn Nightmare Scouts</u>"   + "\nSpawn the supplied number of nightmare scouts (still asleep) in random unoccupied zones."
-            + "\n\n<u>Deal Damage</u>"              + "\nThe supplied percent is dealt as damage to each player, killing them if necessary."
-            + "\n\n<u>Delete Resources</u>"         + "\nThe supplied percent is dealt as damage AND deleted from all gear for each player. If this would kill a player, they are instead left at 1% health."
-            + "\n\n<u>Down Random Player</u>"       + "\nThe supplied number of players are randomly picked and immediately downed."
+            + "\n\n<u>Spawn Tanks</u>" + "\nSpawn the supplied number of tanks (immediately aggressive)."
+            + "\n\n<u>Spawn Snatchers</u>" + "\nSpawn the supplied number of snatchers. One is spawned immediately, the rest are chain-spawned in 1-5 minute intervals."
+            + "\n\n<u>Spawn Nightmare Scouts</u>" + "\nSpawn the supplied number of nightmare scouts (still asleep) in random unoccupied zones."
+            + "\n\n<u>Deal Damage</u>" + "\nThe supplied percent is dealt as damage to each player, killing them if necessary."
+            + "\n\n<u>Delete Resources</u>" + "\nThe supplied percent is dealt as damage AND deleted from all gear for each player. If this would kill a player, they are instead left at 1% health."
+            + "\n\n<u>Down Random Player</u>" + "\nThe supplied number of players are randomly picked and immediately downed."
             + "\n\n<u>Down Random Human Player</u>" + "\nThe supplied number of players are immediately downed, randomly picked with a priority for humans."
         )]
         public EffectType Effect { get; set; } = EffectType.DownRandomPlayer;
@@ -95,7 +95,12 @@ public class DeathLinkHandler : ArchipelagoFeature
 
         [FSDisplayName("Trigger Now")]
         [FSDescription("Immediately try to trigger the DeathLink effect. Affects this GTFO lobby only; is restricted by the cooldown")]
-        public FButton TriggerEffectButton { get; set; } = new FButton("Test DeathLink", callback: () => TryTriggerDeathLink(new DeathLink(HostName, $"{PlayerManager.GetLocalPlayerAgent()?.Owner.NickName ?? "Someone"} hit the \"Test DeathLink\" button.")));
+        public FButton TriggerEffectButton { get; set; } = new FButton("Test DeathLink", callback: () => {
+            if (!SNetwork.SNet.IsMaster)
+                StateTracker.LogForLobby("You cannot trigger a death link; you are not host!", true);
+            else
+                TryTriggerDeathLink(new DeathLink(HostName, $"{PlayerManager.GetLocalPlayerAgent()?.Owner.NickName ?? "Someone"} hit the \"Test DeathLink\" button."));
+        });
 
         [FSDisplayName("Show Messages")]
         [FSDescription("If true, show death messages when sending or receiving a DeathLink event.")]
@@ -104,6 +109,7 @@ public class DeathLinkHandler : ArchipelagoFeature
 
     private static DeathLinkService? s_service = null;
     private static float LastTriggerTime = 0f;
+    private static float LastSnatcherTime = -1000f;
 
     public override void OnEnable()
     {
@@ -148,6 +154,7 @@ public class DeathLinkHandler : ArchipelagoFeature
     /// <param name="data">Event data received from the multiverse</param>
     public static void TryTriggerDeathLink(DeathLink data)
     {
+        if (!SNetwork.SNet.IsMaster) return;
         FeatureLogger.Debug("Received DeathLink event");
         if (!GameStateManager.IsInExpedition) return; // Spared, for now...
 
@@ -156,8 +163,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
         if (Config.DoShowMessages && data.Cause != null)
-            StateTracker.LogForPlayer($"<#F0F>[Death]</color> {data.Cause}");
-            //PlayerChatManager.WantToSentTextMessage(PlayerManager.GetLocalPlayerAgent(), data.Cause);
+            StateTracker.LogForLobby($"<#F0F>[Death]</color> {data.Cause}", false);
     
         const uint SingleEnemyWave = 30; // Vanilla survival wave settings which spawns a single enemy (filtered to weakling)
         switch (Config.Effect)
@@ -198,13 +204,14 @@ public class DeathLinkHandler : ArchipelagoFeature
                         WaveSettings = SingleEnemyWave,
                         WorldEventObjectFilterSpawnPoint = null
                     },
-                    Delay = 0f,
+                    Delay = MathF.Max(0f, (LastSnatcherTime - UnityEngine.Time.fixedTime) + 60f + Random.Shared.NextSingle() * 240f),
                 };
                 for (int i = 0; i < Config.EffectNumber; i++)
                 {
                     WorldEventManager.ExecuteEvent(snatcherData);
-                    snatcherData.Delay = 60f + Random.Shared.NextSingle() * 240f;
+                    snatcherData.Delay += 60f + Random.Shared.NextSingle() * 240f;
                 }
+                LastSnatcherTime = UnityEngine.Time.fixedTime + snatcherData.Delay;
                 break;
 
             case Settings.EffectType.SpawnNightmareScouts:
@@ -314,6 +321,8 @@ public class DeathLinkHandler : ArchipelagoFeature
     /// <param name="cause">A full death message ("RoboRyGuy was pulverised by Big Charger")</param>
     public static void NotifyDied(string cause)
     {
+        if (!SNetwork.SNet.IsMaster) return;
+
         if ((UnityEngine.Time.realtimeSinceStartup - Config.Cooldown) <= LastTriggerTime)
             return;
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
@@ -321,7 +330,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         FeatureLogger.Debug("Sending DeathLink event: " + cause);
         s_service?.SendDeathLink(new DeathLink(HostName, cause));
         if (Config.DoShowMessages)
-            StateTracker.LogForPlayer($"<#F0F>[Death]</color> {cause}");
+            StateTracker.LogForLobby($"<#F0F>[Death]</color> {cause}", false);
     }
 
     /// <summary>

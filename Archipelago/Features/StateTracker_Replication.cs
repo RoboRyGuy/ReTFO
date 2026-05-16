@@ -2,7 +2,6 @@
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
-using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
@@ -15,6 +14,9 @@ using TheArchive.Core.Attributes.Feature.Patches;
 using pArtifactInventoryState = BoosterImplants.pArtifactInventoryState;
 
 namespace ReTFO.Archipelago.Features;
+
+using ReTFO.Archipelago.ModdedInstanceData.Model;
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 // Tracks Archipelago state.
 // This file is dedicated to the SNetwork integration for StateTracker
@@ -52,7 +54,7 @@ public partial class StateTracker : ArchipelagoFeature
         public long[] BlacklistTags;
 
         /// <summary>
-        /// Calulcate the size of this struct, when serialized, in bytes
+        /// Calculate the size of this struct, when serialized, in bytes
         /// </summary>
         /// <returns>The size of this struct, when serialized, in bytes</returns>
         public int CalcByteSize()
@@ -109,8 +111,8 @@ public partial class StateTracker : ArchipelagoFeature
             return result;
         }
 
-        /// <inheritdoc cref="ReadFromBytes(Il2CppStructArray{byte}), ref int"/>
-        public static pArchipelagoInitState ReadFromBytes(Il2CppStructArray<byte> bytes)
+        /// <inheritdoc cref="FromBytes(Il2CppStructArray{byte}), ref int"/>
+        public static pArchipelagoInitState FromBytes(Il2CppStructArray<byte> bytes)
         {
             int offset = 0;
             return ReadFromBytes(bytes, ref offset);
@@ -119,26 +121,39 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Struct used for general Archipelago replication and recalls
+    /// Struct used to send scouting info to clients
     /// </summary>
-    public struct pArchipelagoGeneralState
+    public struct pArchipelagoScoutingUpdate
     {
         /// <summary>
-        /// List of all items collected
+        /// Pairs of strings, in the order PlayerName, GameName, PlayerName, etc...
+        /// One entry exists per slot.
         /// </summary>
-        public long[] ItemIds;
+        public string[] SlotLookup;
 
         /// <summary>
-        /// List of items stored in the terminal system (not including their code names)
+        /// List of the locations scouted
         /// </summary>
-        public long[] ItemsInTerminalSystem;
+        public long[] LocationIDs;
 
         /// <summary>
-        /// Calulcate the size of this struct, when serialized, in bytes
+        /// The index of the item's slot in the lookup contained in this struct
+        /// </summary>
+        public long[] SlotIds;
+
+        /// <summary>
+        /// The display name for the item in each location
+        /// </summary>
+        public string[] ItemDisplayNames;
+
+        /// <summary>
+        /// Calculate the size of this struct, when serialized, in bytes
         /// </summary>
         /// <returns>The size of this struct, when serialized, in bytes</returns>
         public int CalcByteSize()
-            => SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[2][] { ItemIds, ItemsInTerminalSystem });
+            => SerializationHelpers.CalcStringArraySize(SlotLookup)
+            + SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[2][] { LocationIDs, SlotIds })
+            + SerializationHelpers.CalcStringArraySize(ItemDisplayNames);
 
         /// <summary>
         /// Convert this state to a byte array
@@ -159,7 +174,94 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="index">The index to write to. This will be moved to the next unwritten byte</param>
         public void WriteToBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
-            long[][] arrs = new long[2][] { ItemIds, ItemsInTerminalSystem };
+            SerializationHelpers.WriteStringArray(bytes, ref index, SlotLookup);
+            long[][] arrs = new long[2][] { LocationIDs, SlotIds };
+            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, arrs, arrs.Sum(i => i.Length));
+            SerializationHelpers.WriteStringArray(bytes, ref index, ItemDisplayNames);
+        }
+
+        /// <summary>
+        /// Read a byte array and convert it to a scouting update
+        /// </summary>
+        /// <param name="bytes">The bytes to read from</param>
+        /// <param name="index">The index to start reading at. Will be moved to the next unread spot after reading.</param>
+        /// <returns>The deserialized struct</returns>
+        public static pArchipelagoScoutingUpdate FromBytes(Il2CppStructArray<byte> bytes, ref int index)
+        {
+            pArchipelagoScoutingUpdate result;
+            result.SlotLookup = SerializationHelpers.ReadStringArray(bytes, ref index);
+            
+            var arrs = SerializationHelpers.Read7BitEncodedMultiArray(bytes, ref index);
+            result.LocationIDs = new long[arrs[0].Length];
+            arrs[0].AsSpan().CopyTo(result.LocationIDs.AsSpan());
+            result.SlotIds = new long[arrs[1].Length];
+            arrs[1].AsSpan().CopyTo(result.SlotIds.AsSpan());
+
+            result.ItemDisplayNames = SerializationHelpers.ReadStringArray(bytes, ref index);
+            return result;
+        }
+
+        /// <inheritdoc cref="FromBytes(Il2CppStructArray{byte}, ReferenceEqualityComparer int)"/>
+        public static pArchipelagoScoutingUpdate FromBytes(Il2CppStructArray<byte> bytes)
+        {
+            int offset = 0;
+            return FromBytes(bytes, ref offset);
+        }
+
+    }
+
+    /// <summary>
+    /// Struct used for general Archipelago replication and recalls
+    /// </summary>
+    public struct pArchipelagoGeneralState
+    {
+        /// <summary>
+        /// List of all locations checked
+        /// </summary>
+        public long[] LocationsChecked;
+
+        /// <summary>
+        /// List of all locations marked as trash
+        /// </summary>
+        public long[] TrashedLocations;
+
+        /// <summary>
+        /// List of all items collected
+        /// </summary>
+        public long[] ItemIds;
+
+        /// <summary>
+        /// List of items stored in the terminal system (not including their code names)
+        /// </summary>
+        public long[] ItemsInTerminalSystem;
+
+        /// <summary>
+        /// Calculate the size of this struct, when serialized, in bytes
+        /// </summary>
+        /// <returns>The size of this struct, when serialized, in bytes</returns>
+        public int CalcByteSize()
+            => SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[4][] { LocationsChecked, TrashedLocations, ItemIds, ItemsInTerminalSystem });
+
+        /// <summary>
+        /// Convert this state to a byte array
+        /// </summary>
+        /// <param name="offset">Number of blank bytes to leave at the beginning of the array</param>
+        /// <returns>The requested byte array</returns>
+        public Il2CppStructArray<byte> ToBytes(int offset = 0)
+        {
+            Il2CppStructArray<byte> bytes = new(offset + CalcByteSize());
+            WriteToBytes(bytes, ref offset);
+            return bytes;
+        }
+
+        /// <summary>
+        /// Write this struct to an existing byte array at the provided index.
+        /// </summary>
+        /// <param name="bytes">The bytes array to write to</param>
+        /// <param name="index">The index to write to. This will be moved to the next unwritten byte</param>
+        public void WriteToBytes(Il2CppStructArray<byte> bytes, ref int index)
+        {
+            long[][] arrs = new long[4][] { LocationsChecked, TrashedLocations, ItemIds, ItemsInTerminalSystem };
             SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, arrs, arrs.Sum(i => i.Length));
         }
 
@@ -174,12 +276,16 @@ public partial class StateTracker : ArchipelagoFeature
             var arrs = SerializationHelpers.Read7BitEncodedMultiArray(bytes, ref index);
             var result = new pArchipelagoGeneralState()
             {
-                ItemIds = new long[arrs[0].Length],
-                ItemsInTerminalSystem = new long[arrs[1].Length],
+                LocationsChecked = new long[arrs[0].Length],
+                TrashedLocations = new long[arrs[1].Length],
+                ItemIds = new long[arrs[2].Length],
+                ItemsInTerminalSystem = new long[arrs[3].Length],
             };
 
-            arrs[0].AsSpan().CopyTo(result.ItemIds.AsSpan());
-            arrs[1].AsSpan().CopyTo(result.ItemsInTerminalSystem.AsSpan());
+            arrs[0].AsSpan().CopyTo(result.LocationsChecked.AsSpan());
+            arrs[1].AsSpan().CopyTo(result.TrashedLocations.AsSpan());
+            arrs[2].AsSpan().CopyTo(result.ItemIds.AsSpan());
+            arrs[3].AsSpan().CopyTo(result.ItemsInTerminalSystem.AsSpan());
             return result;
         }
 
@@ -202,16 +308,19 @@ public partial class StateTracker : ArchipelagoFeature
         {
             CheckRegion,
             CheckLocation,
+            MarkTrash,
+            EmptyTrash,
             CollectItem,
         }
 
         /// <summary>
         /// Create new pArchipelagoInteraction with the provided values
         /// </summary>
-        public pArchipelagoInteraction(eType type, long value)
+        public pArchipelagoInteraction(eType type, long value = 0, ushort count = 0)
         {
             Type = type;
             Value = value;
+            Count = count;
         }
 
         /// <summary>
@@ -235,9 +344,9 @@ public partial class StateTracker : ArchipelagoFeature
         public pArtifactInventoryState ToBytes()
         {
             byte[] bytes = new byte[sizeof(int) * 3];
-            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0, sizeof(int)), (ushort)Type);
-            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0, sizeof(int)), Count);
-            BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(sizeof(int), sizeof(long)), Value);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0, sizeof(ushort)), (ushort)Type);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(sizeof(ushort), sizeof(ushort)), Count);
+            BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(2 * sizeof(ushort), sizeof(long)), Value);
             return MemoryMarshal.Read<pArtifactInventoryState>(bytes);
         }
 
@@ -273,25 +382,41 @@ public partial class StateTracker : ArchipelagoFeature
 
             IntPtr ptr;
 
+            // Init
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveInitState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
             m_initStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
+            // Scouting Update
+            ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                this.ObjectClass, false, nameof(OnReceiveScoutingUpdate), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
+            );
+            m_scoutingUpdatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
+
+            // General state
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveGeneralState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
             m_generalStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
+            // General state (recall)
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveRecallState), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
             );
             m_recallStatePacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
 
+            // Interaction
             ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
                 this.ObjectClass, false, nameof(OnReceiveInteraction), typeof(void).FullName!, new string[] { typeof(pArtifactInventoryState).FullName! }
             );
             m_interactionPacket = m_replicator.CreatePacket(new Il2CppSystem.Action<pArtifactInventoryState>(this, ptr));
+
+            // Logging
+            ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                this.ObjectClass, false, nameof(OnReceiveLog), typeof(void).FullName!, new string[] { typeof(Il2CppStructArray<byte>).FullName!, typeof(SNet_PacketBufferBytes.BufferData).FullName! }
+            );
+            m_logPacket = m_replicator.CreatePacketBytes(new Il2CppSystem.Action<Il2CppStructArray<byte>, SNet_PacketBufferBytes.BufferData>(this, ptr));
         }
 
         // IReplicatorSupplier
@@ -332,9 +457,11 @@ public partial class StateTracker : ArchipelagoFeature
         // Note that we have to reuse existing generic instantiations for which AOT code
         //  exists; we'll reinterpret the bytes before forwarding calls to StateTracker
         private SNet_PacketBufferBytes m_initStatePacket = null!;
+        private SNet_PacketBufferBytes m_scoutingUpdatePacket = null!;
         private SNet_PacketBufferBytes m_generalStatePacket = null!;
         private SNet_PacketBufferBytes m_recallStatePacket = null!;
         private SNet_Packet<pArtifactInventoryState> m_interactionPacket = null!;
+        private SNet_PacketBufferBytes m_logPacket = null!;
 
         /// <summary>
         /// Returns replicator information for the replicator backing this state replicator
@@ -353,8 +480,19 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="data">Data about the buffer being received</param>
         private void OnReceiveInitState(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
         {
-            pArchipelagoInitState state = pArchipelagoInitState.ReadFromBytes(bytes);
+            pArchipelagoInitState state = pArchipelagoInitState.FromBytes(bytes);
             m_owner.ReceiveInitState(state);
+        }
+
+        /// <summary>
+        /// Callback fro receiving init state from the network
+        /// </summary>
+        /// <param name="bytes">Scouting update as bytes</param>
+        /// <param name="data">Data about the buffer being received</param>
+        private void OnReceiveScoutingUpdate(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
+        {
+            pArchipelagoScoutingUpdate update = pArchipelagoScoutingUpdate.FromBytes(bytes);
+            m_owner.ReceiveScoutingUpdate(update);
         }
 
         /// <summary>
@@ -390,6 +528,18 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         /// <summary>
+        /// Receive a log message from SNet and log it to the screen
+        /// </summary>
+        /// <param name="bytes">The message being received, as bytes</param>
+        /// <param name="data">Data about the buffer being received</param>
+        private void OnReceiveLog(Il2CppStructArray<byte> bytes, SNet_PacketBufferBytes.BufferData data)
+        {
+            int index = 0;
+            string? message = SerializationHelpers.ReadString(bytes, ref index);
+            if (message != null) StateTracker.LogForLobby(message, true);
+        }
+
+        /// <summary>
         /// Immediately send an init packet
         /// </summary>
         public void SendInit(SNet_Player? player = null)
@@ -408,6 +558,37 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 m_initStatePacket.Send(
                     m_owner.MakeInitState().ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendQuality.Reliable,
+                    (int)SNet_ChannelType.SessionOrderCritical,
+                    player
+                );
+            }
+        }
+
+        /// <summary>
+        /// Immediately send an init packet
+        /// </summary>
+        public void SendScouting(pArchipelagoScoutingUpdate? update = null, SNet_Player? player = null)
+        {
+            update ??= m_owner.MakeScoutingUpdate();
+            if (update.Value.LocationIDs.Length == 0)
+                return; // No need to send an empty packet
+
+            if (player == null)
+            {
+                m_scoutingUpdatePacket.Send(
+                    update.Value.ToBytes(),
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendGroup.PlayersInSessionHub,
+                    SNet_SendQuality.Reliable,
+                    (int)SNet_ChannelType.SessionOrderCritical
+                );
+            }
+            else
+            {
+                m_scoutingUpdatePacket.Send(
+                    update.Value.ToBytes(),
                     SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
                     SNet_SendQuality.Reliable,
                     (int)SNet_ChannelType.SessionOrderCritical,
@@ -449,7 +630,39 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="interaction">The interaction being performed</param>
         public void SendInteraction(pArchipelagoInteraction interaction)
         {
-            m_interactionPacket.Send(interaction.ToBytes(), SNet_ChannelType.SessionOrderCritical, SNet_SendQuality.Reliable);
+            m_interactionPacket.Send(interaction.ToBytes(), SNet_ChannelType.SessionOrderCritical, SNet_SendQuality.Reliable_WithBuffering);
+        }
+
+        /// <summary>
+        /// Send a log
+        /// </summary>
+        /// <param name="message">The log to send</param>
+        public void SendLog(string message, SNet_Player? player = null)
+        {
+            Il2CppStructArray<byte> bytes = new(SerializationHelpers.CalcStringSize(message));
+            int index = 0;
+            SerializationHelpers.WriteString(bytes, ref index, message);
+
+            if (player == null)
+            {
+                m_logPacket.Send(
+                    bytes,
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendGroup.PlayersInSessionHub,
+                    SNet_SendQuality.Reliable,
+                    (int)SNet_ChannelType.GameNonCritical
+                );
+            }
+            else
+            {
+                m_logPacket.Send(
+                    bytes,
+                    SNet_PacketBufferBytes.GetBufferDataBytes(new SNet_PacketBufferBytes.BufferData(1, 0)),
+                    SNet_SendQuality.Reliable,
+                    (int)SNet_ChannelType.GameNonCritical,
+                    player
+                );
+            }
         }
     }
 
@@ -499,7 +712,6 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Wrap the current state of the StateTracker into a struct used for replication.
     /// </summary>
-    /// <returns>The current state for the StateTracker</returns>
     public pArchipelagoInitState MakeInitState()
     {
         pArchipelagoInitState result = new()
@@ -529,15 +741,59 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Wrap the current state of the StateTracker into a struct used for recalls and replication
     /// </summary>
-    /// <returns></returns>
     public pArchipelagoGeneralState MakeGeneralState()
     {
         // Might optimize this later
         return new pArchipelagoGeneralState()
         {
+            LocationsChecked = FoundLocations.Select(id => id.AsId).ToArray(),
+            TrashedLocations = TrashedLocations.Select(id => id.AsId).ToArray(),
             ItemIds = ActualItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.AsId, pair.Value)).ToArray(),
             ItemsInTerminalSystem = ItemsInTerminalSystem.Select(pair => pair.Item1.AsId).ToArray(),
         };
+    }
+
+    /// <summary>
+    /// Make a scouting update for all scouted items
+    /// </summary>
+    public pArchipelagoScoutingUpdate MakeScoutingUpdate()
+        => FormatScoutingUpdate(MidManager.GetProcessedGameData().GetAllLocations().Where(l => l.Value.ScoutedItemName != null).Select(i => i.Key));
+
+    /// <summary>
+    /// Make a scouting update for a particular collection of items
+    /// </summary>
+    /// <param name="locations">The locations to create a scouting update for</param>
+    public pArchipelagoScoutingUpdate FormatScoutingUpdate(IEnumerable<LocationID> locations)
+    {
+        if (ApSession == null) throw new NullReferenceException();
+        pArchipelagoScoutingUpdate result;
+
+        Dictionary<string, int> playerIdToLookup = new();
+        result.SlotLookup = new string[ApSession!.Players.AllPlayers.Count() * 2];
+        int count = 0;
+
+        foreach (var player in ApSession.Players.AllPlayers)
+        {
+            playerIdToLookup.Add(player.Name, count++);
+            result.SlotLookup[2 * count] = player.Name;
+            result.SlotLookup[2 * count + 1] = player.Game;
+        }
+
+        Game.Data data = MidManager.GetProcessedGameData();
+        result.LocationIDs = locations.Select(id => id.AsId).ToArray();
+        result.SlotIds = new long[result.LocationIDs.Length];
+        result.ItemDisplayNames = new string[result.LocationIDs.Length];
+
+        count = 0;
+        for (int i = 0; i < result.LocationIDs.Length; i++)
+        {
+            LocationID id = new() { AsId = result.LocationIDs[i] };
+            Location location = data.LookupLocation(id);
+            result.SlotIds[count] = playerIdToLookup[location.ScoutedPlayerName ?? throw new NullReferenceException()];
+            result.ItemDisplayNames[count] = location.ScoutedItemName ?? throw new NullReferenceException();
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -547,13 +803,10 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="value">An optional value associated with the interaction type</param>
     protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0, ushort count = 0)
     {
-        // Check if master
-        if (!SNet.IsMaster) return;
-        
         // If recalling, we'll redo several interactions (ie adding items to terminal)
         if (SNet.Capture.IsRecalling) return;
 
-        m_stateReplicator!.SendInteraction(new pArchipelagoInteraction(type, value));
+        m_stateReplicator!.SendInteraction(new pArchipelagoInteraction(type, value: value, count: count));
     }
 
     /// <summary>
@@ -561,6 +814,32 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="state">The init state being received</param>
     public void ReceiveInitState(pArchipelagoInitState state) => ClientConnect(state);
+
+    /// <summary>
+    /// Receive scouting information from SNet
+    /// </summary>
+    /// <param name="update"></param>
+    public void ReceiveScoutingUpdate(pArchipelagoScoutingUpdate update)
+    {
+        if (ApSession != null)
+        {
+            FeatureLogger.Debug("Ignoring scouting update; we are connected to AP!");
+            return;
+        }
+
+        FeatureLogger.Debug("Received a scouting update.");
+        Game.Data data = MidManager.GetProcessedGameData();
+
+        for (int i = 0; i < update.LocationIDs.Length; i++)
+        {
+            LocationID id = new() { AsId = update.LocationIDs[i] };
+            Location loc = data.LookupLocation(id);
+            long slot = update.SlotIds[i];
+            loc.ScoutedItemName = update.ItemDisplayNames[i];
+            loc.ScoutedPlayerName = update.SlotLookup[2 * slot];
+            loc.ScoutedGameName = update.SlotLookup[2 * slot + 1];
+        }
+    }
 
     /// <summary>
     /// Receive a general state, expected periodically to ensure good sync
@@ -586,6 +865,10 @@ public partial class StateTracker : ArchipelagoFeature
 
         var gameData = MidManager.GetProcessedGameData();
 
+        // We only add to checked locations - no need to notify
+        FoundLocations.UnionWith(state.LocationsChecked.Select(id => new LocationID() { AsId = id }));
+        TrashedLocations.UnionWith(state.TrashedLocations.Select(id => new LocationID() { AsId = id }));
+
         // Reset terminal items
         ItemsInTerminalSystem.Clear();
         foreach (var id in state.ItemsInTerminalSystem)
@@ -608,7 +891,7 @@ public partial class StateTracker : ArchipelagoFeature
             else
             {   // Check for items we're missing and try to obtain them
                 for (int i = count; i < newCount; i++)
-                    CollectItem(key);
+                    CollectItem(key, skipInteraction: true);
             }
         }
     }
@@ -619,36 +902,41 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="interaction">The interaction to receive and handle</param>
     public void ReceiveInteraction(pArchipelagoInteraction interaction)
     {
+        PlayerAgent? sendingAgent = null;
+        if (SNet.Replication.TryGetLastSender(out SNet_Player sender))
+            sendingAgent = sender.PlayerAgent?.TryCast<PlayerAgent>();
+
         switch (interaction.Type)
         {
             case pArchipelagoInteraction.eType.CollectItem:
-
-                // If we're authoritative on items, we can determine these things ourselves
+                // If we're authoritative on items, we ignore client notifications
                 if (ApSession != null) return;
                 if (CurrentState == eState.FakeConnect) return;
 
-                ItemID itemId = new() { AsId = interaction.Value };
-
                 // Note we intentionally truncate the actual item count as a form of lazy rollover support
+                ItemID itemId = new() { AsId = interaction.Value };
                 int actualItemCount = (ushort)ActualItemCounts.GetValueOrDefault(itemId, 0);
                 while (actualItemCount++ < interaction.Count)
-                    CollectItem(itemId);
+                    CollectItem(itemId, skipInteraction: true);
                 break;
 
             case pArchipelagoInteraction.eType.CheckLocation:
                 LocationID locationId = new() { AsId = interaction.Value };
-                PlayerAgent? locSourcePlayer = null;
-                if (SNet.Replication.TryGetLastSender(out SNet_Player locPlayer))
-                    locSourcePlayer = locPlayer.PlayerAgent?.TryCast<PlayerAgent>();
-                NotifyFoundLocation(locationId, locSourcePlayer);
+                NotifyFoundLocation(locationId, sendingAgent, skipInteraction: true);
+                break;
+
+            case pArchipelagoInteraction.eType.MarkTrash:
+                LocationID trashId = new() { AsId = interaction.Value };
+                MarkAsTrash([ trashId ], sendingAgent, skipInteraction: true);
+                break;
+
+            case pArchipelagoInteraction.eType.EmptyTrash:
+                TrashedLocations.Clear();
                 break;
 
             case pArchipelagoInteraction.eType.CheckRegion:
                 RegionID regionId = new() { AsId = interaction.Value };
-                PlayerAgent? regSourcePlayer = null;
-                if (SNet.Replication.TryGetLastSender(out SNet_Player regPlayer))
-                    regSourcePlayer = regPlayer.PlayerAgent?.TryCast<PlayerAgent>();
-                NotifyFoundRegion(regionId, regSourcePlayer);
+                NotifyFoundRegion(regionId, sendingAgent, skipInteraction: true);
                 break;
 
             default:
@@ -665,20 +953,35 @@ public partial class StateTracker : ArchipelagoFeature
     {
         public static void Prefix(SNet_SessionHub __instance, SNet_Player player)
         {
-            var func = () =>
-            {
-                if (!SNet.IsMaster) return;
-                if (SNet.SessionHub.PlayersInSession.Any(p => p.Pointer == player.Pointer)) return;
+            if (!SNet.IsMaster) return;
+            if (SNet.SessionHub.PlayersInSession.Any(p => p.Pointer == player.Pointer)) return;
 
-                FeatureLogger.Notice($"Adding new player to session; sending init packet: {player.NickName}");
-                StateTracker.Get().m_stateReplicator?.SendInit(player);
-            };
-            func();
+            FeatureLogger.Notice($"New player requesting to join session; sending init packet: {player.NickName}");
+            StateTracker.Get().m_stateReplicator?.SendInit(player);
         }
     }
 
-    pMasterAnswer cachedMasterAnswer = new();
-    bool allowConnection = false;
+    /// <summary>
+    /// Sends general sync packets when a player joins the lobby
+    /// </summary>
+    [ArchivePatch(typeof(SNet_SessionHub), nameof(SNet_SessionHub.OnJoinedLobby))]
+    public static class SNet_SessionHub__OnJoinedLobby__Patch
+    {
+        public static void Postfix(SNet_SessionHub __instance, SNet_Player player)
+        {
+            if (!SNet.IsMaster) return;
+
+            FeatureLogger.Notice($"Adding new player to session; sending sync packets: {player.NickName}");
+            StateTracker st = StateTracker.Get();
+            st.m_stateReplicator?.SendGeneral(player);
+            st.m_stateReplicator?.SendScouting(player: player);
+        }
+    }
+
+    /// <summary>
+    /// Cached master answer; used to determine if we're trying to connect as a client
+    /// </summary>
+    pMasterAnswer m_cachedMasterAnswer { get; set; } = new() { answer = pMasterSessionAnswerType.LeaveLobby };
 
     /// <summary>
     /// Prevent us from joining a lobby before we've finished the client setup process
@@ -688,23 +991,17 @@ public partial class StateTracker : ArchipelagoFeature
     {
         public static bool Prefix(SNet_SessionHub __instance, pMasterAnswer data)
         {
-            var func = () =>
+            StateTracker stateTracker = StateTracker.Get();
+            if (stateTracker.m_cachedMasterAnswer.answer == pMasterSessionAnswerType.AllowedToJoinHub)
             {
-                FeatureLogger.Notice($"Received Master Answer: {Enum.GetName(data.answer)}");
+                FeatureLogger.Notice("Client connection allowed!");
+                stateTracker.m_cachedMasterAnswer = new() { answer = pMasterSessionAnswerType.LeaveLobby };
+                return true;
+            }
 
-                StateTracker stateTracker = StateTracker.Get();
-                if (stateTracker.allowConnection)
-                {
-                    FeatureLogger.Notice("Client connection allowed!");
-                    stateTracker.allowConnection = false;
-                    return true;
-                }
-
-                FeatureLogger.Notice("Received master answer; caching and blocking for now");
-                stateTracker.cachedMasterAnswer = data;
-                return false;
-            };
-            return func();
+            FeatureLogger.Notice("Received master answer; caching and blocking for now");
+            stateTracker.m_cachedMasterAnswer = data;
+            return false;
         }
     }
 
@@ -718,27 +1015,8 @@ public partial class StateTracker : ArchipelagoFeature
     {
         public static bool Prefix(SNet_Player masterPlayer)
         {
-            if (masterPlayer.Pointer == SNet.LocalPlayer.Pointer)
-            {
-                StateTracker stateTracker = StateTracker.Get();
-                switch (stateTracker.CurrentState)
-                {
-                    case eState.CleanState:
-                    case eState.ProxyClient:
-                        return false;
-
-                    case eState.HostConnecting:
-                    case eState.HostConnected:
-                    case eState.HostReconnecting:
-                    case eState.FakeConnect:
-                    case eState.ConnectedClient:
-                        return true;
-
-                    default:
-                        throw new ArgumentException($"{nameof(stateTracker.CurrentState)} is an unexpected value: {(int)stateTracker.CurrentState}");
-                }
-            }
-            return true;
+            if (masterPlayer.Pointer != SNet.LocalPlayer.Pointer) return true;
+            return StateTracker.Get().ApSession != null;
         }
     }
 }

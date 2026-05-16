@@ -56,7 +56,7 @@ public static class Objective
         /// Helper to construct a unique, user-friendly name for this objective.
         /// </summary>
         /// <param name="objectiveTypeSummary">A brief summary of what the objective is</param>
-        public string ObjectiveName(string? objectiveTypeSummary)
+        public string ObjectiveName(string? objectiveTypeSummary = null)
             => $"{LayerName} Objective #{ObjectiveIndex + 1}{(objectiveTypeSummary == null ? "" : $" ({objectiveTypeSummary})")}";
 
         /// <summary>

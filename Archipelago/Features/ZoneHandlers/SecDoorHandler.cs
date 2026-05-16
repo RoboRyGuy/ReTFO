@@ -140,9 +140,8 @@ public class SecDoorHandler : ArchipelagoFeature
     {
         public static void Postfix(PlayerAgent __instance)
         {
-            Plugin plugin = Plugin.Get();
             Zone.Data zoneData = Zone.Data.FromZone(__instance.CourseNode.m_zone);
-            plugin.StateTracker.NotifyFoundRegion(zoneData.ZoneName, __instance);
+            StateTracker.Get().NotifyFoundRegion(zoneData.ZoneName, __instance);
         }
     }
 }

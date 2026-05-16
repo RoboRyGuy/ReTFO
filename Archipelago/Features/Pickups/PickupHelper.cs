@@ -189,7 +189,7 @@ public class PickupHelper : ArchipelagoFeature
             {
                 Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
                 string backupName = gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name;
-                pickup.SetName(new Il2CppFunc_string(() => loc.ScoutedItem?.ItemDisplayName ?? backupName));
+                pickup.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
             }
         }
     }
@@ -337,9 +337,9 @@ public class PickupHelper : ArchipelagoFeature
             var location = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
             if (location.RandMode.IsTreatedAsRandom)
             {
-                player = null!; // Prevent the pickup (and send it to the void)
+                player = null!; // Prevent the pickup
 
-                // If it's a warden objective, we can prevent that pickup
+                // If it's a warden objective, we can also objective progress
                 CarryItemPickup_Core? carryItem = __instance.item.TryCast<CarryItemPickup_Core>();
                 GenericSmallPickupItem_Core? pickupItem = __instance.item.TryCast<GenericSmallPickupItem_Core>();
                 if (carryItem != null)
@@ -348,6 +348,7 @@ public class PickupHelper : ArchipelagoFeature
                     pickupItem.m_isWardenObjective = false;
 
                 // Try and despawn it
+                __instance.gameObject.transform.position = new(0, -10000, 0); // Hides it in case despawning fails
                 __instance.item.ReplicationWrapper?.Replicator.Despawn();
                 __instance.GetReplicator().Cast<SNet_Replicator>().Despawn();
             }
@@ -358,4 +359,26 @@ public class PickupHelper : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// When restoring a pickup from a recall, re-apply the custom naming if possible
+    /// </summary>
+    [ArchivePatch(typeof(LG_PickupItem_Sync), nameof(LG_PickupItem_Sync.SetCurrentState_NoSync))]
+    public static class LG_PickupItem_Sync__SetCurrentState_NoSync__Patch
+    {
+        public static void Postfix(LG_PickupItem_Sync __instance)
+        {
+            var comp = __instance.item?.GetComponent<ContainsLocationPickupComp>();
+            if (comp != null)
+            {
+                var interact = __instance.item?.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
+                if (interact != null)
+                {
+                    Game.Data gameData = StateTracker.Get().MidManager.GetProcessedGameData();
+                    Location loc = gameData.LookupLocation(comp.StoredLocation);
+                    string backupName = gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name;
+                    interact.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
+                }
+            }
+        }
+    }
 }

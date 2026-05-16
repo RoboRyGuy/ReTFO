@@ -49,13 +49,6 @@ public class ClearAPathHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -63,7 +56,7 @@ public class ClearAPathHandler : ArchipelagoFeature
     {
         // Region reached when extraction is reached
         public static string PathCleared(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Path Cleared";
+            => $"{data.ObjectiveName()} Path Cleared";
     }
 
     // Objective requiring a player to enter the extraction zone. Assumes (requires?) forward extraction

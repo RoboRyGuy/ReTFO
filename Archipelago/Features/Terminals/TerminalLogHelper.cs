@@ -83,7 +83,7 @@ public class TerminalLogHelper : ArchipelagoFeature
         {
             UntranslatedText =
                 "Congratulations! By viewing this log, you have obtained the following item(s):"
-                + $"\n  {loc.ScoutedItem?.ItemDisplayName ?? (loc.ItemID.IsNull ? "None" : gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name)}",
+                + $"\n  {loc.ScoutedItemName ?? (loc.ItemID.IsNull ? "None" : gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name)}",
             OldId = 0,
             Id = 0,
         };

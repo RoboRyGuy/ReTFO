@@ -3,7 +3,10 @@ using Gear;
 using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
+using SNetwork;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
@@ -12,11 +15,9 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
 
+using InControl;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using ReTFO.Archipelago.Utilities;
-using SNetwork;
-using System.Linq;
 
 public static class LockGearHandler_Tags
 { 
@@ -148,9 +149,9 @@ public class LockGearHandler : ArchipelagoFeature
                         (uint)eWeaponFireMode.SemiBurst            => category.SemiBurstArchetype,
 
                         // I believe these are statically set?
-                        (uint)eWeaponFireMode.SentryGunAuto        => 52, // Burst Sentry
-                        (uint)eWeaponFireMode.SentryGunBurst       => 55, // HEL Auto Sentry
-                        (uint)eWeaponFireMode.SentryGunSemi        => 57, // Sniper Sentry
+                        (uint)eWeaponFireMode.SentryGunAuto        => 57, // HEL Auto Sentry
+                        (uint)eWeaponFireMode.SentryGunBurst       => 55, // Burst Sentry 
+                        (uint)eWeaponFireMode.SentryGunSemi        => 54, // Sniper Sentry
                         (uint)eWeaponFireMode.SentryGunShotgunSemi => 58, // Shotgun Sentry
 
                         // 0 is never used, so it should return a null archetype
@@ -161,210 +162,13 @@ public class LockGearHandler : ArchipelagoFeature
                     name = archetype.PublicName.ToString();
             }
 
-            name = $"{name} (Gear #{block.persistentID})";
+            name = $"{name} ({idRange.PublicGearName})";
             return new TagResolver(data, gd => gd.LookupOrCreateTag(name, "A specific gear item", gd.Tag_GearItems_ByType(idRange.GetCompID(eGearComponent.BaseItem))));
         }
 
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
 
         public PlayerOfflineGearDataBlock Block { get; set; }
-
-        const eGearComponent INJECTED_COMP_VALUE = eGearComponent.None;
-
-        /// <summary>
-        /// Add gear to GearManager. Checks if the existing gear should be there and removes it if necessary
-        /// </summary>
-        private static void AddGear(StateTracker stateTracker, PlayerOfflineGearDataBlock block)
-        {
-            GearIDRange ids = new(block.GearJSON);
-            ids.SetCompID(INJECTED_COMP_VALUE, block.persistentID);
-            int slot = (int)ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
-
-            // Checking if it's a single existing entry and, if so, checking if that was granted to prevent softlocks
-            // We'll store the result until after we add an item so it doesn't just get re-added
-            GearIDRange? gearToRemove = null;
-            if (GearManager.Current.m_gearPerSlot[slot].Count == 1)
-            {   
-                uint blockId = GearManager.Current.m_gearPerSlot[slot][0].GetCompID(INJECTED_COMP_VALUE);
-                if (blockId != 0)
-                {
-                    var gearItem = GetGearItem(stateTracker.MidManager.GetProcessedGameData(), PlayerOfflineGearDataBlock.GetBlock(blockId));
-                    int expectedCount = stateTracker.CollectedItemCounts.GetValueOrDefault(gearItem.ID, 0);
-                    if (expectedCount == 0)
-                        gearToRemove = GearManager.Current.m_gearPerSlot[slot][0];
-                    else if (blockId == block.persistentID && expectedCount == 1)
-                        return; // Funny edge case
-                }
-            }
-
-            // Helper which finds the index of a datablock in the playerofflinegear list
-            int findIndex(uint datablockId)
-            {
-                int count = 0;
-                foreach (var item in PlayerOfflineGearDataBlock.GetAllBlocks())
-                    if (item.persistentID == datablockId) return count;
-                    else ++count;
-                return count;
-            }
-
-            // Find the index of this item in the list and insert it
-            int thisIndex = findIndex(block.persistentID);
-            bool placed = false;
-            for (int i = 0; i < GearManager.Current.m_gearPerSlot[slot].Count; i++)
-            {
-                if (thisIndex < findIndex(GearManager.Current.m_gearPerSlot[slot][i].GetCompID(INJECTED_COMP_VALUE)))
-                {
-                    GearManager.Current.m_gearPerSlot[slot].Insert(i, ids);
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed)
-                GearManager.Current.m_gearPerSlot[slot].Add(ids);
-
-            // If we queued that item for removal earlier, we do so now
-            if (gearToRemove != null) RemoveGear(gearToRemove);
-        }
-
-        /// <summary>
-        /// Remove gear from the GearManager. Checks if players have gear equipped and de-equips it for them if needed
-        /// </summary>
-        private static void RemoveGear(GearIDRange ids)
-        {
-            InventorySlot slot = ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
-            var gearList = GearManager.Current.m_gearPerSlot[(int)slot];
-
-            // Note that we have to do a lot of extra work to account for our inject value
-            //  potentially being in or not in each ID range
-            uint cachedMainId = ids.GetCompID(INJECTED_COMP_VALUE);
-            ids.SetCompID(INJECTED_COMP_VALUE, 0);
-
-            uint localCachedId = 0;
-            int i;
-            for (i = 0; i < gearList.Count; i++)
-            {
-                localCachedId = gearList[i].GetCompID(INJECTED_COMP_VALUE);
-                gearList[i].SetCompID(INJECTED_COMP_VALUE, 0);
-                if (gearList[i].IsEqual(ids)) break;
-                else gearList[i].SetCompID(INJECTED_COMP_VALUE, localCachedId); // Restore
-            }
-            ids.SetCompID(INJECTED_COMP_VALUE, cachedMainId); // Restore
-
-            if (i != gearList.Count)
-            {
-                // We technically don't need to restore this one, but will anyway
-                gearList[i].SetCompID(INJECTED_COMP_VALUE, localCachedId);
-                gearList.RemoveAt(i);
-            }
-            else
-                FeatureLogger.Warning("Failed to remove gear item during OnItemLost");
-
-            // If no gear is left in the list, find and add the first applicable gear item
-            if (gearList.Count == 0)
-            {
-                FeatureLogger.Warning($"Removed all player gear from slot {Enum.GetName(slot)}; restoring first entry to prevent bugs...");
-                GearIDRange? newGear = null;
-                foreach (var offlineBlock in PlayerOfflineGearDataBlock.GetAllBlocks())
-                {
-                    if (offlineBlock.Type == eOfflineGearType.None) continue;
-                    if (offlineBlock.Type == eOfflineGearType.SpawnedInLevel) continue;
-
-                    newGear = new(offlineBlock.GearJSON);
-                    if (ItemDataBlock.GetBlock(newGear.GetCompID(eGearComponent.BaseItem)).inventorySlot == slot)
-                    {
-                        newGear.SetCompID(INJECTED_COMP_VALUE, offlineBlock.persistentID);
-                        break;
-                    }
-                    else
-                        newGear = null;
-                }
-
-                if (newGear == null)
-                {
-                    FeatureLogger.Error($"Somehow did not find a replacment gear item!");
-                    newGear = ids;
-                }
-
-                gearList.Add(newGear);
-            }
-
-            // Check for players with this item equipped and overwrite it if it is
-            if (SNet.LobbyPlayers.Count == 0) // Not in a lobby? Most likely
-            {
-                if (PlayerBackpackManager.LocalBackpack.Slots[(int)slot].GearIDRange.IsEqual(ids))
-                    SetPlayerGear(SNet.LocalPlayer, gearList[0]);
-            }
-            else foreach (var player in SNet.Slots.SlottedPlayers) // This includes bots, unlike SNet.LobbyPlayers
-            {
-                if (!(player.IsLocal || (SNet.IsMaster && player.IsBot))) continue;
-                PlayerBackpack backpack = PlayerBackpackManager.GetBackpack(player);
-                if (backpack.Slots[(int)slot].GearIDRange.IsEqual(ids))
-                    SetPlayerGear(player, gearList[0]);
-            }
-        }
-
-        /// <summary>
-        /// Set a player's equipped gear. The slot will be inferred from the gear
-        /// </summary>
-        /// <param name="player">The player to set the gear for</param>
-        /// <param name="desiredGear">The desired gear item for the player</param>
-        private static void SetPlayerGear(SNet_Player player, GearIDRange desiredGear)
-        {
-            FeatureLogger.Debug($"Attempting to give \"{player.NickName}\" gear item \"{desiredGear.PublicGearName}\"");
-            if (!(player.IsLocal || (player.IsBot && SNet.IsMaster)))
-            {
-                FeatureLogger.Debug("Cancelled -> That player is not locally owned!");
-                return;
-            }
-
-            ItemDataBlock gearItemBlock = ItemDataBlock.GetBlock(desiredGear.GetCompID(eGearComponent.BaseItem));
-            InventorySlot slot = gearItemBlock.inventorySlot;
-            PlayerBackpack pack = PlayerBackpackManager.GetBackpack(player);
-            PlayerAgent? agent = player.PlayerAgent?.Cast<PlayerAgent>();
-
-            if (pack.Slots[(int)slot].Status == eInventoryItemStatus.Deployed && pack.TryGetDeployedItem(slot, out global::Item deployedItem))
-            {
-                FeatureLogger.Debug("Detected that gear being replaced is deployed. Attempting to pick up as a sentry gun...");
-                var sentryGun = deployedItem.TryCast<SentryGunInstance>();
-                if (sentryGun == null)
-                    FeatureLogger.Debug("Failed to pick up sentry gun while changing gear!");
-                else
-                    sentryGun.PickUp(agent);
-            }
-
-            if (player.IsBot)
-                PlayerBackpackManager.EquipBotGear(player, desiredGear);
-            else if (player.IsLocal)
-                PlayerBackpackManager.EquipLocalGear(desiredGear);
-            else
-                PlayerBackpackManager.Current.EquipSyncGear(slot, desiredGear, player);
-            global::Item item = pack.Slots[(int)slot].Instance;
-
-            ItemEquippable? weapon = item.TryCast<ItemEquippable>();
-            if (weapon == null)
-            {
-                FeatureLogger.Warning("Failed to identify newly spawned gear as equippable. Skipping relevant calls.");
-                return;
-            }
-
-            // TODO: Fix UI here
-
-            if (weapon.AmmoType != AmmoType.Standard
-                && weapon.AmmoType != AmmoType.Special
-                && weapon.AmmoType != AmmoType.Class
-            ) return;
-
-
-            float desiredAmmo = .5f * (weapon.AmmoType switch { AmmoType.Standard => 460f, AmmoType.Special => 230f, AmmoType.Class => 150f, _ => throw new ArgumentException() });
-            if (pack.AmmoStorage.GetAmmoInPack(weapon.AmmoType) < desiredAmmo)
-                pack.AmmoStorage.SetAmmo(weapon.AmmoType, desiredAmmo);
-            
-            // TODO: Check if sentry and give ammo to sentry instead
-
-            BulletWeapon? gun = weapon.TryCast<BulletWeapon>();
-            if (gun != null) 
-                gun.SetCurrentClipRel(1f);
-        }
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
@@ -425,18 +229,250 @@ public class LockGearHandler : ArchipelagoFeature
     }
 
     /// <summary>
+    /// ID used by the injected value. The injected value is currently the gear's POG id
+    /// </summary>
+    private const eGearComponent INJECTED_COMP_VALUE = eGearComponent.None;
+
+    /// <summary>
+    /// Add gear to GearManager. Checks if the existing gear should be there and removes it if necessary
+    /// </summary>
+    private static void AddGear(StateTracker stateTracker, PlayerOfflineGearDataBlock block)
+    {
+        GearIDRange ids = new(block.GearJSON);
+        ids.SetCompID(INJECTED_COMP_VALUE, block.persistentID);
+        int slot = (int)ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
+
+        // Checking if it's a single existing entry and, if so, checking if that was granted to prevent softlocks
+        // We'll store the result until after we add an item so it doesn't just get re-added
+        GearIDRange? gearToRemove = null;
+        if (GearManager.Current.m_gearPerSlot[slot].Count == 1)
+        {
+            uint blockId = GearManager.Current.m_gearPerSlot[slot][0].GetCompID(INJECTED_COMP_VALUE);
+            if (blockId != 0)
+            {
+                var gearItem = GetGearItem(stateTracker.MidManager.GetProcessedGameData(), PlayerOfflineGearDataBlock.GetBlock(blockId));
+                int expectedCount = stateTracker.CollectedItemCounts.GetValueOrDefault(gearItem.ID, 0);
+                if (expectedCount == 0)
+                    gearToRemove = GearManager.Current.m_gearPerSlot[slot][0];
+                else if (blockId == block.persistentID && expectedCount == 1)
+                    return; // Funny edge case
+            }
+        }
+
+        // Helper which finds the index of a datablock in the playerofflinegear list
+        int findIndex(uint datablockId)
+        {
+            int count = 0;
+            foreach (var item in PlayerOfflineGearDataBlock.GetAllBlocks())
+                if (item.persistentID == datablockId) return count;
+                else ++count;
+            return count;
+        }
+
+        // Find the index of this item in the list and insert it
+        int thisIndex = findIndex(block.persistentID);
+        bool placed = false;
+        for (int i = 0; i < GearManager.Current.m_gearPerSlot[slot].Count; i++)
+        {
+            if (thisIndex < findIndex(GearManager.Current.m_gearPerSlot[slot][i].GetCompID(INJECTED_COMP_VALUE)))
+            {
+                GearManager.Current.m_gearPerSlot[slot].Insert(i, ids);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed)
+            GearManager.Current.m_gearPerSlot[slot].Add(ids);
+
+        // If we queued that item for removal earlier, we do so now
+        if (gearToRemove != null) RemoveGear(gearToRemove);
+    }
+
+    /// <summary>
+    /// Remove gear from the GearManager. Checks if players have gear equipped and de-equips it for them if needed
+    /// </summary>
+    private static void RemoveGear(GearIDRange ids)
+    {
+        InventorySlot slot = ItemDataBlock.GetBlock(ids.GetCompID(eGearComponent.BaseItem)).inventorySlot;
+        var gearList = GearManager.Current.m_gearPerSlot[(int)slot];
+
+        // Note that we have to do a lot of extra work to account for our inject value
+        //  potentially being in or not in each ID range
+        uint cachedMainId = ids.GetCompID(INJECTED_COMP_VALUE);
+        ids.SetCompID(INJECTED_COMP_VALUE, 0);
+
+        uint localCachedId = 0;
+        int i;
+        for (i = 0; i < gearList.Count; i++)
+        {
+            localCachedId = gearList[i].GetCompID(INJECTED_COMP_VALUE);
+            gearList[i].SetCompID(INJECTED_COMP_VALUE, 0);
+            if (gearList[i].IsEqual(ids)) break;
+            else gearList[i].SetCompID(INJECTED_COMP_VALUE, localCachedId); // Restore
+        }
+        ids.SetCompID(INJECTED_COMP_VALUE, cachedMainId); // Restore
+
+        if (i != gearList.Count)
+        {
+            // We technically don't need to restore this one, but will anyway
+            gearList[i].SetCompID(INJECTED_COMP_VALUE, localCachedId);
+            gearList.RemoveAt(i);
+        }
+        else
+            FeatureLogger.Warning("Failed to remove gear item during OnItemLost");
+
+        // If no gear is left in the list, find and add the first applicable gear item
+        if (gearList.Count == 0)
+        {
+            FeatureLogger.Warning($"Removed all player gear from slot {Enum.GetName(slot)}; restoring first entry to prevent bugs...");
+            GearIDRange? newGear = null;
+            foreach (var offlineBlock in PlayerOfflineGearDataBlock.GetAllBlocks())
+            {
+                if (offlineBlock.Type == eOfflineGearType.None) continue;
+                if (offlineBlock.Type == eOfflineGearType.SpawnedInLevel) continue;
+
+                newGear = new(offlineBlock.GearJSON);
+                if (ItemDataBlock.GetBlock(newGear.GetCompID(eGearComponent.BaseItem)).inventorySlot == slot)
+                {
+                    newGear.SetCompID(INJECTED_COMP_VALUE, offlineBlock.persistentID);
+                    break;
+                }
+                else
+                    newGear = null;
+            }
+
+            if (newGear == null)
+            {
+                FeatureLogger.Error($"Somehow did not find a replacment gear item!");
+                newGear = ids;
+            }
+
+            gearList.Add(newGear);
+        }
+
+        // Check for players with this item equipped and overwrite it if it is
+        if (SNet.LobbyPlayers.Count == 0) // Not in a lobby? Most likely
+        {
+            if (PlayerBackpackManager.LocalBackpack.Slots[(int)slot].GearIDRange.IsEqual(ids))
+                SetPlayerGear(SNet.LocalPlayer, gearList[0]);
+        }
+        else foreach (var player in SNet.Slots.SlottedPlayers) // This includes bots, unlike SNet.LobbyPlayers
+        {
+            if (!(player.IsLocal || (SNet.IsMaster && player.IsBot))) continue;
+            PlayerBackpack backpack = PlayerBackpackManager.GetBackpack(player);
+            if (backpack.Slots[(int)slot].GearIDRange.IsEqual(ids))
+                SetPlayerGear(player, gearList[0]);
+        }
+    }
+
+    /// <summary>
+    /// Set a player's equipped gear. The slot will be inferred from the gear
+    /// </summary>
+    /// <param name="player">The player to set the gear for</param>
+    /// <param name="desiredGear">The desired gear item for the player</param>
+    private static void SetPlayerGear(SNet_Player player, GearIDRange desiredGear)
+    {
+        FeatureLogger.Debug($"Attempting to give \"{player.NickName}\" gear item \"{desiredGear.PublicGearName}\"");
+        if (!(player.IsLocal || (player.IsBot && SNet.IsMaster)))
+        {
+            FeatureLogger.Debug("Cancelled -> That player is not locally owned!");
+            return;
+        }
+
+        ItemDataBlock gearItemBlock = ItemDataBlock.GetBlock(desiredGear.GetCompID(eGearComponent.BaseItem));
+        InventorySlot slot = gearItemBlock.inventorySlot;
+        PlayerBackpack pack = PlayerBackpackManager.GetBackpack(player);
+        PlayerAgent? agent = player.PlayerAgent?.Cast<PlayerAgent>();
+
+        if (pack.Slots[(int)slot].Status == eInventoryItemStatus.Deployed && pack.TryGetDeployedItem(slot, out global::Item deployedItem))
+        {
+            FeatureLogger.Debug("Detected that gear being replaced is deployed. Attempting to pick up as a sentry gun...");
+            var sentryGun = deployedItem.TryCast<SentryGunInstance>();
+            if (sentryGun == null)
+                FeatureLogger.Debug("Failed to pick up sentry gun while changing gear!");
+            else
+                sentryGun.PickUp(agent);
+        }
+
+        if (player.IsBot)
+            PlayerBackpackManager.EquipBotGear(player, desiredGear);
+        else if (player.IsLocal)
+            PlayerBackpackManager.EquipLocalGear(desiredGear);
+        else
+            PlayerBackpackManager.Current.EquipSyncGear(slot, desiredGear, player);
+        global::Item item = pack.Slots[(int)slot].Instance;
+
+        ItemEquippable? weapon = item.TryCast<ItemEquippable>();
+        if (weapon == null)
+        {
+            FeatureLogger.Warning("Failed to identify newly spawned gear as equippable. Skipping relevant calls.");
+            return;
+        }
+
+        // TODO: Fix UI here
+
+        if (weapon.AmmoType != AmmoType.Standard
+            && weapon.AmmoType != AmmoType.Special
+            && weapon.AmmoType != AmmoType.Class
+        ) return;
+
+
+        float desiredAmmo = .5f * (weapon.AmmoType switch { AmmoType.Standard => 460f, AmmoType.Special => 230f, AmmoType.Class => 150f, _ => throw new ArgumentException() });
+        if (pack.AmmoStorage.GetAmmoInPack(weapon.AmmoType) < desiredAmmo)
+            pack.AmmoStorage.SetAmmo(weapon.AmmoType, desiredAmmo);
+
+        // TODO: Check if sentry and give ammo to sentry instead
+
+        BulletWeapon? gun = weapon.TryCast<BulletWeapon>();
+        if (gun != null)
+            gun.SetCurrentClipRel(1f);
+    }
+
+    /// <summary>
     /// Prevent bots from equipping invalid gear.
     /// Typically they will equip their last used gear, so this will let us prevent that.
     /// </summary>
-    [ArchivePatch(typeof(PlayerBackpackManager), nameof(PlayerBackpackManager.EquipBotGear), [ typeof(SNetwork.SNet_Player), typeof(GearIDRange) ])]
+    [ArchivePatch(typeof(PlayerBackpackManager), nameof(PlayerBackpackManager.EquipBotGear), [ typeof(SNet_Player), typeof(GearIDRange) ])]
     public static class PlayerBackpackManager__EquipBotGear__Patch
     {
-        public static void Prefix(ref GearIDRange gearSetup)
+        /// <summary>
+        /// Last gear items successfully equipped by a bot
+        /// </summary>
+        private static List<List<GearIDRange?>> m_lastEquippedGear = new();
+
+        public static void Prefix(SNet_Player bot, ref GearIDRange gearSetup)
         {
             GearIDRange localGear = gearSetup;
             ItemDataBlock itemData = ItemDataBlock.GetBlock(gearSetup.GetCompID(eGearComponent.BaseItem));
+            int botIndex = bot.CharacterSlot.index;
+            int slot = (int)itemData.inventorySlot;
+
+            while (m_lastEquippedGear.Count <= botIndex)
+                m_lastEquippedGear.Add(new List<GearIDRange?>());
+            List<GearIDRange?> botGear = m_lastEquippedGear[botIndex];
+            while (botGear.Count <= slot) botGear.Add(null);
+
             if (!GearManager.Current.m_gearPerSlot[(int)itemData.inventorySlot].Any(g => g.IsEqual(localGear)))
-                gearSetup = GearManager.Current.m_gearPerSlot[(int)itemData.inventorySlot].First();
+                gearSetup = botGear[slot] ?? GearManager.Current.m_gearPerSlot[(int)itemData.inventorySlot].First();
+            botGear[slot] = gearSetup;
+        }
+    }
+
+    /// <summary>
+    /// From some reason, the gear limits don't sync right when joining a lobby as a proxy client.
+    /// This will check for that and correct it.
+    /// </summary>
+    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.OnJoinedLobby))]
+    public static class SNet_LobbyManager__OnJoinedLobby__Patch
+    {
+        public static void Postfix()
+        {
+            for (int i = 0; i < PlayerBackpackManager.LocalBackpack.Slots.Count; i++)
+            {
+                var currentRange = PlayerBackpackManager.LocalBackpack.Slots[i].GearIDRange;
+                if (currentRange != null && !GearManager.Current.m_gearPerSlot[i].Any(r => r.Equals(currentRange)))
+                    SetPlayerGear(SNet.LocalPlayer, GearManager.Current.m_gearPerSlot[i][0]);
+            }
         }
     }
 }

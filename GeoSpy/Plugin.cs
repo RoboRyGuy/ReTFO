@@ -1,12 +1,10 @@
 ﻿
-using AIGraph;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace ReTFO.GeoSpy;
@@ -98,19 +96,5 @@ public class Plugin : BasePlugin
 
     [HarmonyPatch(typeof(PUI_Watermark), nameof(PUI_Watermark.UpdateFPS), new Type[] { typeof(Il2CppStructArray<char>), typeof(int) }), HarmonyPostfix]
     internal static void OverwriteFPS2(PUI_Watermark __instance) => OverwriteFPS(__instance);
-
-    [HarmonyPatch(typeof(WorldEventManager), nameof(WorldEventManager.Update)), HarmonyPostfix]
-    public static void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.J))
-        {
-            const uint targetID = 25;
-            Gear.GearIDRange range = new(GameData.PlayerOfflineGearDataBlock.GetBlock(targetID).GearJSON);
-            GameData.ItemDataBlock item = GameData.ItemDataBlock.GetBlock(range.GetCompID(Gear.eGearComponent.BaseItem));
-
-            foreach (var player in SNetwork.SNet.Slots.SlottedPlayers)
-                PlayerBackpackManager.Current.EquipSyncGear(item.inventorySlot, range, player);
-        }
-    }
 
 }

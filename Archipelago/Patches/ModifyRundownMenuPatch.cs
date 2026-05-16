@@ -4,6 +4,8 @@ using HarmonyLib;
 using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.Utilities;
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 
 namespace ReTFO.Archipelago.Patches;
@@ -40,7 +42,7 @@ internal static class ModifyRundownMenuPatch
         // Overwriting the connect button so it starts archipelago
         var connectButton = __instance.m_buttonConnect;
         connectButton.SetText("Connect to <#F0F><i>ARCHIPELAGO</i></color>");
-        connectButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().StateTracker.Connect()));
+        connectButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => StateTracker.Get().Connect()));
 
         // Button which opens the settings menu
         float gap = connectButton.GetSize().y + margin;
@@ -55,14 +57,14 @@ internal static class ModifyRundownMenuPatch
         ));
 
         // Button which dumps modded instance data
-        var dumpMIDButton = AddButton(__instance, 2f * gap);
-        dumpMIDButton.SetText("Export MID Data");
-        dumpMIDButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().MidManager.ExportMidData()));
+        //var dumpMIDButton = AddButton(__instance, 2f * gap);
+        //dumpMIDButton.SetText("Export MID Data");
+        //dumpMIDButton.add_OnBtnPressCallback(new Il2CppAction_int((int _) => Plugin.Get().MidManager.ExportMidData()));
 
         // We set the connectButton as the parent so these will appear / disappear with it
         // We have to wait until now to set it to avoid duplicating buttons while creating new ones
         openSettingsButton.RectTrans.SetParent(connectButton.RectTrans, true);
-        dumpMIDButton.RectTrans.SetParent(connectButton.RectTrans, true);
+        //dumpMIDButton.RectTrans.SetParent(connectButton.RectTrans, true);
     }
 
     [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.Setup)), HarmonyPostfix]
@@ -77,15 +79,26 @@ internal static class ModifyRundownMenuPatch
                 connectButton.remove_OnBtnPressCallback(action.Cast<Il2CppSystem.Action<int>>());
         }
 
-        // Convenient time to setup replication
+        // Convenient time to set up replication
         StateTracker.Get().SetupReplication();
     }
 
-    [HarmonyPatch(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.OnCortexDone)), HarmonyPostfix]
-    public static void PostSelectionRevealed(CM_PageRundown_New __instance)
+    /// <summary>
+    /// Setting "m_selectionIsRevealed" allows the JoinLobby button to work
+    /// </summary>
+    [HarmonyPatch]
+    public static class RevealJoinLobbyPatch
     {
-        // Marking the selection as revealed allows the Join Lobby button to appear
-        __instance.m_selectionIsRevealed = true;
+        public static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return AccessTools.Method(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.OnCortexDone));
+            yield return AccessTools.Method(typeof(CM_PageRundown_New), nameof(CM_PageRundown_New.SetPageActive));
+        }
+
+        public static void Postfix(CM_PageRundown_New __instance)
+        {
+            __instance.m_selectionIsRevealed = true;
+        }
     }
 
 }

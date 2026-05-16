@@ -17,7 +17,6 @@ using TheArchive.Interfaces;
 namespace ReTFO.Archipelago;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Collections.Generic;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false)]

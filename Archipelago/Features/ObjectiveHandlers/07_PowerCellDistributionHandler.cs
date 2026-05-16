@@ -85,13 +85,6 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -99,17 +92,17 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
     {
         // Region reached by finding a cell
         public static string CellFound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Obtained {count} Cells";
+            => $"{data.ObjectiveName()} Obtained {count} Cells";
 
         // Region reached by powering a generator
         public static string GeneratorPowered(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Powered {count} Generators";
+            => $"{data.ObjectiveName()} Powered {count} Generators";
     }
 
     private static class PowerCellDistribution_CellLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Cell Location #{count}", "A particular cell spawned for a particular objective", data.Tag_PowerCellDistributionCellLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Cell Location #{count}", "A particular cell spawned for a particular objective", data.Tag_PowerCellDistributionCellLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -117,7 +110,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
     private static class PowerCellDistribution_GenLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Gen Location #{count}", "A particular generator spawn for a particular objective", data.Tag_PowerCellDistributionGenLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Location #{count}", "A particular generator spawn for a particular objective", data.Tag_PowerCellDistributionGenLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -132,7 +125,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Gen Item #{count}", "A particular generator for a particular objective", data.Tag_PowerCellDistributionGenItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Item #{count}", "A particular generator for a particular objective", data.Tag_PowerCellDistributionGenItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -222,10 +215,11 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// When spawning items in the cargo cage, claim our power cells
+    /// Normally we'd patch the relevant job, but that can causes null reference errors
+    ///  for cargo cage items. Fortunately, we can grab them when it's done building
     /// </summary>
-    [ArchivePatch(typeof(LG_SpawnItemsInCargoCageJob), nameof(LG_SpawnItemsInCargoCageJob.Build))]
-    public static class LG_SpawnItemsInCargoCageJob__Build__Patch
+    [ArchivePatch(typeof(LG_Factory), nameof(LG_Factory.FactoryDone))]
+    public static class LG_Factory__FactoryDone__Patch
     {
         public static void Postfix()
         {
@@ -249,7 +243,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
                 }
                 var comp = item.GetComponentInChildren<CarryItemPickup_Core>();
                 if (comp.ItemDataBlock.persistentID != BigPickupHandler.CellItemID)
-                    FeatureLogger.Warning("Associated non-cell with distribution objective starting cell location!");
+                    FeatureLogger.Warning("Associated a non-cell item with distribution objective starting cell location!");
                 PickupHelper.AssociateItem(comp, loc.ID);
             }
         }

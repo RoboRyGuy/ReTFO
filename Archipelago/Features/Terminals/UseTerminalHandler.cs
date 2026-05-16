@@ -63,7 +63,7 @@ public class UseTerminalHandler : ArchipelagoFeature
                 return;
             }
 
-            Plugin.Get().StateTracker.NotifyFoundRegion(
+            StateTracker.Get().NotifyFoundRegion(
                 terminalData.TerminalName,
                 __instance.m_syncedInteractionSource
             );

@@ -237,7 +237,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
                 return;
             }
 
-            Plugin.Get().StateTracker.NotifyFoundRegion(
+            StateTracker.Get().NotifyFoundRegion(
                 terminalData.TerminalName,
                 terminal.m_syncedInteractionSource
             );

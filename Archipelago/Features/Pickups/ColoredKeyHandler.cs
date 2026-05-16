@@ -106,7 +106,7 @@ public class ColoredKeyHandler : ArchipelagoFeature
             AsyncItemSpawnWrapper? wrapper = new();
             if (sourceDoor == null)
                 FeatureLogger.Error("Failed to identify sec door while spawning colored keycard!");
-            else
+            else if (SNetwork.SNet.IsMaster)
             {
                 ItemReplicationManager.SpawnItem(
                     new pItemData() { itemID_gearCRC = sourceDoor.m_keyItem.DataBlockID },
@@ -140,7 +140,7 @@ public class ColoredKeyHandler : ArchipelagoFeature
                         KeyItemPickup_Core? keyItem = item.TryCast<KeyItemPickup_Core>();
                         if (keyItem != null)
                             keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, SNetwork.SNet.Master);
-                        else
+                        else if (SNetwork.SNet.IsMaster)
                         {
                             FeatureLogger.Error("Failed to give keycard directly to host. Adding to terminal!");
                             StateTracker.Get().AddItemToTerminal(this);
@@ -154,7 +154,7 @@ public class ColoredKeyHandler : ArchipelagoFeature
                         KeyItemPickup_Core? keyItem = item.TryCast<KeyItemPickup_Core>();
                         if (keyItem != null)
                             keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, players[Random.Shared.Next(0, players.Count)]);
-                        else
+                        else if(SNetwork.SNet.IsMaster)
                         {
                             FeatureLogger.Error("Failed to give keycard directly to random human. Adding to terminal!");
                             StateTracker.Get().AddItemToTerminal(this);
@@ -167,7 +167,7 @@ public class ColoredKeyHandler : ArchipelagoFeature
                     LG_SecurityDoor? sourceDoor = zone?.m_sourceGate?.SpawnedDoor.TryCast<LG_SecurityDoor>();
                     if (sourceDoor == null)
                         FeatureLogger.Error("Failed to retrieve zone door while unlocking colored keycard door!");
-                    else
+                    else if (SNetwork.SNet.IsMaster)
                         sourceDoor.AttemptOpenCloseInteraction(true);
                     break;
             }
@@ -200,10 +200,13 @@ public class ColoredKeyHandler : ArchipelagoFeature
                 KeyItemPickup_Core? keyItem = wrapper.Item?.TryCast<KeyItemPickup_Core>();
                 if (keyItem == null)
                 {
-                    stateTracker.AddItemToTerminal(this);
-                    FeatureLogger.Error("Failed to spawn key item while spawning colored keycard!");
-                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
-                    wrapper.QueueDespawn();
+                    if (SNetwork.SNet.IsMaster)
+                    {
+                        stateTracker.AddItemToTerminal(this);
+                        FeatureLogger.Error("Failed to spawn key item while spawning colored keycard!");
+                        terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
+                        wrapper.QueueDespawn();
+                    }
                     return;
                 }
 

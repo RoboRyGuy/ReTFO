@@ -81,13 +81,6 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Regions used by this objective type
@@ -95,14 +88,14 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
     {
         // Region entered when items are found
         public static string FoundItem(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Found {count} Items";
+            => $"{data.ObjectiveName()} Found {count} Items";
     }
 
     // Location where a small item can be found
     private static class GatherSmall_SpawnLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Spawn Spot #{count}", "A particular small objective pickup spawn location", gd.Tag_GatherItemsLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Spawn Spot #{count}", "A particular small objective pickup spawn location", gd.Tag_GatherItemsLocations));
 
         public static LocationData MakeRandData() => new LocationData() { };
     }
@@ -118,7 +111,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, bool isEmpty)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} {(isEmpty ? "Empty " : "Pickup")}", "A particular small objective pickup item", data.Tag_GatherItemsItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} {(isEmpty ? "Empty " : "Pickup")}", "A particular small objective pickup item", data.Tag_GatherItemsItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -150,15 +143,18 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 originLayer = ObjectiveData.LayerType,
             };
             itemData.originCourseNode.Set(ObjectiveData.GetLG_Layer()!.m_zones[0].m_courseNodes[0]);
-            ItemReplicationManager.SpawnItem(
-                itemData,
-                new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
-                ItemMode.Pickup,
-                Vector3.zero,
-                Quaternion.identity,
-                null,
-                null
-            );
+            if (SNetwork.SNet.IsMaster)
+            { 
+                ItemReplicationManager.SpawnItem(
+                    itemData,
+                    new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
+                    ItemMode.Pickup,
+                    Vector3.zero,
+                    Quaternion.identity,
+                    null,
+                    null
+                );
+            }
             var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
@@ -171,10 +167,13 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 GenericSmallPickupItem_Core? keyItem = wrapper.Item?.TryCast<GenericSmallPickupItem_Core>();
                 if (keyItem == null)
                 {
-                    stateTracker.AddItemToTerminal(this);
-                    FeatureLogger.Error("Failed to spawn small pickup!");
-                    terminal.AddLine("<#F00>Failed to retrieve small pickup! It has been re-added to terminal system.</color>");
-                    wrapper.QueueDespawn();
+                    if (SNetwork.SNet.IsMaster)
+                    {
+                        stateTracker.AddItemToTerminal(this);
+                        FeatureLogger.Error("Failed to spawn small pickup!");
+                        terminal.AddLine("<#F00>Failed to retrieve small pickup! It has been re-added to terminal system.</color>");
+                        wrapper.QueueDespawn();
+                    }
                     return;
                 }
 
@@ -220,7 +219,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         }
 
         if (data.Objective.Gather_MaxPerZone <= 0)
-            throw new ArgumentException($"{This.ObjectiveName(data)}: Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
+            throw new ArgumentException($"{data.ObjectiveName()}: Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
         int numSpawnSpots = placements.Count * data.Objective.Gather_MaxPerZone;
         int numMissing = numSpawnSpots - data.Objective.Gather_SpawnCount;
         if (numMissing < 0) numMissing = 0; // This occurs on R7C2 overload, for example. We could handle it... TODO

@@ -86,13 +86,6 @@ public class TerminalUplinkHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -100,17 +93,17 @@ public class TerminalUplinkHandler : ArchipelagoFeature
     {
         // Region reached when an uplink terminal is found
         public static string TerminalFound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Found {count} Terminal{(count == 1 ? "" : "s")}";
+            => $"{data.ObjectiveName()} Found {count} Terminal{(count == 1 ? "" : "s")}";
 
         // Region reached when an uplink is completed
         public static string UplinkCompleted(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Completed {count} Uplink{(count == 1 ? "" : "s")}";
+            => $"{data.ObjectiveName()} Completed {count} Uplink{(count == 1 ? "" : "s")}";
     }
 
     private static class TerminalUplink_TerminalLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Uplink Terminal Location {count}", "A particular standard uplink terminal location", data.Tag_TerminalUplinkTerminalLocations_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Terminal Location {count}", "A particular standard uplink terminal location", data.Tag_TerminalUplinkTerminalLocations_ByObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -118,7 +111,7 @@ public class TerminalUplinkHandler : ArchipelagoFeature
     private static class TerminalUplink_CompletionLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Uplink Completion Location {count}", "A particular standard uplink completion location", data.Tag_TerminalUplinkCompletionLocations_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Completion Location {count}", "A particular standard uplink completion location", data.Tag_TerminalUplinkCompletionLocations_ByObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -133,7 +126,7 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Uplink Terminal Item {count}", "A particular standard uplink terminal", data.Tag_TerminalUplinkTerminalItems_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Terminal Item {count}", "A particular standard uplink terminal", data.Tag_TerminalUplinkTerminalItems_ByObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -153,7 +146,7 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Uplink Completion Item", "A particular standard uplink completion", data.Tag_TerminalUplinkCompletionItems_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Completion Item", "A particular standard uplink completion", data.Tag_TerminalUplinkCompletionItems_ByObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 

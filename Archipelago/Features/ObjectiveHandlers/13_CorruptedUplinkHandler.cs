@@ -85,13 +85,6 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -99,17 +92,17 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
     {
         // Region reached when a terminal pair is successfully found (logged in to, ideally)
         public static string TerminalFound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Found {count} Terminal Pair{(count == 1 ? "" : "s")}";
+            => $"{data.ObjectiveName()} Found {count} Terminal Pair{(count == 1 ? "" : "s")}";
 
         // Region reached when an uplink is completed
         public static string UplinkComplete(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Uplink #{count} Completed";
+            => $"{data.ObjectiveName()} Uplink #{count} Completed";
     }
 
     private static class CorruptedUplink_TerminalLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Terminal Location #{count}", "A spawn location for a particular terminal", data.Tag_CorruptedUplinkTerminalLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Terminal Location #{count}", "A spawn location for a particular terminal", data.Tag_CorruptedUplinkTerminalLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -124,7 +117,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Terminal #{count}", "A particular terminal", data.Tag_CorruptedUplinkTerminalItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Terminal #{count}", "A particular terminal", data.Tag_CorruptedUplinkTerminalItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -138,7 +131,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
     private static class CorruptedUplink_CompletionLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Completion Location #{count}", "A particular completion location", data.Tag_CorruptedUplinkCompletionLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Completion Location #{count}", "A particular completion location", data.Tag_CorruptedUplinkCompletionLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -152,7 +145,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Terminal", "A particular uplink completion item", data.Tag_CorruptedUplinkCompletionItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Terminal", "A particular uplink completion item", data.Tag_CorruptedUplinkCompletionItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 

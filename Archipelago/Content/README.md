@@ -16,6 +16,31 @@ Issues and feedback can be submitted on the APWorld GitHub's issues page: https:
 If you wish to play a modded game, you will still need to follow the steps for exporting and a MID
 file. Those steps can be found below in the **Modded Support** section.
 
+### Multiplayer Support
+
+As of version 0.0.4, there is now official support for multiplayer. Multiplayer supports 3 different models:
+
+- **Parallel Play:** Two or more players each play their own copy of GTFO. Both connect to the Archipelago server
+  and are able to send/receive items and checks, but they are not in the same lobby.
+- **Multi-Connected:** One player connects to the Archipelago server and hosts a GTFO lobby. One or more clients
+  connect to the Archipelago server and join the lobby.
+- **Proxy-Connected:** One player connects to Archipelago and hosts a GTFO lobby. One or more clients then connect
+  to only the GTFO lobby. These players are automatically connected to the Archipelago server using the Host as a
+  proxy; they are able to send and receive checks normally, but have no ability to execute commands or requests hints.
+
+These three models can be mixed and matched as needed. When playing multiplayer, Multi-Connected is the preferred
+connection methodology; it will be more stable and act more predictably than Proxy-Connected. Moreso, it will
+support host migration and other behaviours that require multiple players to be hosting. 
+
+The main purpose of Proxy-Connected is to offer a secure way to allow strangers to play with you; when strangers
+connect, they will not know of or have access to your Archipelago server or its address, and they will not have
+the permissions needed to ruin your Archipelago game. All their access is limited to what GTFO allows them to do
+in order to play the game.
+
+To use either multiplayer model, simply connect using a lobby code as normal. The model used depends on the context;
+if you connected to Archipelago before joining the lobby, you will be multi-connected; if you did not, then you will
+become proxy-connected.
+
 ### Standard Setup
 
 Here are the steps required to get started with a vanilla world:

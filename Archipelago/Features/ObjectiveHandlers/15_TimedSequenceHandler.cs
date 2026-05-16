@@ -79,13 +79,6 @@ public class TimedSequenceHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -93,21 +86,21 @@ public class TimedSequenceHandler : ArchipelagoFeature
     {
         // Region reached by starting a Timed Sequence
         public static string StartRound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Start Round {count}";
+            => $"{data.ObjectiveName()} Start Round {count}";
 
         // Region reached by failing a Time Sequence
         public static string FailRound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Fail Round {count}";
+            => $"{data.ObjectiveName()} Fail Round {count}";
 
         // Region reached by completing a Time Sequence
         public static string CompleteRound(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Complete Round {count}";
+            => $"{data.ObjectiveName()} Complete Round {count}";
     }
 
     private static class TimedSequence_MainLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Main Terminal Location", "Location of a particular terminal", gd.Tag_TimedSequenceMainLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Main Terminal Location", "Location of a particular terminal", gd.Tag_TimedSequenceMainLocations));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -115,7 +108,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
     private static class TimedSequence_VerifyLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Verify Terminal Location ${count}", "Location of a particular terminal", data.Tag_TimedSequenceVerifyLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Verify Terminal Location ${count}", "Location of a particular terminal", data.Tag_TimedSequenceVerifyLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -129,7 +122,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Main Terminal Item", "A particular terminal", gd.Tag_TimedSequenceMainItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Main Terminal Item", "A particular terminal", gd.Tag_TimedSequenceMainItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -145,7 +138,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Verify Terminal Item", "A particular terminal", data.Tag_TimedSequenceVerifyItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Verify Terminal Item", "A particular terminal", data.Tag_TimedSequenceVerifyItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -182,7 +175,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
 
         if (data.Objective.TimedTerminalSequence_NumberOfRounds < 1)
         {
-            FeatureLogger.Error($"{This.ObjectiveName(data)}: Cannot have fewer than 1 TimedSequence round!");
+            FeatureLogger.Error($"{data.ObjectiveName()}: Cannot have fewer than 1 TimedSequence round!");
             return;
         }
 

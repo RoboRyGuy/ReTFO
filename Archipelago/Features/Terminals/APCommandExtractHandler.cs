@@ -30,7 +30,7 @@ public static class APCommandExtractHandler_Tags
 public class APCommandExtractHandler : ArchipelagoFeature
 {
     public override string Name => "AP Extract Command";
-    public override string Description => "Adds the EXTRACT and RELEASE subcommands to the AP command";
+    public override string Description => "Adds the EXTRACT, RELEASE, and TRASH subcommands to the AP command";
     public override FeatureGroup Group => FeatureGroups.TerminalHandlers;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -45,12 +45,14 @@ public class APCommandExtractHandler : ArchipelagoFeature
 
     private ExtractCommand? m_extractCommand = null;
     private ReleaseCommand? m_releaseCommand = null;
+    private TrashCommand? m_trashCommand = null;
 
     public override void OnEnable()
     {
         base.OnEnable();
         APCommandHandler.RegisterCommand(m_extractCommand ??= new());
         APCommandHandler.RegisterCommand(m_releaseCommand ??= new());
+        APCommandHandler.RegisterCommand(m_trashCommand ??= new());
     }
 
     public override void OnDisable()
@@ -58,6 +60,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         base.OnDisable();
         APCommandHandler.UnregisterCommand(m_extractCommand ??= new());
         APCommandHandler.UnregisterCommand(m_releaseCommand ??= new());
+        APCommandHandler.UnregisterCommand(m_trashCommand ??= new());
     }
 
     private static class TerminalExtractReleaseLocation
@@ -110,7 +113,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Handles the extract command
+    /// Handles the EXTRACT command
     /// </summary>
     private class ExtractCommand : APCommandHandler.SubCommand
     {
@@ -137,9 +140,9 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 bool isEmpty = pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID);
 
                 Location location = pair.Item2.Location;
-                string itemName()   => location.ScoutedItem?.ItemDisplayName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
-                string itemGame()   => location.ScoutedItem?.ItemGame ?? "DEBUG";
-                string itemPlayer() => location.ScoutedItem?.Player.Name ?? StateTracker.Config.Username;
+                string itemName()   => location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
+                string itemGame()   => location.ScoutedGameName ?? "DEBUG";
+                string itemPlayer() => location.ScoutedPlayerName ?? StateTracker.Config.Username;
                 
                 terminal.AddLine($"\n |--------------| {(isEmpty ? ""                   : " Item: " + itemName())}", false);
                 terminal.AddLine(  $" | {pair.Item1} | {(isEmpty ? "-- MODULE EMPTY --" : "World: " + itemGame())}", false);
@@ -154,7 +157,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Handles the release command
+    /// Handles the RELEASE command
     /// </summary>
     private class ReleaseCommand : APCommandHandler.SubCommand
     {
@@ -189,10 +192,36 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 }
                 else
                 {
-                    terminal.AddLine("Item released successfully: " + pair.Item2.Location.ScoutedItem?.ItemDisplayName ?? gameData.LookupTagDef(gameData.LookupItem(pair.Item2.Location.ItemID).NameTag).Name);
+                    terminal.AddLine("Item released successfully: " + pair.Item2.Location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(pair.Item2.Location.ItemID).NameTag).Name);
                     terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(pair.Item2.ID, terminal.m_syncedInteractionSource));
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Handles the TRASH command
+    /// </summary>
+    private class TrashCommand : APCommandHandler.SubCommand
+    {
+        public TrashCommand()
+        {
+            SubCommandName = "TRASH";
+        }
+
+        public override string HelpText
+            => "Mark all items found using the EXTRACT command as trash."
+            + "\nThis marks them as found in the menu, but does not release them to the multiworld.";
+
+        public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
+        {
+            StateTracker stateTracker = StateTracker.Get();
+            var codes = MakeItemCodes(stateTracker, terminal)
+                .Where(pair => !(pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID)))
+                .Select(pair => pair.Item2.ID)
+                .ToList();
+            stateTracker.MarkAsTrash(codes, terminal.m_syncedInteractionSource);
+            terminal.m_command.AddOutput($"You have marked {codes.Count} item{(codes.Count == 1 ? "" : "s")} as <i><#F00>TRASH</i></color>");
         }
     }
 

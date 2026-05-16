@@ -66,13 +66,6 @@ public class CollectHSUHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -80,18 +73,18 @@ public class CollectHSUHandler : ArchipelagoFeature
     {
         // Region reached by starting the HSU scan
         public static string ScanStartedRegion(Objective.Data data)
-            => $"{This.ObjectiveName(data)} HSU Scan Started";
+            => $"{data.ObjectiveName()} HSU Scan Started";
 
         // Region reached by completing the HSU scan
         public static string ScanCompletedRegion(Objective.Data data)
-            => $"{This.ObjectiveName(data)} HSU Scan Completed";
+            => $"{data.ObjectiveName()} HSU Scan Completed";
     }
 
     // Location representing an HSU scan being started
     private static class CollectHSU_ScanLocation
     {
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} HSU Scan Location", "Location checked by starting a particular HSU scan", gd.Tag_HSUScanLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} HSU Scan Location", "Location checked by starting a particular HSU scan", gd.Tag_HSUScanLocations));
 
         public static LocationData MakeRandData() => new LocationData() { };
     }
@@ -106,7 +99,7 @@ public class CollectHSUHandler : ArchipelagoFeature
         }
         
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} HSU Scan", "Item which triggers a particular HSU scan", gd.Tag_HSUScanItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} HSU Scan", "Item which triggers a particular HSU scan", gd.Tag_HSUScanItems));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 

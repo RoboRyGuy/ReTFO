@@ -32,8 +32,8 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 [EnableFeatureByDefault, AutomatedFeature]
 public partial class StateTracker : ArchipelagoFeature
 {
-    public override string Name => "AP Server Settings";
-    public override string Description => "Controls AP server and sync settings.";
+    public override string Name => "Archipelago Settings";
+    public override string Description => "Controls AP many import Archipelago settings.";
     public override FeatureGroup Group => FeatureGroups.Archipelago;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -70,6 +70,7 @@ public partial class StateTracker : ArchipelagoFeature
     protected HashSet<RegionID> FoundRegions { get; init; } = new();
     protected HashSet<string> FoundUnusedRegions { get; init; } = new();
     protected HashSet<LocationID> FoundLocations { get; init; } = new();
+    protected HashSet<LocationID> TrashedLocations { get; init; } = new();
 
     /// Actual list of items held. See <see cref="CollectedItemCounts"/> for the public interface
     protected Dictionary<ItemID, int> ActualItemCounts { get; init; } = new(); 
@@ -141,7 +142,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Class used to store network settings
     /// </summary>
-    public class NetworkSettingsType : PrivateFeatureSettingsPatch.IOptionallyPrivate
+    public class Settings : PrivateFeatureSettingsPatch.IOptionallyPrivate
     {
         public bool IsCurrentlyPrivate => HideConnectionDetails;
 
@@ -177,6 +178,19 @@ public partial class StateTracker : ArchipelagoFeature
         [PrivateFeatureSettingsPatch.FSOptionallyPrivate]
         public string Password { get; set; } = "Password";
 
+        [FSDisplayName("Reset to Menu")]
+        [FSDescription("Disconnect from the lobby and Archipelago; reset to the menu.")]
+        public FButton ResetButton { get; set; } = new FButton("Reset", callback: () => StateTracker.Get().Reset());
+
+        [FSDisplayName("Empty Trash")]
+        [FSDescription("Unmark any trash items, revealing their checks in the expedition location counts.")]
+        public FButton EmptyTrashButton { get; set; } = new FButton("Empty Trash", callback: () =>
+        {
+            StateTracker stateTracker = StateTracker.Get();
+            stateTracker.TrashedLocations.Clear();
+            stateTracker.SendInteraction(pArchipelagoInteraction.eType.EmptyTrash);
+        });
+
         [FSDisplayName("Export MID Data")]
         [FSDescription(
             "Export the MID data file to your Downloads folder. The MID data file is a \".ini\" file which can be used to create APWorlds for modded rundowns." 
@@ -207,7 +221,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// Instance of settings. Note that this is controlled by TheArchive.
     /// </summary>
     [FeatureConfig]
-    public static NetworkSettingsType Config { get; set; } = null!;
+    public static Settings Config { get; set; } = null!;
 
     /// <summary>
     /// Get a list of expedition data from a set of input names.
@@ -286,15 +300,21 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     public void ClientConnect(pArchipelagoInitState state)
     {
-        if (!SNetwork.SNet.Lobbies.WaitingForLobbyResponse)
+        //if (!SNetwork.SNet.Lobbies.WaitingForLobbyResponse)
+        //{
+        //    FeatureLogger.Notice("Ignoring init packet; not currently waiting to enter a lobby");
+        //    return;
+        //}
+
+        if (m_cachedMasterAnswer.answer != SNetwork.pMasterSessionAnswerType.AllowedToJoinHub)
         {
-            FeatureLogger.Debug("Ignoring init packet; not currently waiting to enter a lobby");
+            FeatureLogger.Notice($"Ignoring init packet; master answer was {Enum.GetName(m_cachedMasterAnswer.answer)}");
             return;
         }
 
         if (CurrentState == eState.ConnectedClient || CurrentState == eState.ProxyClient)
         {
-            FeatureLogger.Debug("Ignoring init packet; already set up as a client");
+            FeatureLogger.Notice("Ignoring init packet; already set up as a client");
             return;
         }
 
@@ -327,7 +347,7 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         // We are officially set up to join the lobby as a client - just gotta fake a "join allowed" response
-        SNetwork.SNet.SessionHub.OnMasterSessionAnswer(cachedMasterAnswer);
+        SNetwork.SNet.SessionHub.OnMasterSessionAnswer(m_cachedMasterAnswer);
         FeatureLogger.Success("Successfully joined!");
     }
 
@@ -568,6 +588,7 @@ public partial class StateTracker : ArchipelagoFeature
         FoundRegions.Clear();
         FoundUnusedRegions.Clear();
         FoundLocations.Clear();
+        TrashedLocations.Clear();
         ActualItemCounts.Clear();
         SessionItemCounts.Clear();
         ItemsInTerminalSystem.Clear();
@@ -833,7 +854,8 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="name">Name of the region</param>
     /// <param name="player">Player who found the region, or null if too inconvenient to identify</param>
-    public void NotifyFoundRegion(string name, PlayerAgent? player)
+    /// <param name="skipInteraction">If true, skip sending the interactino over SNet</param>
+    public void NotifyFoundRegion(string name, PlayerAgent? player, bool skipInteraction = false)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         if (!gameData.TryLookupRegion(name, out KeyedRegion region))
@@ -842,24 +864,27 @@ public partial class StateTracker : ArchipelagoFeature
                 FeatureLogger.Debug($"Ignoring region because it is not registered: {name}");
             return;
         }
-        NotifyFoundRegion(region.ID, player);
+        NotifyFoundRegion(region.ID, player, skipInteraction);
     }
 
     /// <summary>
     /// Notify the state tracker that a region has been found by region ID
     /// </summary>
-    /// <param name="name">ID of the region which was found</param>
+    /// <param name="regionId">ID of the region which was found</param>
     /// <param name="player">Player who found the region, or null if too inconvenient to identify</param>
-    public void NotifyFoundRegion(RegionID regionId, PlayerAgent? player)
+    /// <param name="skipInteraction">If true, skip sending the interactino over SNet</param>
+    public void NotifyFoundRegion(RegionID regionId, PlayerAgent? player, bool skipInteraction = false)
     {
-        Game.Data data = MidManager.GetProcessedGameData();
+        Game.Data data = MidManager.GetProcessedGameData(); 
         ReadOnlyRegion region = data.LookupRegion(regionId);
 
         if (!FoundRegions.Add(regionId))
             return;
 
         FeatureLogger.Debug($"Discovered region [{regionId.AsId}] {region.Name}");
-        SendInteraction(pArchipelagoInteraction.eType.CheckRegion, value: regionId.AsId);
+
+        //if (!skipInteraction)
+        //SendInteraction(pArchipelagoInteraction.eType.CheckRegion, value: regionId.AsId);
 
         // Check for auto-discover locations
         bool isFoundLocation(LocationID locID)
@@ -878,11 +903,12 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Notify the state tracker that a single location has been found / "checked"
     /// </summary>
-    /// <param name="location">The location which has been checked</param>
+    /// <param name="id">The location which has been checked</param>
     /// <param name="player">The player who found the location, or null if too inconvenient to identify</param>
     /// <param name="force">Intended for debug. If true, forces the locations to be rediscovered, obtaining another copy of their item</param>
+    /// <param name="skipInteraction">If true, skip sending the interactino over SNet</param>
     /// <returns>The location object (for convenience)</returns>
-    public Location NotifyFoundLocation(LocationID id, PlayerAgent? player, bool force = false)
+    public Location NotifyFoundLocation(LocationID id, PlayerAgent? player, bool force = false, bool skipInteraction = false)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         Location location = gameData.LookupLocation(id);
@@ -890,10 +916,14 @@ public partial class StateTracker : ArchipelagoFeature
         if (!FoundLocations.Add(id)) return location;
 
         FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(location.NameTag).Name}");
-        SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
+        if (!skipInteraction)
+            SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
 
         if (location.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
+        {
             CollectItem(location.ItemID, id, player);
+            LogForLobby($"Collected item {gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name} from FakeConnect", false);
+        }
 
         if (ApSession != null) // We must notify, but we'll reject the item on inbound
             ApSession.Locations.CompleteLocationChecksAsync(id.AsId).ContinueWith(OnLocationChecksCompleted);
@@ -908,7 +938,8 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="ids">IDs of the locations</param>
     /// <param name="player">The player who found the locations, or null if too inconvenient to identify</param>
     /// <param name="force">Intended for debug; set to true to force the locations to be rediscovered, obtaining another copy of their items</param>
-    public void NotifyFoundLocations(IEnumerable<LocationID> ids, PlayerAgent? player, bool force = false)
+    /// <param name="skipInteraction">If true, skip sending the interactino over SNet</param>
+    public void NotifyFoundLocations(IEnumerable<LocationID> ids, PlayerAgent? player, bool force = false, bool skipInteraction = false)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
         List<long> networkIds = new();
@@ -920,10 +951,14 @@ public partial class StateTracker : ArchipelagoFeature
                 continue;
 
             FeatureLogger.Debug($"Discovered Location: [{id.AsId}] {gameData.LookupTagDef(loc.NameTag).Name}");
-            SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
+            if (!skipInteraction)
+                SendInteraction(pArchipelagoInteraction.eType.CheckLocation, value: id.AsId);
 
             if (loc.RandMode.IsTreatedAsRandom && CurrentState == eState.FakeConnect)
+            {
                 CollectItem(loc.ItemID, id, player);
+                LogForLobby($"Collected item {gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name} from FakeConnect", false);
+            }
 
             if (ApSession != null)
                 networkIds.Add(id.AsId);
@@ -932,6 +967,23 @@ public partial class StateTracker : ArchipelagoFeature
         if (ApSession != null && networkIds.Count > 0)
             ApSession.Locations.CompleteLocationChecksAsync(networkIds.ToArray()).ContinueWith(OnLocationChecksCompleted);
         UpdateLocationCounts();
+    }
+
+    /// <summary>
+    /// Marks one or more locations as "trash"; StateTracker will state that the items were
+    ///  found for the player but will not actually collect the location or notify AP that
+    ///  the location was checked.
+    /// </summary>
+    /// <param name="ids">The location(s) to mark as trash</param>
+    /// <param name="player">The player who marked them as trash, if applicable</param>
+    /// <param name="skipInteraction">If true, skip sending the interaction over SNet</param>
+    public void MarkAsTrash(IEnumerable<LocationID> ids, PlayerAgent? player, bool skipInteraction = false)
+    {
+        foreach (var id in ids)
+        {
+            if (TrashedLocations.Add(id) && !skipInteraction)
+                SendInteraction(pArchipelagoInteraction.eType.MarkTrash, value: id.AsId);
+        }
     }
 
     /// <summary>
@@ -1313,11 +1365,18 @@ public partial class StateTracker : ArchipelagoFeature
         else
         {
             FeatureLogger.Debug($"Successfully scouted {task.Result.Count} locations");
+
+            // Apply found location info
             foreach (var pair in task.Result)
             {
                 Location location = gameData.LookupLocation(new LocationID() { AsId = pair.Value.LocationId });
-                location.ScoutedItem = pair.Value;
+                location.ScoutedItemName = pair.Value.ItemDisplayName;
+                location.ScoutedPlayerName = pair.Value.Player.Name;
+                location.ScoutedGameName = pair.Value.ItemGame;
             }
+
+            // Send a scouting update for only the scouted items
+            m_stateReplicator!.SendScouting(FormatScoutingUpdate(task.Result.Select(pair => new LocationID() { AsId = pair.Key })));
         }
     }
 
@@ -1339,7 +1398,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Check if a specific location has been collected
     /// </summary>
-    public bool HasLocation(LocationID id) => FoundLocations.Contains(id);
+    public bool HasLocation(LocationID id) => FoundLocations.Contains(id) || TrashedLocations.Contains(id);
 
     /// <summary>
     /// Immediately collect an item
@@ -1455,9 +1514,8 @@ public partial class StateTracker : ArchipelagoFeature
     {
         //if (Input.GetKeyDown(KeyCode.J))
         //{
-        //    Game.Data data = MidManager.GetProcessedGameData();
-        //    KeyedItem item = LockGearHandler.GetGearItem(data, PlayerOfflineGearDataBlock.GetBlock(4));
-        //    CollectItem(item.ID);
+        //    MainMenuGuiLayer.Current.PageRundownNew._Setup_b__102_0(0);
+        //    //MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
         //}
         //else if (Input.GetKey(KeyCode.P))
         //{
@@ -1494,6 +1552,12 @@ public partial class StateTracker : ArchipelagoFeature
 
                 // Add to our session count.
                 ItemID id = new ItemID() { AsId = itemInfo.ItemId };
+                if (id.IsNull)
+                {
+                    FeatureLogger.Error("Received null item id from Archipelago server!");
+                    continue;
+                }
+
                 int newCount = SessionItemCounts.GetValueOrDefault(id, 0) + 1;
                 SessionItemCounts[id] = newCount;
 
@@ -1508,7 +1572,8 @@ public partial class StateTracker : ArchipelagoFeature
                 if (newCount > ActualItemCounts.GetValueOrDefault(id, 0))
                 {
                     // If this item is from our game and is not randomized, we do not process receiving it
-                    if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot)
+                    // Note that if we ever give ourselves items their location IDs will be 0 or below
+                    if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot && itemInfo.LocationId > 0)
                     {
                         LocationID locId = new() { AsId = itemInfo.LocationId };
                         Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
@@ -1533,7 +1598,9 @@ public partial class StateTracker : ArchipelagoFeature
     /// Convenience helper to write a log message for the player.
     /// These messages are placed in the local player's chat.
     /// </summary>
-    public static void LogForPlayer(string message)
+    /// <param name="message">The message to log. Can be formatted using XML.</param>
+    /// <param name="localOnly">If true, do not sync this message. Otherwise, sends to all players</param>
+    public static void LogForLobby(string message, bool localOnly)
     {
         var logs = Enumerable.Empty<PUI_GameEventLog>()
             .Append(MainMenuGuiLayer.Current.PageLoadout?.m_gameEventLog)
@@ -1549,6 +1616,9 @@ public partial class StateTracker : ArchipelagoFeature
             // This part is important. It somehow prevents crashes :)
             log.UpdateHeightOffset();
         }
+
+        if (!localOnly)
+            StateTracker.Get().m_stateReplicator?.SendLog(message);
     }
 
     /// <summary>

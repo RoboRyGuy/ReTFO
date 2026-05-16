@@ -80,13 +80,6 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -94,14 +87,14 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
     {
         // Region entered when retrieving the big item(s)
         public static string RetrievedItem(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} {count} Big Items Retrieved";
+            => $"{data.ObjectiveName()} {count} Big Items Retrieved";
     }
 
     // Location where a big retrieval item can be found
     private static class BigRetrieval_Location
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Retrieval Location #{count}", "A location containing a particular retrieval target", data.Tag_BigRetrievalLocations_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Retrieval Location #{count}", "A location containing a particular retrieval target", data.Tag_BigRetrievalLocations_ByObjective));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -117,7 +110,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
         }
 
         public static RandomizationTag MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Retrieval Item #{count}", "A particular big retrieval item", data.Tag_BigRetrievalItems_ByObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Retrieval Item #{count}", "A particular big retrieval item", data.Tag_BigRetrievalItems_ByObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 

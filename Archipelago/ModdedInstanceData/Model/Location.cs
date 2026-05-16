@@ -80,22 +80,19 @@ public class Location
     public RandTest RandMode { get; set; }
 
     /// <summary>
-    /// Scouted location retrieved from archipelago during play. 
-    /// Locations are scouted on session start. This will be null if the item is not randomized.
-    /// This field stores only the display name from the scouted item.
+    /// Name of the scouted item, if this location has been scouted
     /// </summary>
-    [DebuggerDisplay("{DebuggerScoutedItemToString()}")]
-    public ScoutedItemInfo? ScoutedItem { get; set; } = null;
+    public string? ScoutedItemName { get; set; }
 
     /// <summary>
-    /// Prevents the debugger from crashing when evaluating this property when it's null.
+    /// Name of the player for the scouted item, if this location has been scouted
     /// </summary>
-    /// <remarks>
-    /// I have no idea why the debugger crashes when viewing a null ScotuedItemInfo,
-    ///  but it's annoying.
-    /// </remarks>
-    private string DebuggerScoutedItemToString()
-        => ScoutedItem?.ToString() ?? "null";
+    public string? ScoutedPlayerName { get; set; }
+
+    /// <summary>
+    /// Name of the game for the scouted item, if this location has been scouted
+    /// </summary>
+    public string? ScoutedGameName { get; set; }
 }
 
 /// <summary>

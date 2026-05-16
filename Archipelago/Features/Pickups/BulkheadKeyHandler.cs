@@ -77,15 +77,18 @@ public class BulkheadKeyHandler : ArchipelagoFeature
         private AsyncItemSpawnWrapper SpawnItemAsync()
         {
             AsyncItemSpawnWrapper wrapper = new();
-            ItemReplicationManager.SpawnItem(
-                new pItemData() { itemID_gearCRC = BULKHEAD_KEY_ID },
-                new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
-                ItemMode.Pickup,
-                Vector3.zero,
-                Quaternion.identity,
-                null,
-                null
-            );
+            if (SNetwork.SNet.IsMaster)
+            {
+                ItemReplicationManager.SpawnItem(
+                    new pItemData() { itemID_gearCRC = BULKHEAD_KEY_ID },
+                    new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
+                    ItemMode.Pickup,
+                    Vector3.zero,
+                    Quaternion.identity,
+                    null,
+                    null
+                );
+            }
             return wrapper;
         }
 
@@ -130,10 +133,13 @@ public class BulkheadKeyHandler : ArchipelagoFeature
                 KeyItemPickup_Core? keyItem = wrapper.Item?.TryCast<KeyItemPickup_Core>();
                 if (keyItem == null)
                 {
-                    stateTracker.AddItemToTerminal(this);
-                    wrapper.QueueDespawn();
-                    FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard!");
-                    terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
+                    if (SNetwork.SNet.IsMaster)
+                    {
+                        stateTracker.AddItemToTerminal(this);
+                        wrapper.QueueDespawn();
+                        FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard!");
+                        terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
+                    }
                     return;
                 }
 

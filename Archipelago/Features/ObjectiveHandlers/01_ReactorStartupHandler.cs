@@ -115,13 +115,6 @@ public class ReactorStartupHandler : ArchipelagoFeature
             if (!IsCorrectObjective(data))
                 FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
         }
-
-        // Helper to get the full name for This objective
-        public static string ObjectiveName(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return data.ObjectiveName(ObjectiveSummary(data));
-        }
     }
 
     // Names of regions for this objective
@@ -129,15 +122,15 @@ public class ReactorStartupHandler : ArchipelagoFeature
     {
         // Region for when the reactor zone is entered (found)
         public static string FoundReactor(Objective.Data data)
-            => $"{This.ObjectiveName(data)} Found Reactor";
+            => $"{data.ObjectiveName()} Found Reactor";
 
         // Region entered when a reactor wave is survived (before code is entered)
         public static string SurvivedWave(Objective.Data data, int count)
-            => $"{This.ObjectiveName(data)} Survived Wave #{count}";
+            => $"{data.ObjectiveName()} Survived Wave #{count}";
 
         // Region entered when a reactor is completed. Multiple reactors can theoretically be completed per objective
         public static string CompletedStartup(Objective.Data data, int count = 1)
-            => $"{This.ObjectiveName(data)} Completed Reactor Startup #{count}";
+            => $"{data.ObjectiveName()} Completed Reactor Startup #{count}";
     }
 
     // Location containing a reactor item. In-game this would be the terminal itself, but
@@ -145,7 +138,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
     private static class ReactorStartup_ReactorLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor Location #{count}", "A reactor location for a particular reactor in an objective", data.Tag_ReactorStartupReactorLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Location #{count}", "A reactor location for a particular reactor in an objective", data.Tag_ReactorStartupReactorLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
@@ -160,7 +153,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor", "A particular reactor item", data.Tag_ReactorStartupReactorItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor", "A particular reactor item", data.Tag_ReactorStartupReactorItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -173,7 +166,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
     private static class ReactorStartup_CodeLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor Code #{count} Location", "A reactor code location for a particular reactor code", data.Tag_ReactorStartupCodeLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Code #{count} Location", "A reactor code location for a particular reactor code", data.Tag_ReactorStartupCodeLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -189,7 +182,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor Code #{count}", "A particular reactor code", data.Tag_ReactorStartupCodeItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Code #{count}", "A particular reactor code", data.Tag_ReactorStartupCodeItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
@@ -259,7 +252,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
     private static class ReactorStartup_SkipLocation
     {
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor Wave #{count} Skip Location", "A reactor skip location for a particular skip", data.Tag_ReactorStartupSkipLocations_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Wave #{count} Skip Location", "A reactor skip location for a particular skip", data.Tag_ReactorStartupSkipLocations_PerObjective));
 
         public static LocationData MakeRandData() => new LocationData();
     }
@@ -274,7 +267,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{This.ObjectiveName(data)} Reactor Skip #{count}", "A particular reactor skip", data.Tag_ReactorStartupSkipItems_PerObjective));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Skip #{count}", "A particular reactor skip", data.Tag_ReactorStartupSkipItems_PerObjective));
 
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsRandomLike = true };
 
@@ -335,7 +328,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             var targetZone = data.FindZoneByPlacement(placement);
             if (targetZone == null)
             {
-                FeatureLogger.Error($"Failed to find reactor zone by placement: {This.ObjectiveName(data)}");
+                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName()}");
                 continue;
             }
             addReactor(targetZone);
@@ -349,13 +342,13 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 if (zone.CustomGeo.Contains("hall", StringComparison.OrdinalIgnoreCase)) continue;
                 if (zone.CustomGeo.Contains("reactor", StringComparison.OrdinalIgnoreCase))
                 {
-                    FeatureLogger.Debug($"Using geomorph for reactor objective: {This.ObjectiveName(data)}");
+                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName()}");
                     addReactor(zone);
                     break;
                 }
             }
             if (count == 0)
-                FeatureLogger.Error($"No reactor placements: {This.ObjectiveName(data)}");
+                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName()}");
         }
 
         // For each wave, there will be a "survive wave" region
@@ -484,7 +477,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 TerminalLogHelper.AssociateLog(terminal, wave.VerificationTerminalFileName, location.ID);
             }
 
-            var po = CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(This.ObjectiveName(data));
+            var po = CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(data.ObjectiveName());
             ProgressionObjective_ReactorStartup.Setup(data, __instance);
         }
     }
@@ -686,7 +679,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// Make the string key used to find the progression objective for a particular reactor objective
         /// </summary>
         public static string MakeKey(Objective.Data data, LG_WardenObjective_Reactor reactor)
-            => This.ObjectiveName(data) + reactor.Pointer.ToString();
+            => data.ObjectiveName() + reactor.Pointer.ToString();
 
         /// <summary>
         /// Set up a progression objective for a particular reactor objective
@@ -715,7 +708,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// </summary>
         public void SetupWithData(Objective.Data data, LG_WardenObjective_Reactor reactor)
         {
-            HeaderText = This.ObjectiveName(data);
+            HeaderText = data.ObjectiveName();
             ScopeTarget = new(
                 data.LayerType,
                 data.LayerType,

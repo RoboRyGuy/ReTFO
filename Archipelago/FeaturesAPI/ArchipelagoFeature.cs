@@ -1,6 +1,7 @@
-﻿using TheArchive.Core.FeaturesAPI;
+﻿using ReTFO.Archipelago.Features;
+using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
-using ReTFO.Archipelago.Features;
 
 namespace ReTFO.Archipelago.FeaturesAPI;
 
