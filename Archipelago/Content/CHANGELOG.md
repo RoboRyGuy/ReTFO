@@ -26,7 +26,8 @@ Third Alpha Release of Beta-Archipelago.
 Fourth Alpha Release of Beta-Archipelago.
 - Began adding official support for Multiplayer
   - Multiplayer supports three modes: Parallel play, Multi-connected, and Proxy-connected
-- Fixed some sync issues for multiplayer
+- Fixed some sync issues related to (but not part of) multiplayer
+- Fixed a major bug where restarting the game could disable item collection from Archipelago
 - Improved the gear spawn mechanics (at least slightly)
 - Bots no longer reset their gear when returning to the expedition start screen
 - Changed the terminal command names to better convey their intended use

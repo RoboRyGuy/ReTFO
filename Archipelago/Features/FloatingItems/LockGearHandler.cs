@@ -458,21 +458,26 @@ public class LockGearHandler : ArchipelagoFeature
         }
     }
 
-    /// <summary>
-    /// From some reason, the gear limits don't sync right when joining a lobby as a proxy client.
-    /// This will check for that and correct it.
-    /// </summary>
-    [ArchivePatch(typeof(SNet_LobbyManager), nameof(SNet_LobbyManager.OnJoinedLobby))]
-    public static class SNet_LobbyManager__OnJoinedLobby__Patch
-    {
-        public static void Postfix()
-        {
-            for (int i = 0; i < PlayerBackpackManager.LocalBackpack.Slots.Count; i++)
-            {
-                var currentRange = PlayerBackpackManager.LocalBackpack.Slots[i].GearIDRange;
-                if (currentRange != null && !GearManager.Current.m_gearPerSlot[i].Any(r => r.Equals(currentRange)))
-                    SetPlayerGear(SNet.LocalPlayer, GearManager.Current.m_gearPerSlot[i][0]);
-            }
-        }
-    }
+    ///// <summary>
+    ///// From some reason, the gear limits don't sync right when joining a lobby as a proxy client.
+    ///// This will check for that and correct it.
+    ///// </summary>
+    //[ArchivePatch(typeof(SNet_SessionHub), nameof(SNet_SessionHub.OnJoinedLobby))]
+    //public static class SNet_SessionHub__OnJoinedLobby__Patch
+    //{
+    //    public static void Postfix(SNet_Player? player)
+    //    {
+    //        var func = () =>
+    //        {
+    //            //if (!(player?.IsLocal ?? false)) return;
+    //            //for (int i = 0; i < PlayerBackpackManager.LocalBackpack.Slots.Count; i++)
+    //            //{
+    //            //    var currentRange = PlayerBackpackManager.LocalBackpack.Slots[i]?.GearIDRange;
+    //            //    if (currentRange != null && !GearManager.Current.m_gearPerSlot[i].Any(r => r.Equals(currentRange)))
+    //            //        SetPlayerGear(SNet.LocalPlayer, GearManager.Current.m_gearPerSlot[i][0]);
+    //            //}
+    //        };
+    //        func();
+    //    }
+    //}
 }

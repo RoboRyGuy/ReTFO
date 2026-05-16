@@ -812,6 +812,7 @@ public partial class StateTracker : ArchipelagoFeature
         MainMenuGuiLayer.Current.PageRundownNew.m_selectRundownButton.OnBtnPressCallback.Invoke(0);
         MainMenuGuiLayer.Current.PageRundownNew.PostSetup();
         MainMenuGuiLayer.Current.ChangePage(eCM_MenuPage.CMP_RUNDOWN_NEW);
+        MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
 
         CurrentState = eState.CleanState;
         OnStateChange?.Invoke(this);
@@ -996,6 +997,7 @@ public partial class StateTracker : ArchipelagoFeature
             if (TrashedLocations.Add(id) && !skipInteraction)
                 SendInteraction(pArchipelagoInteraction.eType.MarkTrash, value: id.AsId);
         }
+        UpdateLocationCounts();
     }
 
     /// <summary>
@@ -1398,17 +1400,22 @@ public partial class StateTracker : ArchipelagoFeature
     /// <summary>
     /// Check if a specific location has been collected
     /// </summary>
-    public bool HasLocation(RandomizationTag name)
+    /// <param name="name">The name of the location</param>
+    /// <param name="includeTrash">If true, also returns true if the item is marked as trash</param>
+    public bool HasLocation(RandomizationTag name, bool includeTrash = true)
     {
         if (MidManager.GetProcessedGameData().TryLookupLocation(name, out var loc))
-            return HasLocation(loc.ID);
+            return HasLocation(loc.ID, includeTrash);
         return false;
     }
 
     /// <summary>
     /// Check if a specific location has been collected
     /// </summary>
-    public bool HasLocation(LocationID id) => FoundLocations.Contains(id) || TrashedLocations.Contains(id);
+    /// <param name="id">The id of the location</param>
+    /// <param name="includeTrash">If true, also returns true if the item is marked as trash</param>
+    public bool HasLocation(LocationID id, bool includeTrash = true) 
+        => FoundLocations.Contains(id) || (includeTrash && TrashedLocations.Contains(id));
 
     /// <summary>
     /// Immediately collect an item

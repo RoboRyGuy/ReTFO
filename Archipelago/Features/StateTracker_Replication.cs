@@ -774,9 +774,9 @@ public partial class StateTracker : ArchipelagoFeature
 
         foreach (var player in ApSession.Players.AllPlayers)
         {
-            playerIdToLookup.Add(player.Name, count++);
             result.SlotLookup[2 * count] = player.Name;
             result.SlotLookup[2 * count + 1] = player.Game;
+            playerIdToLookup.Add(player.Name, count++);
         }
 
         Game.Data data = MidManager.GetProcessedGameData();
@@ -784,13 +784,12 @@ public partial class StateTracker : ArchipelagoFeature
         result.SlotIds = new long[result.LocationIDs.Length];
         result.ItemDisplayNames = new string[result.LocationIDs.Length];
 
-        count = 0;
         for (int i = 0; i < result.LocationIDs.Length; i++)
         {
             LocationID id = new() { AsId = result.LocationIDs[i] };
             Location location = data.LookupLocation(id);
-            result.SlotIds[count] = playerIdToLookup[location.ScoutedPlayerName ?? throw new NullReferenceException()];
-            result.ItemDisplayNames[count] = location.ScoutedItemName ?? throw new NullReferenceException();
+            result.SlotIds[i] = playerIdToLookup[location.ScoutedPlayerName ?? throw new NullReferenceException()];
+            result.ItemDisplayNames[i] = location.ScoutedItemName ?? throw new NullReferenceException();
         }
 
         return result;
@@ -972,7 +971,7 @@ public partial class StateTracker : ArchipelagoFeature
             if (!SNet.IsMaster || player.IsBot) return;
             StateTracker st = StateTracker.Get();
             if (st.ApSession == null) return;
-
+    
             FeatureLogger.Notice($"Adding new player to session; sending sync packets: {player.NickName}");
             st.m_stateReplicator?.SendGeneral(player);
             st.m_stateReplicator?.SendScouting(player: player);

@@ -137,7 +137,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
             bool printedSomething = false;
             foreach (var pair in codes)
             {
-                bool isEmpty = pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID);
+                bool isEmpty = pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
 
                 Location location = pair.Item2.Location;
                 string itemName()   => location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
@@ -217,7 +217,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         {
             StateTracker stateTracker = StateTracker.Get();
             var codes = MakeItemCodes(stateTracker, terminal)
-                .Where(pair => !(pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID)))
+                .Where(pair => !(pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false)))
                 .Select(pair => pair.Item2.ID)
                 .ToList();
             stateTracker.MarkAsTrash(codes, terminal.m_syncedInteractionSource);

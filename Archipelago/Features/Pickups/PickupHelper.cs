@@ -320,12 +320,12 @@ public class PickupHelper : ArchipelagoFeature
     /// Before picking up an item, check if it's associated with any locations.
     /// If it is, block the pickup and notify that those locations have been found.
     /// </summary>
-    [ArchivePatch(typeof(LG_PickupItem_Sync), nameof(LG_PickupItem_Sync.AttemptPickupInteraction))]
+    [ArchivePatch(typeof(LG_PickupItem_Sync), nameof(LG_PickupItem_Sync.AttemptInteract))]
     public static class LG_PickupItem_Sync__AttemptPickupInteraction__Patch
     {
-        public static void Prefix(LG_PickupItem_Sync __instance, ePickupItemInteractionType interaction, ref SNet_Player player, bool droppedOnFloor = false, bool forceUpdate = false)
+        public static void Prefix(LG_PickupItem_Sync __instance, ref pPickupItemInteraction interaction)
         {
-            if (interaction != ePickupItemInteractionType.Pickup)
+            if (interaction.type != ePickupItemInteractionType.Pickup)
                 return; // We only care about when it's being picked up
 
             ContainsLocationPickupComp? comp = __instance.GetComponent<ContainsLocationPickupComp>();
@@ -333,11 +333,15 @@ public class PickupHelper : ArchipelagoFeature
                 return; // Not associated with a location
 
             StateTracker stateTracker = StateTracker.Get();
-            PlayerAgent agent = player.PlayerAgent.Cast<PlayerAgent>();
+            PlayerAgent? agent;
+            if (interaction.pPlayer.TryGetPlayer(out SNet_Player sPlayer))
+                agent = sPlayer.PlayerAgent.TryCast<PlayerAgent>();
+            else agent = null;
+
             var location = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
             if (location.RandMode.IsTreatedAsRandom)
             {
-                player = null!; // Prevent the pickup
+                interaction.pPlayer.SetPlayer(null);
 
                 // If it's a warden objective, we can also objective progress
                 CarryItemPickup_Core? carryItem = __instance.item.TryCast<CarryItemPickup_Core>();
