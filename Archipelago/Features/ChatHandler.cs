@@ -1,5 +1,8 @@
 ﻿using Archipelago.MultiClient.Net.MessageLog.Messages;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
+using SNetwork;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -13,11 +16,8 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using ReTFO.Archipelago.Utilities;
-using SNetwork;
 
 [EnableFeatureByDefault]
 public class ChatHandler : ArchipelagoFeature
@@ -138,19 +138,15 @@ public class ChatHandler : ArchipelagoFeature
                 if (itemSendMessage.Item.Player.Slot != StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
                     return;
             }
-
-            //if (Config.DoShortenReceivedItemMessages)
-            //{
-            //    StringBuilder itemSendMessageBuilder = new();
-            //    if (itemSendMessage.Item.Player.Slot == StateTracker.Get().ApSession!.Players.ActivePlayer.Slot)
-            //        itemSendMessageBuilder.Append($"<#{ColorToHex(AP.Colors.BuiltInPalettes.Dark.)}")
-            //}
-
         }
 
         StringBuilder output = new();
-        foreach (var part in message.Parts)
+        for (int i = 0; i < message.Parts.Length; i++)
         {
+            if (message is ItemSendLogMessage && Config.DoShortenReceivedItemMessages)
+                if (i > 2) continue;
+
+            AP.MessageLog.Parts.MessagePart part = message.Parts[i];
             output.Append($"<{ColorToHex(part.Color)}>");
             switch (part.Type)
             {

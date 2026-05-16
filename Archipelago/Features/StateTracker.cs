@@ -418,7 +418,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="delay">The delay, in milliseconds</param>
     protected async Task<AP.Packets.RoomInfoPacket> ReconnectDelayed(int delay=2500)
     {
-        FeatureLogger.Notice($"Attempting to reconnect to {Config.ServerAddress}...");
+        FeatureLogger.Notice($"Attempting to reconnect to Archipelago Host...");
         await Task.Delay(delay).ConfigureAwait(false);
         return await ApSession!.ConnectAsync().ConfigureAwait(false);
     }
@@ -794,10 +794,12 @@ public partial class StateTracker : ArchipelagoFeature
     {
         ApSession?.Socket.DisconnectAsync();
         ApSession = null;
+        ConnectTask = null;
+        LoginTask = null;
 
-        SNetwork.SNet.Lobbies.LeaveLobby();
+        //CM_MenuBar.__c.__9._Setup_b__42_3(); // The "Exit Expedtion" button's callback
+        SNetwork.SNet.Lobbies.LeaveLobby(); // This only works if not in an expedition
 
-        //CM_MenuBar.__c.__9._Setup_b__42_3(); // Exit expedition button callback
         uint id = Globals.Global.ActiveRundownIds[0];
         Globals.Global.ActiveRundownIds = new(1);
         Globals.Global.ActiveRundownIds[0] = id;

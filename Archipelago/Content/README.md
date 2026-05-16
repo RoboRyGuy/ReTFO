@@ -28,6 +28,8 @@ As of version 0.0.4, there is now official support for multiplayer. Multiplayer 
   to only the GTFO lobby. These players are automatically connected to the Archipelago server using the Host as a
   proxy; they are able to send and receive checks normally, but have no ability to execute commands or requests hints.
 
+*Proxy-Connected is currently unstable. I don't know the cause, but be aware you may have connectivity issues.*
+
 These three models can be mixed and matched as needed. When playing multiplayer, Multi-Connected is the preferred
 connection methodology; it will be more stable and act more predictably than Proxy-Connected. Moreso, it will
 support host migration and other behaviours that require multiple players to be hosting. 

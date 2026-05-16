@@ -40,3 +40,4 @@ Fourth Alpha Release of Beta-Archipelago.
 - Changed objective item names to no longer include an objective summary (to make the names shorter)
 - Add chat settings to help decrease chat message size and quantity
 - Add a reset button to the Rundown menu which allows players to disconnect from Archipelago
+- Moved pickup logic to synced method to hopefully make it more consistent
