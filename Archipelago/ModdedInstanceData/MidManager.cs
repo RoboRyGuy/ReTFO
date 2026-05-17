@@ -111,36 +111,40 @@ public class MidManager
         /// Registers static callabacks marked with the Callback attribute to this event
         /// A helper method intended for use by inherited classes in their constructors
         /// </summary>
-        protected virtual void RegisterStaticCallbacks()
-        {
-            BindingFlags bf = BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly;
-
-            var methods = AppDomain.CurrentDomain
-                .GetAssemblies()
-                .SelectMany(a =>
-                {
-                    try
-                    {
-                        return a.GetTypes();
-                    }
-                    catch (ReflectionTypeLoadException e)
-                    {
-                        return e.Types.OfType<Type>();
-                    }
-                }).SelectMany(t => t.GetMethods(bf))
-                .Where(m => m.CustomAttributes.Any(a => a.AttributeType.IsAssignableTo(typeof(Callback))));
-
-            foreach (var method in methods)
-            {
-                Delegate? del = Delegate.CreateDelegate(typeof(Delegate), method) as Delegate;
-                if (del == null)
-                {
-                    FeatureLogger.Warning($"Failed to register callback {method.DeclaringType?.FullName}.{method.Name} to event; failed to convert to delegate type");
-                    continue;
-                }
-                RegisterCallback(del);
-            }
-        }
+        /// <remarks>
+        /// This has been removed because it has rightfully been identified as unecessary and 
+        ///  it trips malware checks.
+        /// </remarks>
+        //protected virtual void RegisterStaticCallbacks()
+        //{
+        //    BindingFlags bf = BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly;
+        //
+        //    var methods = AppDomain.CurrentDomain
+        //        .GetAssemblies()
+        //        .SelectMany(a =>
+        //        {
+        //            try
+        //            {
+        //                return a.GetTypes();
+        //            }
+        //            catch (ReflectionTypeLoadException e)
+        //            {
+        //                return e.Types.OfType<Type>();
+        //            }
+        //        }).SelectMany(t => t.GetMethods(bf))
+        //        .Where(m => m.CustomAttributes.Any(a => a.AttributeType.IsAssignableTo(typeof(Callback))));
+        //
+        //    foreach (var method in methods)
+        //    {
+        //        Delegate? del = Delegate.CreateDelegate(typeof(Delegate), method) as Delegate;
+        //        if (del == null)
+        //        {
+        //            FeatureLogger.Warning($"Failed to register callback {method.DeclaringType?.FullName}.{method.Name} to event; failed to convert to delegate type");
+        //            continue;
+        //        }
+        //        RegisterCallback(del);
+        //    }
+        //}
     }
 
     public bool IsProcessed { get; protected set; } = false;
@@ -217,15 +221,18 @@ public class MidManager
     }
 
     /// <summary>
-    /// Attempts to name a specific hash.
-    /// When game data is processed, if the resulting hash normally used to name
-    ///  it matches a name in the named hash dictionary, it will use that name instead.
+    /// Names a specific hash.
+    /// When game data is processed, if the resulting hash used to identify it
+    ///  matches a name in the named hash dictionary, it will use that name instead.
     /// </summary>
+    /// <remarks>
+    /// This will overwrite existing hashes. This is generally frowned on because
+    ///  it decreases compatibility between games, but is allowed with the understanding
+    ///  that the developer choosing to do so likely knows better than this hash.
+    /// </remarks>
     /// <param name="hash">The hash to name</param>
     /// <param name="name">The name to use instead</param>
-    /// <returns>True if successfull, false if that hash is already named</returns>
-    public bool NameHash(string hash, string name)
-        => m_namedHashes.TryAdd(hash, name);
+    public void AddNamedHash(string hash, string name) => m_namedHashes[hash] = name;
 
     /// <summary>
     /// Invalidate the current modded instance data, if there is any.

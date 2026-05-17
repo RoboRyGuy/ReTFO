@@ -155,9 +155,6 @@ public static class Terminal
     // Actual class wrapping an event processing instance
     public class Processor : MidManager.Processor<Data>
     {
-        public Processor()
-            => RegisterStaticCallbacks();
-
         protected event Delegate? Event = null;
 
         public override void RegisterCallback(Delegate callback)

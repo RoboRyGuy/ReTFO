@@ -708,9 +708,6 @@ public static class Game
     /// </summary>
     public class Processor : MidManager.Processor<Data>
     {
-        public Processor()
-            => RegisterStaticCallbacks();
-
         protected event Delegate? Event = null;
 
         public override void RegisterCallback(Delegate callback)

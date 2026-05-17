@@ -141,10 +141,6 @@ public static class Layer
     // Actual class wrapping an event processing instance
     public class Processor : MidManager.Processor<Data>
     {
-        // Public constructor which automatically registers callbacks using helper
-        public Processor()
-            => RegisterStaticCallbacks();
-
         protected event Delegate? Event = null;
 
         public override void RegisterCallback(Delegate callback)
