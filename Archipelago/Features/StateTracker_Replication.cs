@@ -308,6 +308,7 @@ public partial class StateTracker : ArchipelagoFeature
         {
             CheckRegion,
             CheckLocation,
+            ScoutLocation,
             MarkTrash,
             EmptyTrash,
             CollectItem,
@@ -922,6 +923,11 @@ public partial class StateTracker : ArchipelagoFeature
             case pArchipelagoInteraction.eType.CheckLocation:
                 LocationID locationId = new() { AsId = interaction.Value };
                 NotifyFoundLocation(locationId, sendingAgent, skipInteraction: true);
+                break;
+
+            case pArchipelagoInteraction.eType.ScoutLocation:
+                LocationID scoutId = new() { AsId = interaction.Value };
+                ScoutLocations(Enumerable.Repeat(scoutId, 1));
                 break;
 
             case pArchipelagoInteraction.eType.MarkTrash:

@@ -985,6 +985,19 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Mark one or more locations as "seen"; this will identify them as seen on Archipelago
+    ///  and can be used to leave hints for players so that, should they not collect this item 
+    ///  now, they can know where to collect it later
+    /// </summary>
+    /// <param name="ids">IDs of the locations to scout</param>
+    public void ScoutLocations(IEnumerable<LocationID> ids, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce)
+    {
+        foreach (var id in ids)
+            SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.AsId);
+        ApSession?.Locations.ScoutLocationsAsync(hintType, ids.ToArray().Select(id => id.AsId).ToArray());
+    }
+
+    /// <summary>
     /// Marks one or more locations as "trash"; StateTracker will state that the items were
     ///  found for the player but will not actually collect the location or notify AP that
     ///  the location was checked.

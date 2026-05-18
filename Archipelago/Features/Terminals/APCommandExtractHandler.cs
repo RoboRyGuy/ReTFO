@@ -11,6 +11,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
 
+using CullingSystem;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 using System.Buffers.Binary;
@@ -112,6 +113,9 @@ public class APCommandExtractHandler : ArchipelagoFeature
         return results;
     }
 
+    private static bool IsEmpty(StateTracker stateTracker, Tuple<string, KeyedLocation> pair)
+        => pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
+
     /// <summary>
     /// Handles the EXTRACT command
     /// </summary>
@@ -137,7 +141,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
             bool printedSomething = false;
             foreach (var pair in codes)
             {
-                bool isEmpty = pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
+                bool isEmpty = IsEmpty(stateTracker, pair);
 
                 Location location = pair.Item2.Location;
                 string itemName()   => location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
@@ -150,7 +154,10 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 printedSomething = true;
             }
             if (printedSomething)
+            {
+                stateTracker.ScoutLocations(codes.Select(pair => pair.Item2.ID));
                 terminal.AddLine($"\n   -- END OF LIST --", true);
+            }    
             else
                 terminal.AddLine($"\n   -- NOTHING TO EXTRACT --", true);
         }
@@ -185,7 +192,6 @@ public class APCommandExtractHandler : ArchipelagoFeature
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, $"Releasing item {param2.ToUpper()}", ReleaseDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Positive);
 
-
                 if (pair.Item2.Location.ItemID.IsNull)
                 {
                     terminal.AddLine("No item to release.");
@@ -217,7 +223,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         {
             StateTracker stateTracker = StateTracker.Get();
             var codes = MakeItemCodes(stateTracker, terminal)
-                .Where(pair => !(pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false)))
+                .Where(pair => !IsEmpty(stateTracker, pair))
                 .Select(pair => pair.Item2.ID)
                 .ToList();
             stateTracker.MarkAsTrash(codes, terminal.m_syncedInteractionSource);
@@ -242,6 +248,9 @@ public class APCommandExtractHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// Add the current extractable item count to the terminal's output
+    /// </summary>
     [ArchivePatch(typeof(LG_ComputerTerminalCommandInterpreter), nameof(LG_ComputerTerminalCommandInterpreter.AddInitialTerminalOutput))]
     public static class LG_ComputerTerminalCommandInterpreter__AddInitialTerminalOutput__Patch
     {
@@ -293,6 +302,40 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 queue._array[currentIndex] = oldValue;
                 currentIndex = targetIndex;
             }
+        }
+    }
+
+    /// <summary>
+    /// Modify the results of a query of this terminal with the contained items
+    /// </summary>
+    [ArchivePatch(typeof(LG_ComputerTerminal), nameof(LG_ComputerTerminal._Setup_b__117_0))]
+    public static class LG_ComputerTerminal___Setup_b__117_0__Patch
+    {
+        public static void Postfix(LG_ComputerTerminal __instance, Il2CppSystem.Collections.Generic.List<string> __result)
+        {
+            var func = () =>
+            {
+                __result.Add(string.Empty);
+
+                int i = 1;
+                while (i < __result.Count && !__result[i].StartsWith("---------")) ++i;
+
+                StateTracker stateTracker = StateTracker.Get();
+                var codes = MakeItemCodes(stateTracker, __instance)
+                    .Where(pair => !IsEmpty(stateTracker, pair));
+
+                __result.Insert(i++, "AVAILABLE EXTRACTIONS:");
+                if (!codes.Any())
+                    __result.Insert(i++, $"  -- NO EXTRACTIONS FOUND --");
+                else
+                {
+                    foreach (var code in codes)
+                        __result.Insert(i++, $"  ({code.Item2.Location.ScoutedPlayerName}) {code.Item2.Location.ScoutedItemName}");
+                    __result.Insert(i++, "   -- END OF LIST --");
+                    stateTracker.ScoutLocations(codes.Select(pair => pair.Item2.ID));
+                }
+            };
+            func();
         }
     }
 
