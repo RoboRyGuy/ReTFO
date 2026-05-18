@@ -1315,12 +1315,15 @@ public partial class StateTracker : ArchipelagoFeature
         // Moving rundown 7 from position 2 to position 7 (so rundowns load in order)
         if (MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections.Count == 8)
         {
-            var selections = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections;
-            var positions = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelectionPositions;
-            for (int i = 1; i < 6; i++)
+            // This is easiest done with a full sort, in case it gets changed mid-game (ie by us, then the user presses reset and overwrite again, ...)
+            string[] sortKeys = MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections.Select(s => s.Name).ToArray();
+            var sortValues = Enumerable.Range(0, 8).Select(i => (MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections[i], MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelectionPositions[i])).ToArray();
+            Array.Sort(sortKeys, sortValues);
+
+            for (int i = 0; i < sortKeys.Length; i++)
             {
-                (selections[i + 1], selections[i]) = (selections[i], selections[i + 1]);
-                (positions[i + 1], positions[i]) = (positions[i], positions[i + 1]);
+                MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelections[i] = sortValues[i].Item1;
+                MainMenuGuiLayer.Current.PageRundownNew.m_rundownSelectionPositions[i] = sortValues[i].Item2;
             }
         }
 
