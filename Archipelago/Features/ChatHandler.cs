@@ -5,6 +5,7 @@ using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Members;
@@ -22,9 +23,9 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 [EnableFeatureByDefault]
 public class ChatHandler : ArchipelagoFeature
 {
-    public override string Name => "Chat Manager";
+    public override string Name => "Chat Linker";
     public override string Description
-        => "Handles chat messages to/from Archipelago";
+        => "Handles chat messages to/from Archipelago. Disabling this disables all chat in and out with Archipelago.";
     public override FeatureGroup Group => FeatureGroups.Archipelago;
     private static IArchiveLogger? m_featureLogger = null;
     public static new IArchiveLogger FeatureLogger
@@ -140,11 +141,23 @@ public class ChatHandler : ArchipelagoFeature
             }
         }
 
+        // Identifying which message parts to skip / ignore
+        HashSet<int> skipIndicies = new();
+
+        if (message.GetType() == typeof(ItemSendLogMessage) && Config.DoShortenReceivedItemMessages)
+            skipIndicies.UnionWith([2, 3, 4]);
+
+        skipIndicies.UnionWith(message.Parts
+            .Select((p, i) => (i, p))
+            .Where(p => p.p.Type == AP.MessageLog.Parts.MessagePartType.HintStatus)
+            .Where(p => p.p.Text.Contains("unspecified", StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.i)
+        );
+
         StringBuilder output = new();
         for (int i = 0; i < message.Parts.Length; i++)
         {
-            if (message is ItemSendLogMessage && Config.DoShortenReceivedItemMessages)
-                if (i > 2) continue;
+            if (skipIndicies.Contains(i)) continue;
 
             AP.MessageLog.Parts.MessagePart part = message.Parts[i];
             output.Append($"<{ColorToHex(part.Color)}>");
@@ -164,9 +177,7 @@ public class ChatHandler : ArchipelagoFeature
                     break;
 
                 case AP.MessageLog.Parts.MessagePartType.HintStatus:
-                    output.Append("<b>");
                     output.Append(part.Text);
-                    output.Append("</b>");
                     break;
             }
         }
