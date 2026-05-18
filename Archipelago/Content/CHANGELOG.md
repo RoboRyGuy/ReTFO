@@ -41,3 +41,9 @@ Fourth Alpha Release of Beta-Archipelago.
 - Add chat settings to help decrease chat message size and quantity
 - Add a reset button to the Rundown menu which allows players to disconnect from Archipelago
 - Moved pickup logic to synced method to hopefully make it more consistent
+
+## Version 0.0.5
+
+Fifth Alpha Release of Beta-Archipelago
+- Added patch which moves the terminal in R8D1 to somewhere it's reachable. 
+  Thanks @RandomBoy42069 for pointing out that this terminal does, in fact, exist.

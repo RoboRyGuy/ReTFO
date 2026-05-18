@@ -23,7 +23,6 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
-using FluffyUnderware.DevTools.Extensions;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -270,16 +269,17 @@ public partial class StateTracker : ArchipelagoFeature
         // Replace this with a menu config at some point
         CurrentState = eState.FakeConnect;
         RootSeed = 0;
-        Expeditions = ExpeditionsFromNames([ 
-            "R1B1", "R6A1", "R3A3", "R6B1", "R8C2", "R4D2", "R8E1",
-            //"R1B1", "R1A1", "R1B2", "R1C1", "R1C2", "R1D1",
-            //"R3A1", "R3A2", "R3A3", "R3B1", "R3B2", "R3C1", "R3D1",
-            //"R4A1", "R4A2", "R4A3", "R4B1", "R4B2", "R4B3", "R4C1", "R4C2", "R4C3", "R4D1", "R4D2", "R4E1",
-            //"R5A1", "R5A2", "R5A3", "R5B1",
-            //"R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C3", "R6CX", "R6D1", "R6D2", "R6D3", "R6D4",
-            //"R7A1", "R7B1", "R7B2", "R7B3", "R7C1", "R7C2", "R7C3", "R7D1", "R7D2", "R7E1",
-            //"R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
-        ]);
+        //Expeditions = ExpeditionsFromNames([ 
+        //    "R1B1", "R6A1", "R3A3", "R6B1", "R8C2", "R4D2", "R8E1",
+        //    //"R1B1", "R1A1", "R1B2", "R1C1", "R1C2", "R1D1",
+        //    //"R3A1", "R3A2", "R3A3", "R3B1", "R3B2", "R3C1", "R3D1",
+        //    //"R4A1", "R4A2", "R4A3", "R4B1", "R4B2", "R4B3", "R4C1", "R4C2", "R4C3", "R4D1", "R4D2", "R4E1",
+        //    //"R5A1", "R5A2", "R5A3", "R5B1",
+        //    //"R6A1", "R6AX", "R6B1", "R6B2", "R6BX", "R6C1", "R6C2", "R6C3", "R6CX", "R6D1", "R6D2", "R6D3", "R6D4",
+        //    //"R7A1", "R7B1", "R7B2", "R7B3", "R7C1", "R7C2", "R7C3", "R7D1", "R7D2", "R7E1",
+        //    //"R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
+        //]);
+        Expeditions = MidManager.GetProcessedGameData().GetAllExpeditions().Select(pair => pair.Value).ToHashSet();
         WhitelistTags = [ MidManager.GetProcessedGameData().Tag_All ];
         BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks, MidManager.GetProcessedGameData().Tag_LobbySlotUnlocks ];
         RequiresSecondaries = true;
@@ -1533,8 +1533,31 @@ public partial class StateTracker : ArchipelagoFeature
     {
         //if (Input.GetKeyDown(KeyCode.J))
         //{
-        //    MainMenuGuiLayer.Current.PageRundownNew._Setup_b__102_0(0);
-        //    //MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
+        //    // I figure this is enough to ensure we're looking at the right block
+        //    const uint ID = 1556013495;
+        //    const string NAME = "R8_D1_Empty_L1";
+        //    const int ALIAS_START = 420;
+        //    const int ZONE_COUNT = 10;
+        //
+        //    LevelLayoutDataBlock layout = LevelLayoutDataBlock.GetBlock(ID);
+        //    if (layout.name != NAME
+        //        || layout.ZoneAliasStart != ALIAS_START
+        //        || layout.Zones.Count != ZONE_COUNT
+        //        ) return;
+        //
+        //    // Maybe someone else patches it? Better to check than not
+        //    if (layout.Zones[2].TerminalPlacements.Count > 0)
+        //    {
+        //        layout.Zones[2].TerminalPlacements[0].AreaSeedOffset = 0;
+        //        layout.Zones[2].TerminalPlacements[0].MarkerSeedOffset = 0;
+        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.Start = 0f;
+        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.Middle = 0f;
+        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.End = 0f;
+        //        layout.Zones[2].MarkerSubSeed = 141479312;
+        //
+        //        layout.Zones[2].MarkerSubSeed = 0;
+        //        FeatureLogger.Debug($"New value: {layout.Zones[2].TerminalPlacements[0].MarkerSeedOffset}");
+        //    }
         //}
         //else if (Input.GetKey(KeyCode.P))
         //{
