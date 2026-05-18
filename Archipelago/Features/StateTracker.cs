@@ -985,11 +985,25 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
+    /// MAke on location as "seen"; this will identify them as seen on Archipelago
+    ///  and can beused to leave hints for players so that, shoudl they not collect this item
+    ///  now, they can know where to collect it later
+    /// </summary>
+    /// <param name="id">The location to scout</param>
+    /// <param name="hintType">The hint creation policy for scouting this location</param>
+    public void ScoutLocation(LocationID id, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce)
+    {
+        SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.AsId);
+        ApSession?.Locations.ScoutLocationsAsync(hintType, new long[1] { id.AsId });
+    }
+
+    /// <summary>
     /// Mark one or more locations as "seen"; this will identify them as seen on Archipelago
     ///  and can be used to leave hints for players so that, should they not collect this item 
     ///  now, they can know where to collect it later
     /// </summary>
     /// <param name="ids">IDs of the locations to scout</param>
+    /// <param name="hintType">The hint creation policy for scouting these locations</param>
     public void ScoutLocations(IEnumerable<LocationID> ids, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce)
     {
         foreach (var id in ids)

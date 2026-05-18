@@ -92,6 +92,8 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data ObjectiveData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetReactorItem(Objective.Data data)

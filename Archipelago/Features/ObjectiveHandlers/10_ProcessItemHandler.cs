@@ -120,6 +120,8 @@ public class ProcessItemHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data ObjectiveData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetProcessorItem(Objective.Data data)

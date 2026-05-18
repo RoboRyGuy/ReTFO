@@ -134,6 +134,8 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
         public int Count { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_PowerCellDistributionGenItems_PerObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetGenItem(Objective.Data data, int count)

@@ -126,6 +126,8 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Data.Tag_BigRetrievalItems_ByObjective);
 
+        public override Expedition.Data? RequiredExpedition => Data;
+
         /// <summary>
         /// Immediately attempt to spawn the related big pickup.
         /// Spawning must be async because the host must approve it.

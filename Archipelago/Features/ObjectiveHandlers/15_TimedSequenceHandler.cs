@@ -127,6 +127,8 @@ public class TimedSequenceHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data ObjectiveData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     private class TimedSequence_VerifyItem : Item
@@ -145,6 +147,8 @@ public class TimedSequenceHandler : ArchipelagoFeature
         public Objective.Data ObjectiveData { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TimedSequenceVerifyItems_PerObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetMainTerminal(Objective.Data data)

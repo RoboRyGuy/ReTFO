@@ -76,6 +76,8 @@ public class WarpEventsHandler : ArchipelagoFeature
         /// </summary>
         public string? WarpAlign { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => TargetZone;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (TargetZone.IsCurrentlyInExpedition())

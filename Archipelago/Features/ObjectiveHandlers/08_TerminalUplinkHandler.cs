@@ -135,6 +135,8 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         public int Count { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TerminalUplinkTerminalItems_ByObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     private class TerminalUplink_CompletionItem : Item
@@ -153,6 +155,8 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         public Objective.Data ObjectiveData { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TerminalUplinkCompletionItems_ByObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetTerminalItem(Objective.Data data, int count)

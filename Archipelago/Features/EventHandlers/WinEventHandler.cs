@@ -87,6 +87,8 @@ public class WinEventHandler : ArchipelagoFeature
 
         public override Path.RequiredItem PathReqs => GetInstantWinPathReqs(ExpeditionData);
 
+        public override Expedition.Data? RequiredExpedition => ExpeditionData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (ExpeditionData.IsCurrentlyInExpedition())

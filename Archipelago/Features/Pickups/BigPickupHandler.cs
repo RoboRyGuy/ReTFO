@@ -57,6 +57,8 @@ public class BigPickupHandler : ArchipelagoFeature
         /// </summary>
         public ItemDataBlock? ItemDataBlock { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => Data;
+
         /// <summary>
         /// Immediately attempt to spawn the related big pickup.
         /// Spawning must be async because the host must approve it.

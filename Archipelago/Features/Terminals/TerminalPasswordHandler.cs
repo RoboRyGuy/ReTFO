@@ -92,6 +92,8 @@ public class TerminalPasswordHandler : ArchipelagoFeature
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, TerminalData.Tag_TerminalPasswordItems_ByTerminal);
 
+        public override Expedition.Data? RequiredExpedition => TerminalData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (TerminalData.IsCurrentlyInExpedition())

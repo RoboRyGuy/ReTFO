@@ -121,6 +121,8 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
 
         public bool IsEmpty { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (!IsEmpty && ObjectiveData.IsCurrentlyInExpedition())

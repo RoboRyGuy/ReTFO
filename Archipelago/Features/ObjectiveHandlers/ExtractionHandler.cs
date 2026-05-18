@@ -63,6 +63,8 @@ public class ExtractionHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         Expedition.Data ExpeditionData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ExpeditionData;
     }
 
     public static KeyedItem GetExtractionReachableItem(Expedition.Data data)

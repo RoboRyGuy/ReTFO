@@ -98,6 +98,8 @@ public class DimensionPortalHandler : ArchipelagoFeature
 
         public Zone.Data ZoneData;
 
+        public override Expedition.Data? RequiredExpedition => ZoneData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (ZoneData.IsCurrentlyInExpedition())
@@ -171,6 +173,8 @@ public class DimensionPortalHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Zone.Data ZoneData;
+
+        public override Expedition.Data? RequiredExpedition => ZoneData;
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {

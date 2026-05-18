@@ -392,6 +392,7 @@ public class MidManager
         var dumpData = new
         {
             Name = gameData.Name,
+            Version = Version.Parse(Plugin.Version),
             Expeditions = eData,
             Tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
             Regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),

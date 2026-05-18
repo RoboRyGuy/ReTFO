@@ -92,6 +92,8 @@ public class ColoredKeyHandler : ArchipelagoFeature
 
         public Zone.Data ZoneData { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => ZoneData;
+
         /// <summary>
         /// Try to spawn the key now. Returns the async spawn wrapper, with which
         ///  you can queue events for when the key spawns

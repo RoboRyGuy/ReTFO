@@ -126,6 +126,8 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
         public int Count { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_CorruptedUplinkTerminalItems_PerObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     private static class CorruptedUplink_CompletionLocation
@@ -152,6 +154,8 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
         public Objective.Data ObjectiveData { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_CorruptedUplinkCompletionItems_PerObjective);
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetTerminalItem(Objective.Data data, int count)

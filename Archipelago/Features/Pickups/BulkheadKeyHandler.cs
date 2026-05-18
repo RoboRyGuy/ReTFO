@@ -71,6 +71,8 @@ public class BulkheadKeyHandler : ArchipelagoFeature
 
         public Expedition.Data ExpeditionData { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => ExpeditionData;
+
         // Not sure how to check this at runtime except maybe by name? Not worth it
         const uint BULKHEAD_KEY_ID = 146u;
 

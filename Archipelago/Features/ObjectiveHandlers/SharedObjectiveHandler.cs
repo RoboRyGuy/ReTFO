@@ -99,6 +99,8 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         public Objective.Data Layer { get; set; }
 
         public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Layer.Tag_CompleteObjectiveItems_PerLayer);
+
+        public override Expedition.Data? RequiredExpedition => Layer;
     }
 
     /// <summary>
@@ -130,6 +132,8 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Layer.Data Layer { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => Layer;
     }
 
     /// <summary>

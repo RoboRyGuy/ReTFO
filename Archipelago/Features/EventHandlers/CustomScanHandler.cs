@@ -66,6 +66,8 @@ public class CustomScanHandler : ArchipelagoFeature
         /// </summary>
         public string WorldEventObjectFilter { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => Data;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (Data.IsCurrentlyInExpedition())

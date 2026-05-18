@@ -62,6 +62,8 @@ public class UnlockEventHandler : ArchipelagoFeature
             });
         }
 
+        public override Expedition.Data? RequiredExpedition => ZoneData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (ZoneData.IsCurrentlyInExpedition()) UnlockZoneNow();

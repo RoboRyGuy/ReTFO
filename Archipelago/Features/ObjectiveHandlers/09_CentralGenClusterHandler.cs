@@ -139,6 +139,8 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data ObjectiveData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     /// <summary>
@@ -169,6 +171,8 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data ObjectiveData;
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {

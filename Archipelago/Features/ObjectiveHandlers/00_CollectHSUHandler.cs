@@ -105,6 +105,8 @@ public class CollectHSUHandler : ArchipelagoFeature
 
         public Objective.Data ObjectiveData;
 
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (ObjectiveData.IsCurrentlyInExpedition())

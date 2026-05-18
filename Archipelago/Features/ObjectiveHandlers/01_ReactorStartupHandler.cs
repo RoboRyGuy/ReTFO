@@ -159,7 +159,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
         public Objective.Data ObjectiveData { get; set; }
 
-        // Probably the easiest way to randomize this is to lock the reactor terminal >:)
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     // Location containing a reactor code
@@ -189,6 +189,8 @@ public class ReactorStartupHandler : ArchipelagoFeature
         public Objective.Data ObjectiveData { get; set; }
         
         public int Index { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
 
         private List<LG_WardenObjective_Reactor> GetReactors()
         {
@@ -272,6 +274,8 @@ public class ReactorStartupHandler : ArchipelagoFeature
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsRandomLike = true };
 
         public Objective.Data ObjectiveData { get; set; }
+
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
     }
 
     public static KeyedItem GetReactorItem(Objective.Data data)

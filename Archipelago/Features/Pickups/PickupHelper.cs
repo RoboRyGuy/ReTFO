@@ -190,6 +190,9 @@ public class PickupHelper : ArchipelagoFeature
                 Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
                 string backupName = gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name;
                 pickup.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
+                pickup.add_OnInteractionSelected(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<PlayerAgent, bool>>(new Action<PlayerAgent, bool>(
+                    (_, _) => StateTracker.Get().ScoutLocation(locationId)
+                )));
             }
         }
     }

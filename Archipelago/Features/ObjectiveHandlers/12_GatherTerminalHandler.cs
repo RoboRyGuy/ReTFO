@@ -114,6 +114,8 @@ public class GatherTerminalHandler : ArchipelagoFeature
 
         public int Count { get; set; }
 
+        public override Expedition.Data? RequiredExpedition => ObjectiveData;
+
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
         {
             if (ObjectiveData.IsCurrentlyInExpedition())
