@@ -42,7 +42,7 @@ public class TriggerEventsHandler : ArchipelagoFeature
         = new Dictionary<string, Func<Zone.Data, KeyedItem>>()
     {
         { "Evt_Shuttlebox_Interact_R8A1", (data) => ObjectiveHandlers.RetrieveBigItemsHandler.GetItem(data.GetObjectiveDatas().ElementAt(0), 1) }, // R8A1 - Shuttlebox near the end. That MWP is a retrieval target, so this is a bit odd
-        { "WE_Dataextractor_Interact", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 181) }, // R8D2 - Fake "Process Item" objective at start
+        { "WE_Dataextractor_Interact", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 181) }, // R8C2 - Fake "Process Item" objective at start
         { "Evt_Shuttlebox_Interact_R7B1", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 173) }, // R7B1 - The collection case interaction
     };
 
@@ -96,7 +96,9 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 RegionID eventRegion = data.LookupOrCreateRegion(eventName);
                 data.AddPath(new Path() {
                     StartingRegion = data.LookupOrCreateRegion(sourceZone.ZoneName), 
-                    EndingRegion = eventRegion
+                    EndingRegion = eventRegion,
+                    ReqItem = reqs,
+                    ReqCount = reqs.IsNull ? 0u : 1u,
                 });
                 Event.Data eventData = data.ProcessEvents(eventRegion, eventName, fauxList, eventStart, eventEnd - eventStart);
 
