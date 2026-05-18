@@ -1615,13 +1615,13 @@ public partial class StateTracker : ArchipelagoFeature
                 {
                     // If this item is from our game and is not randomized, we do not process receiving it
                     // Note that if we ever give ourselves items their location IDs will be 0 or below
-                    if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot && itemInfo.LocationId > 0)
-                    {
-                        LocationID locId = new() { AsId = itemInfo.LocationId };
-                        Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
-                        if (!loc.RandMode.IsRandomized)
-                            continue;
-                    }
+                    //if (itemInfo.Player.Slot == ApSession.Players.ActivePlayer.Slot && itemInfo.LocationId > 0)
+                    //{
+                    //    LocationID locId = new() { AsId = itemInfo.LocationId };
+                    //    Location loc = MidManager.GetProcessedGameData().LookupLocation(locId);
+                    //    if (!loc.RandMode.IsRandomized)
+                    //        continue;
+                    //}
 
                     // Actually collecting the item
                     CollectItem(id);
