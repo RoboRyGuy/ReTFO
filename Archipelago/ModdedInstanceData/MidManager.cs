@@ -153,7 +153,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
     { 
-        { "nriV4wruyGDWJAlthDcQVOnZRc/XrdAjR2fCHXE/E0k=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "5nm808atGAc5eKxeO5m1N71Og0QwlqMiLCspm2GBZE0=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -283,7 +283,7 @@ public class MidManager
 
         // Check that the game is winnable and such
         FeatureLogger.Notice("Checking for winability");
-        if (DoGraphTraversal(gameData, true, null, null, true))
+        if (DoGraphTraversal(gameData, true, null, true))
             FeatureLogger.Success("Game is beatable!");
         else
             FeatureLogger.Fail("Game is not beatable!");
@@ -357,7 +357,7 @@ public class MidManager
             directory = SHGetKnownFolderPath(DownloadsGUID, 0);
         string filename = System.IO.Path.Combine(directory, gameData.Name == null ? "GTFO.ini" : $"GTFO-{gameData.Name}.ini");
 
-        DoGraphTraversal(gameData, true, null, null, false);
+        DoGraphTraversal(gameData, true, null, false);
 
         // Identify regions rechable by all possible expeditions
         List<MidExpeditionData> eData = new();
@@ -500,15 +500,14 @@ public class MidManager
     /// </summary>
     /// <param name="gameData">The Game.Data data to traverse</param>
     /// <param name="doProcessing">If true, overwrite the region reachability. Also calculates and add direct path requirements if necessary</param>
+    /// <param name="expeditions">The list of expeditions to test for traversal. If null, includes all expeditions</param>
     /// <param name="logDebugInfo">If true and the Game.Data is not beatable, log info describing the stuck state to help debug why it's considered unbeatable</param>
-    /// <param name="unlockTags">List of whitelist tags matching floating items required to clear the game; these items will be added to the starting item pool</param>
-    /// <param name="goalTags">List of whitelist tags matching items that are required for the game to be considered "beatable"</param>
     /// <returns>True if the Game.Data can be fully traversed (all goal items reachable), false otherwise</returns>
-    public static bool DoGraphTraversal(Game.Data gameData, bool doProcessing = false, ICollection<RandomizationTag>? unlockTags = null, ICollection<RandomizationTag>? goalTags = null, bool logDebugInfo = true)
+    /// <remarks>All floating items are collected immediately with the assumption they'll be placed somewhere reachable</remarks>
+    public static bool DoGraphTraversal(Game.Data gameData, bool doProcessing = false, ICollection<Expedition.Data>? expeditions = null, bool logDebugInfo = true)
     {
         // Handle default values
-        unlockTags ??= [ gameData.Tag_UnlockItems ] ;
-        goalTags ??= [ gameData.Tag_GoalItems ];
+        expeditions ??= gameData.GetAllExpeditions().Select(e => e.Value).ToHashSet();
 
         // Progress tracking
         // List of items that have been collected
@@ -542,6 +541,7 @@ public class MidManager
             if (id.IsNull) return;
             Item item = gameData.LookupItem(id);
             if (!item.RandData.IsProgression) return; // Only progression items can be considered for path reqs
+            if (item.RequiredExpedition != null && !expeditions.Contains(item.RequiredExpedition)) return; // This item is not considered part of the expedition set
             collectedItems.Add(item);
             Path.RequiredItem req = item.PathReqs;
             if (req.Type == Path.RequiredItem.eType.None) return;
@@ -549,6 +549,7 @@ public class MidManager
             else if (req.Type == Path.RequiredItem.eType.Category) categoryCounts[req.Target] = catsCount(req.Target) + 1;
         }
 
+        // Abstractions for getting / setting reachability
         bool getReachable(RegionID id) => doProcessing ? gameData.LookupRegion(id).Reachable : isReachable[id.AsIndex];
         void setReachable(RegionID id) { if (doProcessing) gameData.SetRegionReachable(id, true); else isReachable[id.AsIndex] = true; }
 
@@ -564,18 +565,11 @@ public class MidManager
         ReadOnlyRegion startingRegion = gameData.LookupRegion(startingRegionID);
         setReachable(startingRegionID);
 
+        // Floating items are auto-collected
         foreach (ItemID id in gameData.GetAllFloatingItemIds())
-        {
-            Item item = gameData.LookupItem(id);
-            RandomizationTagDefinition def1 = gameData.LookupTagDef(item.NameTag);
-            RandomizationTagDefinition def2 = item.Tag2.IsNull ? new() : gameData.LookupTagDef(item.Tag2);
+            collectItem(id);
 
-            if (def1.Name.Contains("Expedition Unlock")) { }
-
-            if (gameData.AnyTagMatches(unlockTags, gameData.LookupItem(id)))
-                collectItem(id);
-        }
-
+        // Collecting items in the starting region
         foreach (Location location in startingRegion.ConnectedLocationIds.Select(gameData.LookupLocation))
             if (location.OwningRegionIds.Length == 1 && !location.ItemID.IsNull) collectItem(location.ItemID);
 
@@ -688,7 +682,8 @@ public class MidManager
             .Select(pair => pair.Value.ItemID)
             .Where(id => !id.IsNull)
             .Select(gameData.LookupItem)
-            .Where(item => gameData.AnyTagMatches(goalTags, item))
+            .Where(i => i.RequiredExpedition == null || expeditions.Contains(i.RequiredExpedition))
+            .Where(item => gameData.TagMatches(gameData.Tag_GoalItems, item))
             .ToList();
         foreach (var item in collectedItems) 
             requiredItems.Remove(item); // Intentionally ignore cases where there is no such item to remove

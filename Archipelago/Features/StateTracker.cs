@@ -23,6 +23,7 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
+using ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -565,10 +566,7 @@ public partial class StateTracker : ArchipelagoFeature
         BlacklistTags.Add(gameData.Tag_Never);  // Just in case
 
         FeatureLogger.Notice("Beginning graph traversal for new rundowns");
-        HashSet<RandomizationTag> unlockTags = Expeditions.Select(e => e.Tag_UnlockItems_ByExpedition.SelfResolve()).ToHashSet();
-        HashSet<RandomizationTag> goalTags = Expeditions.Select(e => e.Tag_GoalItems_ByExpedition.SelfResolve()).ToHashSet();
-
-        if (!MidManager.DoGraphTraversal(gameData, true, unlockTags, goalTags, false))
+        if (!MidManager.DoGraphTraversal(gameData, true, Expeditions, false))
         {
             FeatureLogger.Error("Graph traversal failed! Cancelling connection. View log for details.");
             ApSession?.Socket.DisconnectAsync();
@@ -749,20 +747,8 @@ public partial class StateTracker : ArchipelagoFeature
         HashSet<RandomizationTag> whitelistTags = new() { data.Tag_GoalItems };
         HashSet<RandomizationTag> blacklistTags = new();
 
-        foreach (var pair in data.GetAllExpeditions())
-        {
-            if (!Expeditions.Contains(pair.Value, new Expedition.Data.Comparer()))
-                blacklistTags.Add(pair.Value.Tag_GoalItems_ByExpedition);
-        }
-
-        foreach (var exp in Expeditions)
-        {
-            if (!RequiresSecondaries && exp.HasSecondary)
-                blacklistTags.Add(ObjectiveHandlers.SharedObjectiveHandler.GetSectorClearedItem(exp.GetLayer(LayerType.Secondary)).NameTag);
-
-            if (!RequiresOverloads && exp.HasOverload)
-                blacklistTags.Add(ObjectiveHandlers.SharedObjectiveHandler.GetSectorClearedItem(exp.GetLayer(LayerType.Overload)).NameTag);
-        }
+        if (!RequiresSecondaries) BlacklistTags.Add(data.Tag_SectorClearItems(LayerType.Secondary));
+        if (!RequiresOverloads) BlacklistTags.Add(data.Tag_SectorClearItems(LayerType.Overload));
 
         // Check which items match that criteria
         var allItemIds = data.GetAllLocations().Select(l => l.Value.ItemID).Concat(data.GetAllFloatingItemIds());
@@ -800,9 +786,9 @@ public partial class StateTracker : ArchipelagoFeature
         //CM_MenuBar.__c.__9._Setup_b__42_3(); // The "Exit Expedtion" button's callback
         SNetwork.SNet.Lobbies.LeaveLobby(); // This only works if not in an expedition
 
-        uint id = Globals.Global.ActiveRundownIds[0];
+        uint savedId = Globals.Global.ActiveRundownIds[0];
         Globals.Global.ActiveRundownIds = new(1);
-        Globals.Global.ActiveRundownIds[0] = id;
+        Globals.Global.ActiveRundownIds[0] = savedId;
 
         MainMenuGuiLayer.Current.PageRundownNew.m_isRevealing = false;
         MainMenuGuiLayer.Current.PageRundownNew.m_rundownIsRevealed = false;
@@ -815,6 +801,29 @@ public partial class StateTracker : ArchipelagoFeature
         MainMenuGuiLayer.Current.PageRundownNew.PostSetup();
         MainMenuGuiLayer.Current.ChangePage(eCM_MenuPage.CMP_RUNDOWN_NEW);
         MainMenuGuiLayer.Current.PageRundownNew.m_selectionIsRevealed = true;
+
+        // Reseting item collection state
+        Game.Data data = MidManager.GetProcessedGameData();
+        foreach (var id in CollectedItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key, pair.Value)))
+        {
+            Item item = data.LookupItem(id);
+            if (!item.RandData.CollectedByDefault)
+                item.OnItemLost(this);
+        }
+        foreach (var id in data.GetAllFloatingItemIds())
+        {
+            Item item = data.LookupItem(id);
+            if (!item.RandData.CollectedByDefault) continue;
+            int count = ActualItemCounts.GetValueOrDefault(id, 0);
+            if (count > 0)
+                ActualItemCounts[id] = count - 1;
+            else
+                CollectItem(id);
+        }
+
+        // Clearing is not necessary but we'll do it anyway
+        ActualItemCounts.Clear();
+        SessionItemCounts.Clear();
 
         CurrentState = eState.CleanState;
         OnStateChange?.Invoke(this);

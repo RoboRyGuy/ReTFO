@@ -25,18 +25,25 @@ public static class SharedObjectiveHandler_Tags
 
         public TagResolver Tag_SectorClearLocations
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Sector Clear Locations", "Locations checked by clearing a sector and successfully extracting (or equivalent)", gd.Tag_Never));
-    }
+        
+        public TagResolver Tag_SectorClearItems(LayerType layerType)
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{layerType.GetName()} Sector Clear Items", "Items awarded by successfully clearing sectors in a cateogry of layer", data.Tag_GoalItems));
 
-    extension (Expedition.Data data)
-    {
-        public TagResolver Tag_SectorClearItems_ByExpedition
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Sector Clear Items", "Items awarded by successfully clearing a sector in a particular expedition", data.Tag_GoalItems_ByExpedition));
     }
 
     extension (Layer.Data data)
     {
-        public TagResolver Tag_CompleteObjectiveItems_PerLayer
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Complete Objective Items", "Items representing objective completions for a particular layer in an expedition", gd.Tag_Never));
+        /// <summary>
+        /// Sector clear items by layer only; the expedition of the data is ignored
+        /// </summary>
+        public TagResolver Tag_SectorClearItems_ByLayer
+            => data.Tag_SectorClearItems(data.LayerType);
+    }
+
+    extension (Layer.Data data)
+    {
+        public TagResolver Tag_CompleteObjectiveItems_ByLayer
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Complete Objective Items", "Items representing objective completions for a particular layer in a particular expedition", gd.Tag_Never));
     }
 }
 
@@ -92,13 +99,13 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Completion", "Item representing a particular objective being cleared", data.Tag_CompleteObjectiveItems_PerLayer));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Completion", "Item representing a particular objective being cleared", data.Tag_CompleteObjectiveItems_ByLayer));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         public Objective.Data Layer { get; set; }
 
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Layer.Tag_CompleteObjectiveItems_PerLayer);
+        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Layer.Tag_CompleteObjectiveItems_ByLayer);
 
         public override Expedition.Data? RequiredExpedition => Layer;
     }
@@ -127,7 +134,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Layer.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfull cleared", data.Tag_SectorClearItems_ByExpedition));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfull cleared", data.Tag_SectorClearItems_ByLayer));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 

@@ -72,7 +72,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             : base(MakeTag(expedition), MakeRandData())
         {
             ExpeditionData = expedition;
-            Tag2 = expedition.Tag_UnlockItems_ByExpedition; // Used internally for path traversal checks
+            Tag2 = expedition.Tag_UnlockItems; // Used internally for path traversal checks
         }
 
         public static TagResolver MakeTag(Expedition.Data data)

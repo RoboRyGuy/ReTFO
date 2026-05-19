@@ -23,7 +23,7 @@ public static class CollectHSUHandler_Tags
             => new TagResolver(data, gd => gd.LookupOrCreateTag("HSU Scan Locations", "Locations checked by starting HSU scans", gd.Tag_AllLocations));
 
         public TagResolver Tag_HSUScanItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("HSU Scan Items", "Items which start HSU scans", gd.Tag_AllItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("HSU Scan Items", "Items which start HSU scans", gd.Tag_ScanItems));
     }
 }
 

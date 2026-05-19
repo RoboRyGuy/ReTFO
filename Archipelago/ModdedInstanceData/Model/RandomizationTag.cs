@@ -207,21 +207,4 @@ public static class RootRandomizationTags
 
     }
 
-    extension (Expedition.Data data)
-    {
-        /// <summary>
-        /// Base tag for goal items tied to a specific expedition.
-        /// Used as a special tag when regenerating reachability when the rando starts.
-        /// </summary>
-        public TagResolver Tag_UnlockItems_ByExpedition
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Unlock Items", "Base tag for unlock items for a specific expedition", gd.Tag_UnlockItems));
-
-        /// <summary>
-        /// Base tag for goal items for a specific expedition.
-        /// Used as a special tag when checking randomization settings to ensure solvability.
-        /// </summary>
-        public TagResolver Tag_GoalItems_ByExpedition
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Goal Items", "Base tag for goal items for a specific expedition", gd.Tag_GoalItems));
-    }
-
 }
