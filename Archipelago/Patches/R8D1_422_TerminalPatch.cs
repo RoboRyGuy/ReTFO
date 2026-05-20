@@ -7,10 +7,10 @@ namespace ReTFO.Archipelago.Patches;
 
 /// <summary>
 /// There's a bad terminal spawn in R8D1 (Main) Zone_422.
-/// This bumps its spawn location to somewhere it can actually be accessed.
+/// This changes the spawn seed to bump its spawn somewhere it's reachable
 /// </summary>
 [HarmonyPatch]
-public static class R8D1TerminalPatch
+public static class R8D1_422_TerminalPatch
 {
     [HarmonyTargetMethods]
     public static IEnumerable<MethodBase> TargetMethods()
