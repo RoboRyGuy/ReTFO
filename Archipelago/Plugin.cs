@@ -16,6 +16,8 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago;
 
+using LevelGeneration;
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
@@ -171,6 +173,9 @@ public class Plugin : BasePlugin
     /// <summary>
     /// Debug patch I added to try and figure out a checkpoint bug.
     /// Since I've added it, though, the bug has not occured. So, I guess it fixes the bug?
+    /// The bug: When loading a checkpoint, it gets stuck in a loop (bricking the game)
+    /// You can tell if it happens because the screen will flash white a lot and the
+    ///  short "checkpoint loaded" beep will play over and over
     /// </summary>
     [HarmonyPatch(typeof(SNet_Replication), nameof(SNet_Replication.RecallBytes))]
     [HarmonyPrefix]

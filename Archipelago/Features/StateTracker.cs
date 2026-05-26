@@ -61,7 +61,7 @@ public partial class StateTracker : ArchipelagoFeature
 
     // Things set up at initial sync
     public long RootSeed { get; protected set; } = 0;
-    protected HashSet<Expedition.Data> Expeditions { get; set; } = new();
+    protected HashSet<Expedition.Data> Expeditions { get; set; } = new(new Expedition.Data.Comparer());
     protected HashSet<RandomizationTag> WhitelistTags { get; set; } = new();
     protected HashSet<RandomizationTag> BlacklistTags { get; set; } = new();
     public bool RequiresSecondaries { get; protected set; } = new();
@@ -227,7 +227,7 @@ public partial class StateTracker : ArchipelagoFeature
     public HashSet<Expedition.Data> ExpeditionsFromNames(ICollection<string> names)
     {
         Game.Data gameData = MidManager.GetProcessedGameData();
-        HashSet<Expedition.Data> results = new(names.Count);
+        HashSet<Expedition.Data> results = new(names.Count, new Expedition.Data.Comparer());
         foreach (string name in names.Distinct())
         {
             if (gameData.TryLookupExpedition(name, out Expedition.Data? data))
@@ -280,7 +280,7 @@ public partial class StateTracker : ArchipelagoFeature
         //    //"R7A1", "R7B1", "R7B2", "R7B3", "R7C1", "R7C2", "R7C3", "R7D1", "R7D2", "R7E1",
         //    //"R8A1", "R8A2", "R8B1", "R8B2", "R8B3", "R8B4", "R8C1", "R8C2", "R8D1", "R8D2", "R8E1", "R8E2",
         //]);
-        Expeditions = MidManager.GetProcessedGameData().GetAllExpeditions().Select(pair => pair.Value).ToHashSet();
+        Expeditions = MidManager.GetProcessedGameData().GetAllExpeditions().Select(pair => pair.Value).ToHashSet(new Expedition.Data.Comparer());
         WhitelistTags = [ MidManager.GetProcessedGameData().Tag_All ];
         BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks, MidManager.GetProcessedGameData().Tag_LobbySlotUnlocks ];
         RequiresSecondaries = true;
@@ -1572,31 +1572,10 @@ public partial class StateTracker : ArchipelagoFeature
     {
         //if (Input.GetKeyDown(KeyCode.J))
         //{
-        //    // I figure this is enough to ensure we're looking at the right block
-        //    const uint ID = 1556013495;
-        //    const string NAME = "R8_D1_Empty_L1";
-        //    const int ALIAS_START = 420;
-        //    const int ZONE_COUNT = 10;
-        //
-        //    LevelLayoutDataBlock layout = LevelLayoutDataBlock.GetBlock(ID);
-        //    if (layout.name != NAME
-        //        || layout.ZoneAliasStart != ALIAS_START
-        //        || layout.Zones.Count != ZONE_COUNT
-        //        ) return;
-        //
-        //    // Maybe someone else patches it? Better to check than not
-        //    if (layout.Zones[2].TerminalPlacements.Count > 0)
-        //    {
-        //        layout.Zones[2].TerminalPlacements[0].AreaSeedOffset = 0;
-        //        layout.Zones[2].TerminalPlacements[0].MarkerSeedOffset = 0;
-        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.Start = 0f;
-        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.Middle = 0f;
-        //        layout.Zones[2].TerminalPlacements[0].PlacementWeights.End = 0f;
-        //        layout.Zones[2].MarkerSubSeed = 141479312;
-        //
-        //        layout.Zones[2].MarkerSubSeed = 0;
-        //        FeatureLogger.Debug($"New value: {layout.Zones[2].TerminalPlacements[0].MarkerSeedOffset}");
-        //    }
+        //    const uint rundownID = 35;
+        //    RundownDataBlock rundown = RundownDataBlock.GetBlock(rundownID);
+        //    var expedition = rundown.TierA[2];
+        //    expedition.MainLayerData.ObjectiveData = expedition.MainLayerData.ChainedObjectiveData[0];
         //}
         //else if (Input.GetKey(KeyCode.P))
         //{

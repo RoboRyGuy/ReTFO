@@ -35,6 +35,7 @@ public static class Game
             public List<Item> ItemList { get; init; } = new();
             public Dictionary<RandomizationTag, ItemID> ItemLookup { get; init; } = new();
             public List<ItemID> FloatingItems { get; init; } = new();
+            public List<Option> Options { get; init; } = new();
         }
 
         /// <summary>
@@ -81,6 +82,7 @@ public static class Game
         private List<Item> ItemList => Storage.ItemList;
         private Dictionary<RandomizationTag, ItemID> ItemLookup => Storage.ItemLookup;
         private List<ItemID> FloatingItems => Storage.FloatingItems;
+        private List<Option> Options => Storage.Options;
 
         /// <summary>
         /// Attempt to register the given expedition data under the provided expedition name.
@@ -569,6 +571,21 @@ public static class Game
         /// Get all registered floating item IDs
         /// </summary>
         public IReadOnlyCollection<ItemID> GetAllFloatingItemIds() => FloatingItems;
+
+        /// <summary>
+        /// Register an option with the game data so users can have an easier time customizing their gameplay
+        /// </summary>
+        public void AddOption(Option option)
+        {
+            if (Options.Contains(option))
+                throw new ArgumentException("Cannot register duplicate option");
+            Options.Add(option);
+        }
+
+        /// <summary>
+        /// Get all registered options.
+        /// </summary>
+        public IReadOnlyCollection<Option> GetAllOptions() => Options;
 
         /// <summary>
         /// Name of the very first region in the game.

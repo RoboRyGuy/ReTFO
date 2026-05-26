@@ -13,7 +13,6 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using UnityEngine.UIElements;
 
 public static class GatherTerminalHandler_Tags
 {
@@ -22,7 +21,7 @@ public static class GatherTerminalHandler_Tags
         public TagResolver Tag_GatherTerminalsCommandLocations
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Gather Terminals Command Locations", "Locations checked executing gather terminals commands", gd.Tag_AllLocations));
 
-        public TagResolver Tag_GatherTerminalsCommandItem
+        public TagResolver Tag_GatherTerminalsCommandItems
             => new TagResolver(data, gd => gd.LookupOrCreateTag("Gather Terminals Command Items", "Items representing a gather terminals command having been executed", gd.Tag_AllItems));
     }
 
@@ -32,7 +31,7 @@ public static class GatherTerminalHandler_Tags
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Gather Terminals Command Locations", "Locations checked executing gather terminals commands for a particular objective", gd.Tag_GatherTerminalsCommandLocations));
 
         public TagResolver Tag_GatherTerminalsCommandItem_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Gather Terminals Command Items", "Items representing a gather terminals command having been executed for a particular objective", gd.Tag_GatherTerminalsCommandItem));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Gather Terminals Command Items", "Items representing a gather terminals command having been executed for a particular objective", gd.Tag_GatherTerminalsCommandItems));
     }
 }
 
@@ -214,46 +213,63 @@ public class GatherTerminalHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// For some reason, the objective chain index is not updated normally, so this will fix that.
+    /// </summary>
+    [ArchivePatch(typeof(LG_ComputerTerminal), nameof(LG_ComputerTerminal.SetupAsWardenObjectiveGatherTerminal))]
+    public static class LG_ComputerTerminal__SetupAsWardenObjectiveGatherTerminal__Patch
+    {
+        public static void Postfix(LG_ComputerTerminal __instance, int objectiveChainIndex)
+            => __instance.WardenObjectiveChainIndex = objectiveChainIndex;
+    }
+
+    /// <summary>
+    /// Intercept the command itself and potentially block it. Notify it was triggered.
+    /// </summary>
     [ArchivePatch(typeof(LG_ComputerTerminal), nameof(LG_ComputerTerminal.OnWardenObjectiveGatherCommandDone))]
     public static class LG_ComputerTermina__OnWardenObjectiveGatherCommandDone__Patch
     {
         public static bool Prefix(LG_ComputerTerminal __instance)
         {
-            Objective.Data data = Expedition.Data.FromCurrentExpedition()
-                .GetLayer(__instance.SpawnNode.LayerType)
-                .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
-
-            if (!This.IsCorrectObjective(data))
+            var func = () =>
             {
-                FeatureLogger.Error("Failed to find objective data while intercepting gather command!");
-                return true;
-            }
+                Objective.Data data = Expedition.Data.FromCurrentExpedition()
+                    .GetLayer(__instance.SpawnNode.LayerType)
+                    .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
 
-            var itemCollection = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
-            int i;
-            for (i = 0; i < itemCollection.Count; i++)
-                if (itemCollection[i].Pointer == __instance.Pointer) break;
+                if (!This.IsCorrectObjective(data))
+                {
+                    FeatureLogger.Error("Failed to find objective data while intercepting gather command!");
+                    return true;
+                }
 
-            if (i == itemCollection.Count)
-            {
-                FeatureLogger.Error("Failed to find terminal index while intercepting gather command!");
-                return true;
-            }
+                var itemCollection = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
+                int i;
+                for (i = 0; i < itemCollection.Count; i++)
+                    if (itemCollection[i].Pointer == __instance.Pointer) break;
 
-            RandomizationTag tag = GatherTerminals_CommandLocation.MakeTag(data, i + 1);
-            if (!data.TryLookupLocation(tag, out KeyedLocation loc))
-            {
-                FeatureLogger.Error($"Failed to find location index while intercepting gather command: {data.LookupTagDef(tag).Name}");
-                return true;
-            }
+                if (i == itemCollection.Count)
+                {
+                    FeatureLogger.Error("Failed to find terminal index while intercepting gather command!");
+                    return true;
+                }
 
-            if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandMode.IsTreatedAsRandom)
-            {
-                __instance.m_command.AddOutput("Discovered item(s):", false);
-                __instance.m_command.AddOutput($"  {(loc.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name)}");
-                return false;
-            }
-            else return true;
+                RandomizationTag tag = GatherTerminals_CommandLocation.MakeTag(data, i + 1);
+                if (!data.TryLookupLocation(tag, out KeyedLocation loc))
+                {
+                    FeatureLogger.Error($"Failed to find location index while intercepting gather command: {data.LookupTagDef(tag).Name}");
+                    return true;
+                }
+
+                if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandMode.IsTreatedAsRandom)
+                {
+                    __instance.m_command.AddOutput("Discovered item(s):", false);
+                    __instance.m_command.AddOutput($"  {(loc.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name)}");
+                    return false;
+                }
+                else return true;
+            };
+            return func();
         }
     }
 

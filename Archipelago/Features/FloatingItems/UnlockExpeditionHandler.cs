@@ -54,6 +54,9 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         public FButton ResetAllButton { get; set; } = new FButton("Reset Locks", callback: ResetLocks);
     }
 
+    /// <summary>
+    /// Enumerates all expeditions from a rundown datablock 
+    /// </summary>
     private static IEnumerable<ExpeditionInTierData> UnpackRundown(RundownDataBlock rundown)
     {
         foreach (var expedition in rundown.TierA) yield return expedition;
@@ -63,9 +66,16 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         foreach (var expedition in rundown.TierE) yield return expedition;
     }
 
+    /// <summary>
+    /// Gets all expeditions declared in all rundown datablocks
+    /// </summary>
+    /// <returns></returns>
     private static IEnumerable<ExpeditionInTierData> GetExpeditions()
         => RundownDataBlock.GetAllBlocks().SelectMany(UnpackRundown) ?? Enumerable.Empty<ExpeditionInTierData>();
 
+    /// <summary>
+    /// The item which unlocks an expedition
+    /// </summary>
     private class ExpeditionUnlockItem : Item
     {
         public ExpeditionUnlockItem(Expedition.Data expedition)
@@ -117,6 +127,9 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// Get the expedition unlock item for the provided expedition
+    /// </summary>
     public static KeyedItem GetExpeditionUnlockItem(Expedition.Data data)
     {
         if (data.TryLookupItem(ExpeditionUnlockItem.MakeTag(data), out var item))

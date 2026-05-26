@@ -171,6 +171,33 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         return new(data.AddItem(newItem), newItem);
     }
 
+    /// <summary>
+    /// Adds goal options to the YAML
+    /// </summary>
+    [Game.Callback]
+    public void AddGoalOptions(Game.Data data)
+    {
+        Option requireSecondaries = new(
+            Option.eType.Toggle,
+            "Require Secondaries",
+            "Goal",
+            "If enabled, you will be required to clear the secondary sector on all"
+            + " selected expeditions that have a secondary."
+        );
+        requireSecondaries.FalseEffect[Option.eTarget.GoalBlacklist] = new(1) { data.Tag_SectorClearItems(LayerType.Secondary) };
+        data.AddOption(requireSecondaries);
+
+        Option requireOverloads= new(
+            Option.eType.Toggle,
+            "Require Overloads",
+            "Goal",
+            "If enabled, you will be required to clear the overload sector on all"
+            + " selected expeditions that have an overload."
+        );
+        requireOverloads.FalseEffect[Option.eTarget.GoalBlacklist] = new(1) { data.Tag_SectorClearItems(LayerType.Overload) };
+        data.AddOption(requireOverloads);
+    }
+
     // Adds common regions, locations, and items for all layers. Things like the sector clear, the elevator dropped region and events, etc
     [Layer.Callback]
     public void AddCommonObjectiveElements(Layer.Data data)

@@ -297,6 +297,7 @@ public class MidManager
             .Concat(gameData.GetAllRegions().Select(r => r.Value.Name))
             .Concat(gameData.GetAllPaths().Select(p => p.Value.Name ?? "null"))
             .Concat(gameData.GetAllTags().Select(t => t.Value.Name))
+            .Concat(gameData.GetAllOptions().SelectMany(o => o.Choices.Keys.Prepend(o.Name)))
         ;
         foreach (string s in strings)
         {
@@ -306,7 +307,7 @@ public class MidManager
         }
 
         sha.TransformFinalBlock(delim, 0, 0);
-        string hash = Convert.ToBase64String(sha.Hash!);
+        string hash = Convert.ToBase64String(sha.Hash!).Replace('/', '_').Replace('+', '-');
         if (m_namedHashes.TryGetValue(hash, out var name))
             gameData.Name = name;
         else
@@ -400,6 +401,7 @@ public class MidManager
             Locations = gameData.GetAllLocations().Select(l => new KeyedLocation(l.Key, l.Value)).ToList(),
             Items = gameData.GetAllItems().Select(i => new KeyedItem(i.Key, i.Value)).ToList(),
             FloatingItems = gameData.GetAllFloatingItemIds(),
+            Options = gameData.GetAllOptions(),
         };
 
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
@@ -412,6 +414,7 @@ public class MidManager
         settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
         string json = JsonConvert.SerializeObject(dumpData, settings);
         File.WriteAllText(filename, json);
+        FeatureLogger.Success($"MID data saved to: {filename}");
     }
 
     /// <summary>
@@ -430,6 +433,7 @@ public class MidManager
             .Concat(GetProcessedGameData().GetAllTags().Select(pair => $"\"{pair.Key.AsId.ToString()}\"\"{pair.Value.Name}\",\"{pair.Value.Parent}\",\"{pair.Value.Description}\""));
         
         File.WriteAllLines(filename, text);
+        FeatureLogger.Success($"Tags saved to: {filename}");
     }
 
     /// <summary>
@@ -493,6 +497,7 @@ public class MidManager
         settings.Converters.Add(new IdConverter());
         string json = JsonConvert.SerializeObject(obj, settings);
         File.WriteAllText(filename, json);
+        FeatureLogger.Success($"Tags saved to: {filename}");
     }
 
     /// <summary>
@@ -507,7 +512,7 @@ public class MidManager
     public static bool DoGraphTraversal(Game.Data gameData, bool doProcessing = false, ICollection<Expedition.Data>? expeditions = null, bool logDebugInfo = true)
     {
         // Handle default values
-        expeditions ??= gameData.GetAllExpeditions().Select(e => e.Value).ToHashSet();
+        expeditions ??= gameData.GetAllExpeditions().Select(e => e.Value).ToHashSet(new Expedition.Data.Comparer());
 
         // Progress tracking
         // List of items that have been collected
@@ -680,6 +685,7 @@ public class MidManager
         // @Todo: Can't use HashSet, we need multiset. Too lazy to implement right now
         List<Item> requiredItems = gameData.GetAllLocations()
             .Select(pair => pair.Value.ItemID)
+            .Concat(gameData.GetAllFloatingItemIds())
             .Where(id => !id.IsNull)
             .Select(gameData.LookupItem)
             .Where(i => i.RequiredExpedition == null || expeditions.Contains(i.RequiredExpedition))
@@ -688,10 +694,10 @@ public class MidManager
         foreach (var item in collectedItems) 
             requiredItems.Remove(item); // Intentionally ignore cases where there is no such item to remove
 
-        // "Pretty" formatting for debugging
         if (requiredItems.Count == 0) return true;
         if (!logDebugInfo) return false;
 
+        // "Pretty" formatting for debugging
         FeatureLogger.Error($"Graph traversal failed for game!");
 
         // ----------------------------------------------------------------------------------------
