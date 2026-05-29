@@ -42,7 +42,7 @@ public struct Region
     /// <summary>
     /// Unique name of the region, used to identify it
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name")]
     public string Name { get; private init; }
 
     /// <summary>
@@ -111,7 +111,7 @@ public struct Region
 public struct RegionID : INullable, IId, IIndex, IComparable<RegionID>, IEquatable<RegionID>
 {
     public RegionID() { }
-    [DataMember(Name = "Value")] 
+    [DataMember(Name = "value")] 
     private readonly long m_value = 0;
 
     public bool IsNull => m_value == 0;
@@ -151,12 +151,12 @@ public struct KeyedRegion : INullable
     /// <summary>
     /// Unique ID of the Region
     /// </summary>
-    [DataMember] public readonly RegionID ID;
+    [DataMember(Name = "id")] public readonly RegionID ID;
 
     /// <summary>
     /// The Region object
     /// </summary>
-    [DataMember] public ReadOnlyRegion Region;
+    [DataMember(Name = "region")] public ReadOnlyRegion Region;
 
     public bool IsNull => ID.IsNull;
 }

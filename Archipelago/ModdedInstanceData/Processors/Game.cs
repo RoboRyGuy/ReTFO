@@ -35,7 +35,7 @@ public static class Game
             public List<Item> ItemList { get; init; } = new();
             public Dictionary<RandomizationTag, ItemID> ItemLookup { get; init; } = new();
             public List<ItemID> FloatingItems { get; init; } = new();
-            public List<Option> Options { get; init; } = new();
+            public List<OptionBase> Options { get; init; } = new();
         }
 
         /// <summary>
@@ -50,12 +50,7 @@ public static class Game
 
             // The first region must always be the Menu region
             LookupOrCreateRegion(MenuRegionName);
-
-            // We need an "Empty" item
-            AddItem(new(
-                LookupOrCreateTag("Empty", "An item used to balance randomization during fill", this.Tag_Never),
-                new ItemData() { IsFiller = true }
-            ));
+            var item = EmptyItem;
         }
 
         /// <summary>
@@ -82,7 +77,7 @@ public static class Game
         private List<Item> ItemList => Storage.ItemList;
         private Dictionary<RandomizationTag, ItemID> ItemLookup => Storage.ItemLookup;
         private List<ItemID> FloatingItems => Storage.FloatingItems;
-        private List<Option> Options => Storage.Options;
+        private List<OptionBase> Options => Storage.Options;
 
         /// <summary>
         /// Attempt to register the given expedition data under the provided expedition name.
@@ -459,10 +454,10 @@ public static class Game
             LocationList.Add(location);
             LocationLookup.Add(location.NameTag, id);
 
-            if (location.OwningRegionIds.Distinct().Count() != location.OwningRegionIds.Length)
+            if (location.OwningRegionIDs.Distinct().Count() != location.OwningRegionIDs.Length)
                 FeatureLogger.Error($"Location is contained in the same region multiple times: {LookupTagDef(location.NameTag).Name}");
 
-            foreach (var regionId in location.OwningRegionIds)
+            foreach (var regionId in location.OwningRegionIDs)
                 RegionList[regionId.AsIndex].AddLocation(id);
 
             return id;
@@ -573,19 +568,22 @@ public static class Game
         public IReadOnlyCollection<ItemID> GetAllFloatingItemIds() => FloatingItems;
 
         /// <summary>
-        /// Register an option with the game data so users can have an easier time customizing their gameplay
+        /// Register an option component so users can have an easier time customizing their gameplay.
+        /// Note that the duplication check only checks per-instance, and ignores if an identical copy is being registered.
         /// </summary>
-        public void AddOption(Option option)
+        public OptionID AddOption(OptionBase option)
         {
             if (Options.Contains(option))
                 throw new ArgumentException("Cannot register duplicate option");
             Options.Add(option);
+            return new OptionID { AsIndex = Options.Count - 1 };
         }
 
         /// <summary>
         /// Get all registered options.
         /// </summary>
-        public IReadOnlyCollection<Option> GetAllOptions() => Options;
+        public IReadOnlyDictionary<OptionID, OptionBase> GetAllOptions()
+            => new ReadOnlyListDict<OptionID, OptionBase>(Options);
 
         /// <summary>
         /// Name of the very first region in the game.
@@ -599,6 +597,23 @@ public static class Game
         /// The menu region itself
         /// </summary>
         public RegionID MenuRegion => LookupOrCreateRegion(MenuRegionName);
+
+        /// <summary>
+        /// The empty item currently used as filler
+        /// </summary>
+        public KeyedItem EmptyItem
+        {
+            get
+            {
+                RandomizationTag tag = LookupOrCreateTag("Empty", "An item used to balance randomization during fill", this.Tag_Never);
+                if (!TryLookupItem(tag, out var item))
+                {
+                    var instance = new Item(tag, new ItemData() { IsFiller = true });
+                    item = new(AddItem(instance), instance);
+                }
+                return item;
+            }
+        }
 
         /// <summary>
         /// Used as input to UnstuffPlacements

@@ -88,7 +88,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Expedition.Data data)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", data.Tag_ExpeditionUnlocks));
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, CollectedByDefault = true };
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsCollectedByDefault = true };
 
         public Expedition.Data ExpeditionData { get; set; }
 

@@ -21,7 +21,7 @@ public struct RandomizationTag : INullable, IId, IIndex, IComparable<Randomizati
     /// <summary>
     /// ID of the tag
     /// </summary>
-    [DataMember(Name = "Value")] 
+    [DataMember(Name = "value")] 
     private readonly long m_value = 0;
 
     public bool IsNull => m_value == 0;
@@ -56,19 +56,19 @@ public struct RandomizationTagDefinition
     /// <summary>
     /// The name of this tag. Tag names must be unique.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name")]
     public string Name { get; private init; }
 
     /// <summary>
     /// A description of what this tag controls.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "description")]
     public string Description { get; private init; }
 
     /// <summary>
     /// The parent of this tag, if any
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "parent")]
     public RandomizationTag Parent { get; private init; }
 }
 
@@ -96,12 +96,12 @@ public struct KeyedRandomizationTag
     /// <summary>
     /// Unique ID of the Item. IDs range from 1 to 2^53-1.
     /// </summary>
-    [DataMember] public readonly RandomizationTag ID;
+    [DataMember(Name = "id")] public readonly RandomizationTag ID;
 
     /// <summary>
     /// The Item object with the given ID
     /// </summary>
-    [DataMember] public readonly RandomizationTagDefinition Definition;
+    [DataMember(Name = "definition")] public readonly RandomizationTagDefinition Definition;
 }
 
 /// <summary>

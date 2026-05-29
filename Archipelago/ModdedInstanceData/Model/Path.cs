@@ -74,13 +74,13 @@ public struct Path : INullable
         /// <summary>
         /// The type of requirement this represents
         /// </summary>
-        [DataMember]
+        [DataMember(Name = "type")]
         public eType Type { get; init; } = eType.None;
 
         /// <summary>
         /// The tag utilized to identify the target
         /// </summary>
-        [DataMember]
+        [DataMember(Name = "target")]
         public RandomizationTag Target { get; init; } = new();
 
         public bool IsNull => Type == eType.None;
@@ -116,31 +116,31 @@ public struct Path : INullable
     /// <summary>
     /// Optional name for this path
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name")]
     public string? Name { get; set; } = null;
 
     /// <summary>
     /// Region this path starts in
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "starting_region")]
     public RegionID StartingRegion { get; set; } = new();
 
     /// <summary>
     /// Region this path ends in
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "ending_region")]
     public RegionID EndingRegion { get; set; } = new();
 
     /// <summary>
     /// Requirements for accessing this path
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "req_item")]
     public RequiredItem ReqItem { get; set; } = new();
 
     /// <summary>
     /// How many ReqItems are needed to traverse this path.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "req_count")]
     public uint ReqCount { get; set; } = 0;
 
     /// <summary>
@@ -151,7 +151,7 @@ public struct Path : INullable
     ///  <item>This is intended for situations such as door unlock events (since all zone doors can be force unlocked via an event)</item>
     /// </list>
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "alt_item")]
     public RequiredItem AlternateItem { get; set; } = new();
 
     /// <summary>
@@ -173,7 +173,7 @@ public struct Path : INullable
 public struct PathID : INullable, IId, IIndex, IComparable<PathID>, IEquatable<PathID>
 {
     public PathID () { }
-    [DataMember(Name = "Value")] 
+    [DataMember(Name = "value")] 
     private readonly long m_value = 0;
 
     public bool IsNull => m_value == 0;
@@ -202,7 +202,7 @@ public struct ReadOnlyPath : INullable
     /// <summary>
     /// Internal path which should be treated as immutable
     /// </summary>
-    [DataMember(Name = "ContainedPath")] 
+    [DataMember(Name = "contained_path")] 
     private readonly Path m_path;
 
     /// <inheritdoc cref="Path.Name"/>
@@ -269,7 +269,7 @@ public struct KeyedPath : INullable
     /// <summary>
     /// Unique ID of the Path
     /// </summary>
-    [DataMember] public PathID ID { get; init; }
+    [DataMember(Name = "id")] public PathID ID { get; init; }
 
     /// <summary>
     /// True if null (contains no path)
@@ -279,7 +279,7 @@ public struct KeyedPath : INullable
     /// <summary>
     /// The path object with the given ID
     /// </summary>
-    [DataMember] public ReadOnlyPath Path { get; init; }
+    [DataMember(Name = "path")] public ReadOnlyPath Path { get; init; }
 
     // Below are helper for accessing data in the path
 

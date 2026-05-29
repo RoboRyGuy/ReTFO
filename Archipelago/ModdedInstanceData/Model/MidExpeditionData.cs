@@ -13,12 +13,12 @@ public struct MidExpeditionData
     /// <summary>
     /// Name of the expedition
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name")]
     public string Name { get; set; }
 
     /// <summary>
     /// List of regions that can be reached from this expedition
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "reachable_regions")]
     public List<RegionID> ReachableRegions { get; set; }
 }

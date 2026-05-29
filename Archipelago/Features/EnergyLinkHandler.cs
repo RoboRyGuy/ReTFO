@@ -218,11 +218,14 @@ public class EnergyLinkHandler : ArchipelagoFeature
         /// </summary>
         /// <param name="type">The type of request being made</param>
         /// <param name="requestAmount">The amount of energy used in the request (for add or take requests)</param>
-        /// <param name="allowCancel">For take requests, if true it will refund the energy if it takes less than is requested</param>
         /// <returns></returns>
         [HideFromIl2Cpp]
         public Task<BigInteger> SendRequest(pEnergyPacket.eType type, BigInteger requestAmount)
         {
+            // Check if we're in a lobby / if master exists
+            if (SNet.Master == null || SNet.Master.Pointer == SNet.LocalPlayer.Pointer)
+                throw new Exception("Cannot send energy request; master is either null or self!");
+
             // Set up request packet
             SNetStructs.pPlayer player = new();
             player.SetPlayer(Player.PlayerManager.GetLocalPlayerAgent().Owner);
@@ -360,17 +363,17 @@ public class EnergyLinkHandler : ArchipelagoFeature
         BigInteger result = 0;
         if (Math.Abs(conversion) < 1.0) // It's getting smaller
         {
-            for (int i = 0; i < Math.Min(sizeof(ulong), bytes.Length); i++)
-                result += (ulong)(conversion * (((ulong)bytes[i]) << i));
-
+            result = (BigInteger)(conversion * ((ulong)value));
             for (int i = sizeof(ulong); i < bytes.Length; i++)
-                result += (ulong)(conversion * (((ulong)bytes[i]) << sizeof(ulong)));
+                result += (BigInteger)(conversion * (((ulong)bytes[i]) << ((sizeof(ulong) - 1) * 8))) << (8 * i);
         }
         else // It's getting bigger
         {
             for (int i = 0; i < bytes.Length; i++)
-                result += (ulong)(conversion * ((ulong)bytes[i]));
+                result += (BigInteger)(conversion * ((ulong)bytes[i])) << (8 * i);
         }
+
+        FeatureLogger.Notice($"BigInt multiplication: {value} * {conversion} = {result}");
         return result;
     }
 
@@ -380,22 +383,21 @@ public class EnergyLinkHandler : ArchipelagoFeature
     /// <returns>The amount available</returns>
     public static async Task<BigInteger> GetCurrentEnergy()
     {
-        if (SNet.IsMaster)
+        StateTracker stateTracker = StateTracker.Get();
+        if (stateTracker.ApSession != null)
         {
-            StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.ApSession == null)
-            {
-                FeatureLogger.Debug("Due to fake connect, pretending to have a lot of energy");
-                return 1_234_567_890_000_000_000;
-            }
-            return Multiply(stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"], 1f / Config.InputConsumptionRate);
+            return Multiply(stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] + Operation.Max(0), 1f / Config.InputConsumptionRate);
+        }
+        else if (stateTracker.CurrentState == StateTracker.eState.FakeConnect)
+        {
+            FeatureLogger.Debug("Due to fake connect, pretending to have a lot of energy");
+            return 1_234_567_890_000_000_000;
         }
         else
         {
             var self = ArchipelagoFeatureHelper.GetFeature<EnergyLinkHandler>();
             return await self.m_replicator!.SendRequest(EnergyReplicator.pEnergyPacket.eType.Get, 0);
         }
-
     }
 
     /// <summary>
@@ -403,23 +405,30 @@ public class EnergyLinkHandler : ArchipelagoFeature
     /// </summary>
     /// <param name="amount">The amount of energy desired desired.</param>
     /// <returns>
-    /// The amount received, which is at most the amount requested and at least zero.
-    /// If the amount received is below expected, consider canceling the operationa and refunding.
+    /// The amount received. If the task completed successfully, this will be the amount requested
+    ///  (modified by input conversion rate). If the task is failed or cancelled, the request was denied.
     /// </returns>
     public static async Task<BigInteger> RequestEnergy(BigInteger amount, bool allowCancel)
     {
-        if (SNet.IsMaster)
+        FeatureLogger.Notice($"Processing energy request for amount: {amount}");
+        StateTracker stateTracker = StateTracker.Get();
+        if (stateTracker.ApSession != null)
         {
-            StateTracker stateTracker = StateTracker.Get();
             if (amount.Sign < 0)
                 throw new ArgumentException("Cannot request less than 0 energy!");
-            if (stateTracker.ApSession == null)
-            {
-                FeatureLogger.Debug("Due to fake connect, approving energy request");
-                return amount;
-            }
+
             BigInteger actualAmount = Multiply(amount, 1f / Config.InputConsumptionRate);
-            return (stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] -= actualAmount) + Operation.Max(0);
+            BigInteger result = (stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] - actualAmount) + Operation.Max(0);
+            stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] = result;
+            return BigInteger.Max(actualAmount, result);
+        }
+        else if (stateTracker.CurrentState == StateTracker.eState.FakeConnect)
+        {
+            if (amount.Sign < 0)
+                throw new ArgumentException("Cannot request less than 0 energy!");
+
+            FeatureLogger.Debug("Due to fake connect, approving energy request");
+            return amount;
         }
         else
         {
@@ -437,17 +446,19 @@ public class EnergyLinkHandler : ArchipelagoFeature
     /// <param name="amount">The amount to add</param>
     public static async Task AddEnergy(BigInteger amount)
     {
-        if (SNet.IsMaster)
+        FeatureLogger.Notice($"Adding energy: {amount}");
+        StateTracker stateTracker = StateTracker.Get();
+        if (stateTracker.ApSession != null)
         {
-            StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.ApSession == null)
-            {
-                FeatureLogger.Debug("Due to fake connect, ignoring energy add request");
-                return;
-            }
             if (amount.Sign < 0)
                 throw new ArgumentException("Cannot add less than 0 energy!");
             stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] += Multiply(amount, Config.OutputConversionRate);
+        }
+        else if (stateTracker.CurrentState == StateTracker.eState.FakeConnect)
+        {
+            if (amount.Sign < 0)
+                throw new ArgumentException("Cannot add less than 0 energy!");
+            FeatureLogger.Debug("Due to fake connect, ignoring energy add request");
         }
         else
         {

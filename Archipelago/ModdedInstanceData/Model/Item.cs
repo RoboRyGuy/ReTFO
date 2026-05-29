@@ -38,25 +38,25 @@ public class Item
     /// <summary>
     /// Identifying tag used by this item
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name_tag")]
     public RandomizationTag NameTag { get; init; }
 
     /// <summary>
     /// Optional secondary tag for this item.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "tag2")]
     public RandomizationTag Tag2 { get; init; } = new();
 
     /// <summary>
     /// Optional tertiary tag for this item.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "tag3")]
     public RandomizationTag Tag3 { get; init; } = new();
 
     /// <summary>
     /// Randomization data associated with this item.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "rand_data")]
     public ItemData RandData { get; init; }
 
     /// <summary>
@@ -74,7 +74,7 @@ public class Item
     /// <summary>
     /// Property used purely to assist with serialization, since Expedition.Data is not serializable
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "required_expedition")]
     private string? RequiredExpeditionName
     {
         get => RequiredExpedition?.ExpeditionName ?? null;
@@ -85,7 +85,7 @@ public class Item
     /// How this item should be represented when a path uses it as a requirement.
     /// Override this if you need the item to use a category instead.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "path_reqs")]
     public virtual Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Item, NameTag);
 
     /// <summary>
@@ -148,7 +148,7 @@ public class Item
 public struct ItemID : INullable, IId, IIndex, IComparable<ItemID>, IEquatable<ItemID>
 {
     public ItemID() { }
-    [DataMember(Name = "Value")] 
+    [DataMember(Name = "value")] 
     private readonly long m_value = 0;
 
     public bool IsNull => m_value == 0;
@@ -188,12 +188,12 @@ public struct KeyedItem : INullable
     /// <summary>
     /// Unique ID of the Item. IDs range from 1 to 2^53-1.
     /// </summary>
-    [DataMember] public readonly ItemID ID;
+    [DataMember(Name = "id")] public readonly ItemID ID;
 
     /// <summary>
     /// The Item object with the given ID
     /// </summary>
-    [DataMember] public readonly Item Item;
+    [DataMember(Name = "item")] public readonly Item Item;
 
     /// <summary>
     /// True if the item is null, false otherwise
@@ -291,7 +291,7 @@ public struct ItemData
         /// If the item is randomized, <see cref="Item.OnItemLost(StateTracker)"/> will be called 
         ///  at the start of the session so the floating item can prep the world.
         /// </summary>
-        CollectedByDefault = 1 << 7,
+        IsCollectedByDefault = 1 << 7,
     }
 
     /// <summary>
@@ -307,7 +307,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsProgression bit
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_progression")]
     public bool IsProgression
     {
         get => (m_value & eType.Progression) != 0;
@@ -321,7 +321,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsUseful bit
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_useful")]
     public bool IsUseful
     {
         get => (m_value & eType.Useful) != 0;
@@ -335,7 +335,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsFiller bit
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_filler")]
     public bool IsFiller
     {
         get => (m_value & eType.Filler) != 0;
@@ -349,7 +349,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsTrapbit
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_trap")]
     public bool IsTrap
     {
         get => (m_value & eType.Trap) != 0;
@@ -363,7 +363,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the DoSkipBalancing
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "do_skip_balancing")]
     public bool DoSkipBalancing
     {
         get => (m_value & eType.SkipBalancing) != 0;
@@ -377,7 +377,7 @@ public struct ItemData
     /// <summary>
     /// Set or write the IsDeprioritized bit
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_deprioritized")]
     public bool IsDeprioritized
     {
         get => (m_value & eType.Deprioritized) != 0;
@@ -391,20 +391,21 @@ public struct ItemData
     /// <summary>
     /// Set or write the CollectedByDefault bit
     /// </summary>
-    [DataMember]
-    public bool CollectedByDefault
+    [DataMember(Name = "is_collected_by_default")]
+    public bool IsCollectedByDefault
     {
-        get => (m_value & eType.CollectedByDefault) != 0;
+        get => (m_value & eType.IsCollectedByDefault) != 0;
         init
         {
-            if (value) m_value |= eType.CollectedByDefault;
-            else m_value &= ~eType.CollectedByDefault;
+            if (value) m_value |= eType.IsCollectedByDefault;
+            else m_value &= ~eType.IsCollectedByDefault;
         }
     }
 
     /// <summary>
     /// Set or write the IsRandomLike bit
     /// </summary>
+    [DataMember(Name = "is_randomlike")]
     public bool IsRandomLike
     {
         get => (m_value & eType.RandomLike) != 0;

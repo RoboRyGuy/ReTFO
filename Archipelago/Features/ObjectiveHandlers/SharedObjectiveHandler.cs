@@ -1,6 +1,6 @@
 ﻿using GameData;
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Features.EventHandlers;
+using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
@@ -12,6 +12,7 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Runtime.Serialization;
 
 public static class SharedObjectiveHandler_Tags
 {
@@ -136,7 +137,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Layer.Data data)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfull cleared", data.Tag_SectorClearItems_ByLayer));
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsRandomLike = true };
 
         public Layer.Data Layer { get; set; }
 
@@ -177,25 +178,54 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddGoalOptions(Game.Data data)
     {
-        Option requireSecondaries = new(
-            Option.eType.Toggle,
-            "Require Secondaries",
-            "Goal",
-            "If enabled, you will be required to clear the secondary sector on all"
-            + " selected expeditions that have a secondary."
+        OptionID secondariesInput = data.AddOption(
+            new OptionToggle()
+            {
+                DisplayName = "Require Secondaries",
+                Description = ""
+                    + "If true, clearing the goal requires clearing all selected expeditions' secondaries. Otherwise, it does not."
+                    + "\nNote that this does not prevent items from being randomized into or out of secondary sectors.",
+                Category = "Goal",
+                DefaultValue = 1,
+                Condition = new()
+            }
         );
-        requireSecondaries.FalseEffect[Option.eTarget.GoalBlacklist] = new(1) { data.Tag_SectorClearItems(LayerType.Secondary) };
-        data.AddOption(requireSecondaries);
 
-        Option requireOverloads= new(
-            Option.eType.Toggle,
-            "Require Overloads",
-            "Goal",
-            "If enabled, you will be required to clear the overload sector on all"
-            + " selected expeditions that have an overload."
+        OptionID notSecondaries = data.AddOption(
+            new OptionNotOperation() { Param = secondariesInput, }
         );
-        requireOverloads.FalseEffect[Option.eTarget.GoalBlacklist] = new(1) { data.Tag_SectorClearItems(LayerType.Overload) };
-        data.AddOption(requireOverloads);
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.GoalBlacklist,
+            Tag = data.Tag_SectorClearItems(LayerType.Secondary).SelfResolve(),
+            Condition = notSecondaries
+        });
+
+
+        OptionID overloadsInput = data.AddOption(
+            new OptionToggle()
+            {
+                DisplayName = "Require Overloads",
+                Description = ""
+                    + "If true, clearing the goal requires clearing all selected expeditions' overloads. Otherwise, it does not."
+                    + "\nNote that this does not prevent items from being randomized into or out of overload sectors.",
+                Category = "Goal",
+                DefaultValue = 1,
+                Condition = new()
+            }
+        );
+
+        OptionID notOverloads = data.AddOption(
+            new OptionNotOperation() { Param = overloadsInput, }
+        );
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.GoalBlacklist,
+            Tag = data.Tag_SectorClearItems(LayerType.Overload).SelfResolve(),
+            Condition = notOverloads
+        });
     }
 
     // Adds common regions, locations, and items for all layers. Things like the sector clear, the elevator dropped region and events, etc

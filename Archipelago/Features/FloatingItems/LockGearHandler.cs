@@ -166,7 +166,7 @@ public class LockGearHandler : ArchipelagoFeature
             return new TagResolver(data, gd => gd.LookupOrCreateTag(name, "A specific gear item", gd.Tag_GearItems_ByType(idRange.GetCompID(eGearComponent.BaseItem))));
         }
 
-        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
+        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsCollectedByDefault = true };
 
         public PlayerOfflineGearDataBlock Block { get; set; }
 

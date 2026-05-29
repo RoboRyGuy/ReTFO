@@ -3,6 +3,7 @@ using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using LevelGeneration;
 using Player;
 using System.Diagnostics.CodeAnalysis;
 using UnityEngine;

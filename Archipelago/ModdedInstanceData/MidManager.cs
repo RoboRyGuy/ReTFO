@@ -153,7 +153,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
     { 
-        { "5nm808atGAc5eKxeO5m1N71Og0QwlqMiLCspm2GBZE0=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "W1TND_RuXefq1sntwN0vbGUtYcLtZEybhigDPRdtSQo=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -297,7 +297,6 @@ public class MidManager
             .Concat(gameData.GetAllRegions().Select(r => r.Value.Name))
             .Concat(gameData.GetAllPaths().Select(p => p.Value.Name ?? "null"))
             .Concat(gameData.GetAllTags().Select(t => t.Value.Name))
-            .Concat(gameData.GetAllOptions().SelectMany(o => o.Choices.Keys.Prepend(o.Name)))
         ;
         foreach (string s in strings)
         {
@@ -392,16 +391,16 @@ public class MidManager
 
         var dumpData = new
         {
-            Name = gameData.Name,
-            Version = Version.Parse(Plugin.Version),
-            Expeditions = eData,
-            Tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
-            Regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
-            Paths = gameData.GetAllPaths().Select(p => new KeyedPath(p.Key, p.Value)).ToList(),
-            Locations = gameData.GetAllLocations().Select(l => new KeyedLocation(l.Key, l.Value)).ToList(),
-            Items = gameData.GetAllItems().Select(i => new KeyedItem(i.Key, i.Value)).ToList(),
-            FloatingItems = gameData.GetAllFloatingItemIds(),
-            Options = gameData.GetAllOptions(),
+            name = gameData.Name,
+            version = Version.Parse(Plugin.Version),
+            expeditions = eData,
+            tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
+            regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
+            paths = gameData.GetAllPaths().Select(p => new KeyedPath(p.Key, p.Value)).ToList(),
+            locations = gameData.GetAllLocations().Select(l => new KeyedLocation(l.Key, l.Value)).ToList(),
+            items = gameData.GetAllItems().Select(i => new KeyedItem(i.Key, i.Value)).ToList(),
+            floating_items = gameData.GetAllFloatingItemIds(),
+            options = gameData.GetAllOptions().Select(o => new KeyedOption(o.Key, o.Value)).ToList(),
         };
 
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
@@ -409,8 +408,14 @@ public class MidManager
         settings.Converters.Add(new SimplifiedListConverter<long>(20));   // Compress long lists of longs (unpacked IDs) for readability
         settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
         settings.Converters.Add(new IdConverter());                       // Convert IDs to longs
-        Type[] containerTypes = [ typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem) ];
-        Type[] inlinedTypes = [ typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), typeof(Path), typeof(Location), typeof(Item) ];
+        Type[] containerTypes = [ 
+            typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), 
+            typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem), typeof(KeyedOption) 
+        ];
+        Type[] inlinedTypes = [ 
+            typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), 
+            typeof(Path), typeof(Location), typeof(Item), typeof(OptionBase) 
+        ];
         settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
         string json = JsonConvert.SerializeObject(dumpData, settings);
         File.WriteAllText(filename, json);
@@ -442,11 +447,11 @@ public class MidManager
     [DataContract]
     private struct JsonTag
     {
-        [DataMember] public RandomizationTag ID { get; init; }
-        [DataMember] public string Name { get; init; }
-        [DataMember] public string Description { get; init; }
+        [DataMember(Name = "id")] public RandomizationTag ID { get; init; }
+        [DataMember(Name = "name")] public string Name { get; init; }
+        [DataMember(Name = "description")] public string Description { get; init; }
         private List<JsonTag>? m_children;
-        [DataMember(EmitDefaultValue = false)] public List<JsonTag>? Children
+        [DataMember(Name = "children", EmitDefaultValue = false)] public List<JsonTag>? Children
         { 
             get => m_children; 
             init => m_children = (value?.Count ?? 0) == 0 ? null : value; 
@@ -576,7 +581,7 @@ public class MidManager
 
         // Collecting items in the starting region
         foreach (Location location in startingRegion.ConnectedLocationIds.Select(gameData.LookupLocation))
-            if (location.OwningRegionIds.Length == 1 && !location.ItemID.IsNull) collectItem(location.ItemID);
+            if (location.OwningRegionIDs.Length == 1 && !location.ItemID.IsNull) collectItem(location.ItemID);
 
         queuedPaths.AddRange(startingRegion.ConnectedPaths);
 
@@ -669,7 +674,7 @@ public class MidManager
                     // Collect all locations newly available because of this region
                     foreach (var loc in gameData.LookupRegion(path.EndingRegion).ConnectedLocationIds.Select(gameData.LookupLocation))
                     {
-                        if (loc.OwningRegionIds.Any(id => !getReachable(id))) continue;
+                        if (loc.OwningRegionIDs.Any(id => !getReachable(id))) continue;
                         collectItem(loc.ItemID);
                     }
 
@@ -769,7 +774,7 @@ public class MidManager
         foreach (var loc in gameData.GetAllLocations().Select(pair => pair.Value))
         {
             if (loc.ItemID.IsNull) continue;
-            if (loc.OwningRegionIds.All(getReachable)) continue;
+            if (loc.OwningRegionIDs.All(getReachable)) continue;
             Item item = gameData.LookupItem(loc.ItemID);
             if (!gameData.TagMatches(neededTags, item.PathReqs.Target)) continue;
 
@@ -782,12 +787,12 @@ public class MidManager
                 ConsoleManager.ConsoleStream.WriteLine($"   Cat: {gameData.LookupTagDef(item.Tag3).Name}");
 
             ConsoleManager.ConsoleStream.WriteLine($"  Regions:");
-            if (loc.OwningRegionIds.Length == 0)
+            if (loc.OwningRegionIDs.Length == 0)
             {
                 ConsoleManager.SetConsoleColor(ConsoleColor.Red);
                 ConsoleManager.ConsoleStream.WriteLine("  LOCATION HAS NO REGIONS AND CANNOT BE DISCOVERED");
             }
-            else foreach (var i in loc.OwningRegionIds)
+            else foreach (var i in loc.OwningRegionIDs)
             {
                 bool reachable = getReachable(i);
                 if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);

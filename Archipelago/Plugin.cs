@@ -1,5 +1,6 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using CellMenu;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -16,7 +17,6 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago;
 
-using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -70,7 +70,7 @@ public class Plugin : BasePlugin
         PatchRecursive(types);
         AddProcessors(MidManager);
 
-        Log.LogInfo($"{GUID} is loaded!");
+      Log.LogInfo($"{GUID} is loaded!");
     }
 
     public override bool Unload()
@@ -182,6 +182,14 @@ public class Plugin : BasePlugin
     public static void PreRecallBytes(SNet_Replication __instance, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> bytes, uint size)
     {
 
+    }
+
+    [HarmonyPatch(typeof(CM_PlayerLobbyBar), nameof(CM_PlayerLobbyBar.OnBoosterImplantSlotItemSelected))]
+    [HarmonyPostfix]
+    public static void Test1(CM_PlayerLobbyBar __instance, CM_BoosterImplantSlotItem slotItem)
+    {
+        FeatureLogger.Notice("Selected slot item");
+        __instance.m_popupScrollWindow.InfoBox.m_infoAcceptButton.SetText("Test1");
     }
 
 }

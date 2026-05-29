@@ -33,45 +33,45 @@ public class Location
     public Location(RandomizationTag nameTag, RegionList regions, LocationData randData)
     {
         NameTag = nameTag;
-        OwningRegionIds = regions;
+        OwningRegionIDs = regions;
         RandData = randData;
     }
 
     /// <summary>
     /// Identifying tag used by this locations
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "name_tag")]
     public RandomizationTag NameTag { get; init; }
 
     /// <summary>
     /// Optional secondary tag for this location.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "tag2")]
     public RandomizationTag Tag2 { get; init; }
 
     /// <summary>
     /// Optional tertiary tag for this location.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "tag3")]
     public RandomizationTag Tag3 { get; init; }
 
     /// <summary>
     /// Regions this location can be in.
     /// </summary>
-    [DataMember]
-    public RegionID[] OwningRegionIds { get; init; }
+    [DataMember(Name = "owning_regions")]
+    public RegionID[] OwningRegionIDs { get; init; }
 
     /// <summary>
     /// Item typically located in this location. 
     /// If 0, this location will be a candidate for floating items.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "item_id")]
     public ItemID ItemID { get; set; } = new();
 
     /// <summary>
     /// The data to use for this location.
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "rand_data")]
     public LocationData RandData { get; init; }
 
     /// <summary>
@@ -103,7 +103,7 @@ public class Location
 public struct LocationID : INullable, IId, IIndex, IComparable<LocationID>, IEquatable<LocationID>
 {
     public LocationID() { }
-    [DataMember(Name = "Value")] 
+    [DataMember(Name = "value")] 
     private readonly long m_value = 0;
 
     public bool IsNull => m_value == 0;
@@ -143,7 +143,7 @@ public struct KeyedLocation : INullable
     /// <summary>
     /// Unique ID of the Location. IDs range from 1 to 2^53-1.
     /// </summary>
-    [DataMember] public LocationID ID { get; init; }
+    [DataMember(Name = "id")] public LocationID ID { get; init; }
 
     /// <summary>
     /// True if null (contains no location)
@@ -153,15 +153,15 @@ public struct KeyedLocation : INullable
     /// <summary>
     /// The location object with the given ID
     /// </summary>
-    [DataMember] public Location Location { get; init; }
+    [DataMember(Name = "location")] public Location Location { get; init; }
 
     // Below are helper for accessing data in the location
 
     /// <inheritdoc cref="Location.NameTag"/>
     public RandomizationTag NameTag => Location.NameTag;
 
-    /// <inheritdoc cref="Location.OwningRegionIds"/>
-    public RegionID[] OwningRegionIds => Location.OwningRegionIds;
+    /// <inheritdoc cref="Location.OwningRegionIDs"/>
+    public RegionID[] OwningRegionIds => Location.OwningRegionIDs;
 
     /// <inheritdoc cref="Location.ItemID"/>
     public ItemID ItemID => Location.ItemID;
@@ -238,7 +238,7 @@ public struct LocationData
     /// <summary>
     /// Extract or write the priority mode for this data
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "priority_mode")]
     public eType PriorityMode
     {
         get => m_value & eType.PriorityMask;
@@ -285,7 +285,7 @@ public struct LocationData
     /// <summary>
     /// Extract or write the IsEmpty mode for this data
     /// </summary>
-    [DataMember]
+    [DataMember(Name = "is_empty")]
     public bool IsEmpty
     {
         get => (m_value & eType.IsEmpty) != 0;

@@ -145,7 +145,7 @@ public class ChatHandler : ArchipelagoFeature
         HashSet<int> skipIndicies = new();
 
         if (message.GetType() == typeof(ItemSendLogMessage) && Config.DoShortenReceivedItemMessages)
-            skipIndicies.UnionWith([2, 3, 4]);
+            skipIndicies.UnionWith([3, 4, 5]);
 
         skipIndicies.UnionWith(message.Parts
             .Select((p, i) => (i, p))

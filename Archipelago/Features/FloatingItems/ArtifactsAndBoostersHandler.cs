@@ -243,8 +243,13 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
 
             EnergyLinkHandler.AddEnergy(energy).ContinueWith(t =>
                 {
-                    if (!t.IsCompletedSuccessfully) FeatureLogger.Error("Failed to add energy when grabbing artifact!");
-                });
+                    if (!t.IsCompletedSuccessfully)
+                    {
+                        FeatureLogger.Error("Failed to add energy when grabbing artifact!");
+                        if (t.Exception != null) FeatureLogger.Exception(t.Exception);
+                    }
+                }
+            );
         }
     }
 
@@ -291,7 +296,6 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 self.m_overwriteCallback = new(self.OverwriteInventory);
                 __instance.OnBoosterImplantInventoryChanged += self.m_overwriteCallback;
             }
-
         }
     }
 
@@ -316,7 +320,7 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 {
                     GameObject go = GameObject.Instantiate(test.gameObject);
                     CM_BoosterImplantSlotItem item = go.GetComponent<CM_BoosterImplantSlotItem>();
-
+                        
                     // Not sure how many of these setup functions are actually needed
                     item.Setup();
                     item.SetupFromLobby(test.m_guiAlign, test.m_parentBar);
@@ -374,6 +378,84 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Set up the booster window to show the booster's cost
+    /// </summary>
+    [ArchivePatch(typeof(CM_PlayerLobbyBar), nameof(CM_PlayerLobbyBar.OnBoosterImplantSlotItemSelected))]
+    public static class CM_PlayerLobbyBar__OnBoosterImplantSlotItemSelected__Patch
+    {
+        public static void Postfix(CM_PlayerLobbyBar __instance, CM_BoosterImplantSlotItem slotItem)
+        {
+            var func = () =>
+            {
+                CM_ScrollWindowBoosterInfoBox? box = __instance.m_popupScrollWindow.InfoBox?.TryCast<CM_ScrollWindowBoosterInfoBox>();
+                if (box == null) return;
+
+                // Purchase button
+                if (slotItem.IsPreparedSlot)
+                    box.m_infoAcceptButton.SetText("Refund");
+                else
+                    box.m_infoAcceptButton.SetText("Purchase");
+
+                // Disable drop button
+                box.m_infoRejectButton.gameObject.SetActive(false);
+
+                // Add the cost text
+                const string costTextName = "BoosterPurchasePrice";
+                Transform? costTextTrans = box.m_infoAcceptButton.transform.parent.Find(costTextName);
+                CM_Item costText;
+                if (costTextTrans == null)
+                {
+                    costTextTrans = GameObject.Instantiate(__instance.m_boosterTraitPrefab).transform;
+                    costTextTrans.gameObject.name = costTextName;
+                    costTextTrans.SetParent(box.m_infoAcceptButton.transform.parent);
+
+                    // The button is anchored at the bottom, our text is anchored at the top
+                    costTextTrans.localPosition = box.m_infoAcceptButton.RectTrans.localPosition + new Vector3(150, 50, 0);
+                    costTextTrans.localRotation = Quaternion.identity;
+                    costTextTrans.localScale = Vector3.one;
+
+                    costText = costTextTrans.GetComponent<CM_Item>();
+                    costText.TooltipInfo.TooltipText = "The amount of energy currently owned by your team";
+                    costText.Setup();
+                    costText.SetupCMItem();
+                }
+                else
+                    costText = costTextTrans.GetComponent<CM_Item>();
+
+                costText.SetText("Cost:      600000000");
+
+                // Add the available text
+                const string AvailableTextName = "BoosterAvailableMoney";
+                Transform? availableTextTrans = box.m_infoAcceptButton.transform.parent.Find(AvailableTextName);
+                CM_Item availableText;
+                if (availableTextTrans == null)
+                {
+                    availableTextTrans = GameObject.Instantiate(__instance.m_boosterTraitPrefab).transform;
+                    availableTextTrans.gameObject.name = costTextName;
+                    availableTextTrans.SetParent(box.m_infoAcceptButton.transform.parent);
+
+                    // The button is anchored at the bottom, our text is anchored at the top
+                    availableTextTrans.localPosition = box.m_infoAcceptButton.RectTrans.localPosition + new Vector3(150, 30, 0);
+                    availableTextTrans.localRotation = Quaternion.identity;
+                    availableTextTrans.localScale = Vector3.one;
+
+                    availableText = availableTextTrans.GetComponent<CM_Item>();
+                    availableText.TooltipInfo.TooltipText = "The amount of energy currently owned by your team";
+                    availableText.Setup();
+                    availableText.SetupCMItem();
+                }
+                else
+                    availableText = availableTextTrans.GetComponent<CM_Item>();
+
+                availableText.SetText("Available: 3.14159");
+
+
+            };
+            func();
+        }
+    }
+
+    /// <summary>
     /// When preparing a booster, make it depend on energy. If not enough, fail!
     /// </summary>
     [ArchivePatch(typeof(CM_BoosterImplantSlotItem), nameof(CM_BoosterImplantSlotItem.PrepareBoosterImplant))]
@@ -381,15 +463,20 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
     {
         public static bool Prefix(CM_BoosterImplantSlotItem __instance)
         {
-            var task = EnergyLinkHandler.RequestEnergy(GetArtifactValue(__instance.BoosterImplant.Category switch
+            var func = () =>
             {
-                BoosterImplantCategory.Muted => ArtifactCategory.Common,
-                BoosterImplantCategory.Bold => ArtifactCategory.Uncommon,
-                BoosterImplantCategory.Aggressive => ArtifactCategory.Rare,
-                _ => throw new ArgumentException("Expected booster type to be one of Muted, Bold, or Aggressive"),
-            }), true);
-            task.Wait();
-            return task.IsCompletedSuccessfully;
+                var task = EnergyLinkHandler.RequestEnergy(GetArtifactValue(__instance.BoosterImplant.Category switch
+                {
+                    BoosterImplantCategory.Muted => ArtifactCategory.Common,
+                    BoosterImplantCategory.Bold => ArtifactCategory.Uncommon,
+                    BoosterImplantCategory.Aggressive => ArtifactCategory.Rare,
+                    _ => throw new ArgumentException("Expected booster type to be one of Muted, Bold, or Aggressive"),
+                }), true);
+                task.Wait();
+                FeatureLogger.Notice($"Booster equip result: {task.IsCompletedSuccessfully}");
+                return task.IsCompletedSuccessfully;
+            };
+            return func();
         }
     }
 

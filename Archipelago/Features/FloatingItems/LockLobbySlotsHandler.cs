@@ -51,7 +51,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
         public static TagResolver MakeTag(Game.Data data, int index)
             => new TagResolver(data, gd => gd.LookupOrCreateTag($"Lobby Slot #{index} Unlock", "Item which unlocks a particular lobby slot", gd.Tag_LobbySlotUnlocks));
 
-        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, CollectedByDefault = true };
+        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsCollectedByDefault = true };
 
         public int Index { get; set; }
 
