@@ -330,19 +330,18 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// The m_endSequenceTriggered flag isn't used in vanilla, so we implement it here.
-    /// We also notify that the scan location was found, regardless.
+    /// Notify that the sequence is ended and cancel the ending if necessary
     /// </summary>
     [ArchivePatch(typeof(LG_PowerGeneratorCluster), nameof(LG_PowerGeneratorCluster._Setup_b__15_1))]
     public static class LG_PowerGeneratorCluster___Setup_b__15_1__Patch
     {
         public static bool Prefix(LG_PowerGeneratorCluster __instance)
         {
-            if (__instance.m_currentFogStepIndex == (__instance.m_fogDataSteps.Count - 2))
-            {
-                Objective.Data data = Layer.Data.FromLayer(__instance.SpawnNode.m_zone.Layer)
-                    .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
+            Objective.Data data = Layer.Data.FromLayer(__instance.SpawnNode.m_zone.Layer)
+                .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
 
+            if (__instance.m_currentFogStepIndex == (data.Objective.CentralPowerGenClustser_NumberOfGenerators - 2))
+            {
                 if (data.TryLookupLocation(GenCluster_ScanLocation.MakeTag(data), out var loc))
                 {
                     if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandMode.IsTreatedAsRandom)
