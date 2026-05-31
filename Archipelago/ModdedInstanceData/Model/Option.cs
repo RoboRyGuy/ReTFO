@@ -415,7 +415,7 @@ public class OptionChoice : OptionInput
     /// The values to associate with the above choices, matched by index
     /// </summary>
     [DataMember(Name = "choice_values")]
-    public List<int> ChoiceValues { get; init; } = new();
+    public List<long> ChoiceValues { get; init; } = new();
 }
 
 /// <summary>

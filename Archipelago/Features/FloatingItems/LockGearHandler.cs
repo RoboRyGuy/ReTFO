@@ -6,8 +6,8 @@ using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -18,6 +18,7 @@ namespace ReTFO.Archipelago.Features.FloatingItems;
 using InControl;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Runtime.Serialization;
 
 public static class LockGearHandler_Tags
 { 
@@ -53,6 +54,20 @@ public static class LockGearHandler_Tags
                 97 => data.Tag_SentryItems,
 
                 _ => throw new ArgumentException($"Item {ItemDataBlock.GetBlock(itemBaseID)?.publicName ?? "NULL"} is not a gear item type!")
+            };
+
+        /// <summary>
+        /// Geta tag for a specific inventory slot, assuming such a tag is defined
+        /// </summary>
+        public TagResolver Tag_GearItems_BySlot(InventorySlot slot)
+            => slot switch
+            {
+                InventorySlot.HackingTool => data.Tag_HackingTool,
+                InventorySlot.GearMelee => data.Tag_MeleeItems,
+                InventorySlot.GearStandard => data.Tag_PrimaryGuns,
+                InventorySlot.GearSpecial => data.Tag_SpecialGuns,
+                InventorySlot.GearClass => data.Tag_ToolItems,
+                _ => throw new ArgumentException($"{slot} is not a recognized invetory slot!")
             };
 
         public TagResolver Tag_HackingTool // Note: Randomizing this always throws an error, though the game does continue to work fine
@@ -121,6 +136,8 @@ public class LockGearHandler : ArchipelagoFeature
         get => m_featureLogger ?? Plugin.Get().Logger;
         set => m_featureLogger = value;
     }
+
+    public const string GEAR_OPTION_CATEGORY = "Gear";
 
     private class GearItemUnlock : Item
     {
@@ -216,16 +233,151 @@ public class LockGearHandler : ArchipelagoFeature
         return new(data.AddItem(newItem), newItem);
     }
 
+    /// <summary>
+    /// Register gear items and options with gameData
+    /// </summary>
     [Game.Callback]
     public void AddGearItems(Game.Data data)
     {
+        SortedList<InventorySlot, OptionChoice> choiceOptions = new();
+
         foreach (var block in PlayerOfflineGearDataBlock.GetAllBlocks())
         {
             if (block.Type == eOfflineGearType.None) continue;
             if (block.Type == eOfflineGearType.SpawnedInLevel) continue;
             if (!block.internalEnabled) continue;
-            data.AddFloatingItem(GetGearItem(data, block).ID);
+
+            KeyedItem gearItem = GetGearItem(data, block);
+            data.AddFloatingItem(gearItem.ID);
+
+            // Skip items in categories which cannot be randomized, so their options don't get generated
+            if (data.TagMatches(data.Tag_Never, gearItem.Item))
+                continue;
+
+            GearIDRange idRange = new(block.GearJSON);
+            ItemDataBlock baseItem = ItemDataBlock.GetBlock(idRange.GetCompID(eGearComponent.BaseItem));
+
+            if (!choiceOptions.TryGetValue(baseItem.inventorySlot, out OptionChoice? choice))
+            {
+                choice = MakeOptionsForSlot(data, baseItem.inventorySlot);
+                choiceOptions.Add(baseItem.inventorySlot, choice);
+            }
+
+            choice.ChoiceNames.Add(data.LookupTagDef(gearItem.NameTag).Name);
+            choice.ChoiceValues.Add(gearItem.NameTag.AsId);
         }
+    }
+
+    /// <summary>
+    /// Create the set of options for a specific inventory slot
+    /// </summary>
+    /// <param name="data">Game data to generate for</param>
+    /// <param name="slot">The slot to generate for</param>
+    /// <returns>The choice option from the generated slots, so choices can be added.</returns>
+    private static OptionChoice MakeOptionsForSlot(Game.Data data, InventorySlot slot)
+    {
+        string slotName = slot switch
+        {
+            InventorySlot.GearMelee => "Melee Gear",
+            InventorySlot.GearStandard => "Primary Gear",
+            InventorySlot.GearSpecial => "Special Gear",
+            InventorySlot.GearClass => "Tool Gear",
+            _ => $"{Enum.GetName(slot)} Gear"
+        };
+
+        OptionID toggle = data.AddOption(new OptionToggle()
+        {
+            DisplayName = $"Ranodmize {slotName}",
+            Description = $"Enables randomization of gear in the \"{Enum.GetName(slot)}\" inventory slot.",
+            Category = GEAR_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = new(),
+        });
+        OptionID notToggle = data.AddOption(new OptionNotOperation() { Param = toggle });
+
+        OptionChoice result = new()
+        {
+            DisplayName = $"First {slotName}",
+            Description = 
+                "The choosen gear item is guaranteed to be in your starting inventory."
+                + "\nOptionally, you may choose \"none\" if you specify at least one piece of"
+                + $"\n gear in \"Starting {slotName}\"",
+            Category = GEAR_OPTION_CATEGORY,
+            DefaultValue = 0,
+            Condition = toggle,
+            ChoiceNames = new() { "None" },
+            ChoiceValues = new() { new RandomizationTag().AsId }
+        };
+        OptionID choice = data.AddOption(result);
+
+        OptionID startingRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = $"Starting {slotName}",
+            Description =
+                $"Randomly selects the chosen amount of {slotName.ToLower()} and adds it to your starting inventory."
+                + $"\nIf you leave this at 0 and set \"First {slotName}\" to \"none\", you will be given default gear which"
+                + " will be replaced as soon as you receive a valid gear item. GTFO does not support 0 gear items in a slot.",
+            Category = GEAR_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = toggle,
+            Min = 0,
+            Max = 99,
+        });
+
+        OptionID earlyRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = $"Early {slotName}",
+            Description =
+                $"Randomly selects the chosen amount of {slotName.ToLower()} and adds it to the early items list," 
+                + "\nensuring it spawns somewhere it can be reached before any player picks up any item."
+                + "\nGTFO has a very limited early item pool which is shared with all early items. If you add too"
+                + "\nmany early items, you will get a generation error.",
+            Category = GEAR_OPTION_CATEGORY,
+            DefaultValue = 0,
+            Condition = toggle,
+            Min = 0,
+            Max = 99,
+        });
+
+        RandomizationTag slotTag = data.Tag_GearItems_BySlot(slot).SelfResolve();
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Whitelist,
+            Tag = slotTag,
+            Condition = toggle,
+        });
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = slotTag,
+            Condition = notToggle,
+        });
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = choice,
+            Condition = toggle,
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartInventory,
+            Tag = slotTag,
+            Count = startingRange,
+            Condition = toggle,
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.EarlyItems,
+            Tag = slotTag,
+            Count = earlyRange,
+            Condition = toggle,
+        });
+
+        return result;
     }
 
     /// <summary>
