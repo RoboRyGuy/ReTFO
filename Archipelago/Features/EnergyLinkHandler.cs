@@ -405,8 +405,8 @@ public class EnergyLinkHandler : ArchipelagoFeature
     /// </summary>
     /// <param name="amount">The amount of energy desired desired.</param>
     /// <returns>
-    /// The amount received. If the task completed successfully, this will be the amount requested
-    ///  (modified by input conversion rate). If the task is failed or cancelled, the request was denied.
+    /// The amount received. If the task completed successfully, this will be either the amount requested or the amount available. 
+    /// If the task is failed or cancelled, the amount should be treated as 0 and the request should be considered denied.
     /// </returns>
     public static async Task<BigInteger> RequestEnergy(BigInteger amount, bool allowCancel)
     {
@@ -417,10 +417,14 @@ public class EnergyLinkHandler : ArchipelagoFeature
             if (amount.Sign < 0)
                 throw new ArgumentException("Cannot request less than 0 energy!");
 
-            BigInteger actualAmount = Multiply(amount, 1f / Config.InputConsumptionRate);
-            BigInteger result = (stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] - actualAmount) + Operation.Max(0);
-            stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] = result;
-            return BigInteger.Max(actualAmount, result);
+            BigInteger actualAmount = Multiply(amount, Config.InputConsumptionRate);
+            var current = stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"];
+
+            if (allowCancel && actualAmount > (BigInteger)current)
+                throw new TaskCanceledException();
+
+            stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] = current - actualAmount + Operation.Max(0);
+            return Multiply(BigInteger.Min(current, actualAmount), 1f / Config.InputConsumptionRate);
         }
         else if (stateTracker.CurrentState == StateTracker.eState.FakeConnect)
         {

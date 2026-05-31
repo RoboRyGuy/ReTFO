@@ -184,12 +184,4 @@ public class Plugin : BasePlugin
 
     }
 
-    [HarmonyPatch(typeof(CM_PlayerLobbyBar), nameof(CM_PlayerLobbyBar.OnBoosterImplantSlotItemSelected))]
-    [HarmonyPostfix]
-    public static void Test1(CM_PlayerLobbyBar __instance, CM_BoosterImplantSlotItem slotItem)
-    {
-        FeatureLogger.Notice("Selected slot item");
-        __instance.m_popupScrollWindow.InfoBox.m_infoAcceptButton.SetText("Test1");
-    }
-
 }

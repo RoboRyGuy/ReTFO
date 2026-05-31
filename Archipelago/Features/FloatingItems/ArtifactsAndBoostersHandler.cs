@@ -1,5 +1,7 @@
 ﻿using CellMenu;
 using GameData;
+using Il2CppInterop.Runtime;
+using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
@@ -7,15 +9,18 @@ using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 using UnityEngine;
+using UnityEngine.UIElements;
+using BigInteger = System.Numerics.BigInteger;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
 
-[EnableFeatureByDefault]
+[EnableFeatureByDefault, InjectToIl2Cpp]
 public class ArtifactsAndBoostersHandler : ArchipelagoFeature
 {
     public override string Name => "Artifacts and Boosters Handler";
@@ -377,81 +382,243 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
         public static bool Prefix() => false;
     }
 
+    [InjectToIl2Cpp(typeof(Il2CppSystem.Collections.IEnumerator))]
+    public class UpdateCreditRoutine : Il2CppSystem.Object
+    {
+        public UpdateCreditRoutine(IntPtr ptr) : base(ptr) { }
+        public UpdateCreditRoutine(CreditCostManager manager) : base(ClassInjector.DerivedConstructorPointer<UpdateCreditRoutine>())
+        {
+            ClassInjector.DerivedConstructorBody(this);
+            Manager = manager;
+        }
+
+        public CreditCostManager? Manager = null;
+
+        public Il2CppSystem.Object Current => new WaitForSecondsRealtime(3f);
+        public bool MoveNext()
+        {
+            if (Manager == null) return false;
+            Manager.GetEnergy();
+            return true;
+        }
+        public void Reset() { }
+    }
+
+    /// <summary>
+    /// Manages the creation and the display of the cost and credit texts in the booster window
+    /// </summary>
+    [InjectToIl2Cpp]
+    public class CreditCostManager : MonoBehaviour
+    {
+        public CreditCostManager(IntPtr ptr) : base(ptr) { }
+
+        private CM_PlayerLobbyBar? m_lobbyBar = null;
+        private CM_Item? m_costText = null;
+        private CM_Item? m_creditText = null;
+        private Task<BigInteger>? m_getEnergyTask = null;
+        private Coroutine? m_updateRoutine = null;
+
+        /// <summary>
+        /// Tells the manager to immediately update the credit and cost of the currently-displayed booster
+        /// </summary>
+        public static void DoUpdate(CM_PlayerLobbyBar lobbyBar)
+        {
+            var infoBox = lobbyBar.m_popupScrollWindow.InfoBox;
+            var acceptButton = infoBox.m_infoAcceptButton;
+
+            if (!Il2CppType.Of<CM_ScrollWindowBoosterInfoBox>().IsAssignableFrom(infoBox.GetIl2CppType())) return;
+
+            if (acceptButton == null) return;
+            CreditCostManager? self = acceptButton.GetComponent<CreditCostManager>();
+            if (self == null)
+            {
+                self = acceptButton.gameObject.AddComponent<CreditCostManager>();
+                self.Setup(lobbyBar);
+            }
+            self.GetEnergy();
+        }
+
+        /// <summary>
+        /// Set up a newly-created manager. Create the relevant CM_Item texts and save them as variables
+        /// </summary>
+        public void Setup(CM_PlayerLobbyBar lobbyBar)
+        {
+            const string COST_TEXT_NAME = "BoosterCostText";
+            const string CREDIT_TEXT_NAME = "BoosterCreditText";
+            const string ICON_NAME = "Icon";
+
+            m_lobbyBar = lobbyBar;
+            var infoBox = lobbyBar.m_popupScrollWindow.InfoBox;
+            var acceptButton = infoBox.m_infoAcceptButton;
+
+            // Add the cost text
+            Transform? costTextTrans = acceptButton.transform.Find(COST_TEXT_NAME);
+            if (costTextTrans == null)
+            {
+                costTextTrans = GameObject.Instantiate(lobbyBar.m_boosterTraitConditionPrefab).transform;
+                costTextTrans.gameObject.name = COST_TEXT_NAME;
+                costTextTrans.SetParent(acceptButton.transform);
+                costTextTrans.Find(ICON_NAME).gameObject.SetActive(false);
+
+                costTextTrans.localPosition = new Vector3(150, 52, 0);
+                costTextTrans.localRotation = Quaternion.identity;
+                costTextTrans.localScale = Vector3.one;
+
+                m_costText = costTextTrans.GetComponent<CM_Item>();
+                m_costText.TooltipInfo = new()
+                {
+                    UseTooptip = true,
+                    TooltipHeader = "Cost",
+                    TooltipText = "The amount of energy required to purchase this booster; its value when refunded.",
+                    PositionType = TooltipPositionType.UnderElement,
+                };
+                m_costText.Setup();
+                m_costText.SetupCMItem();
+            }
+            else
+                m_costText = costTextTrans.GetComponent<CM_Item>();
+
+            // Add the credit text
+            Transform? creditTextTrans = acceptButton.transform.Find(CREDIT_TEXT_NAME);
+            if (creditTextTrans == null)
+            {
+                creditTextTrans = GameObject.Instantiate(lobbyBar.m_boosterTraitConditionPrefab).transform;
+                creditTextTrans.gameObject.name = CREDIT_TEXT_NAME;
+                creditTextTrans.SetParent(acceptButton.transform);
+                creditTextTrans.Find(ICON_NAME).gameObject.SetActive(false);
+
+                creditTextTrans.localPosition = new Vector3(150, 28, 0);
+                creditTextTrans.localRotation = Quaternion.identity;
+                creditTextTrans.localScale = Vector3.one;
+
+                m_creditText = creditTextTrans.GetComponent<CM_Item>();
+                m_creditText.TooltipInfo = new()
+                {
+                    UseTooptip = true,
+                    TooltipHeader = "Credit",
+                    TooltipText = "The total amount of energy available, shared by your team.",
+                    PositionType = TooltipPositionType.UnderElement,
+                };
+                m_creditText.Setup();
+                m_creditText.SetupCMItem();
+            }
+            else
+                m_creditText = creditTextTrans.GetComponent<CM_Item>();
+        }
+
+        /// <summary>
+        /// When enabled, restart our coroutine
+        /// </summary>
+        public void OnEnable()
+        {
+            m_updateRoutine ??= StartCoroutine(
+                new Il2CppSystem.Collections.IEnumerator(new UpdateCreditRoutine(this).Pointer)
+            );
+        }
+
+        /// <summary>
+        /// If ever disabled, explicitly stop the coroutine.
+        /// In theory, Unity will auto-stop it, but no reason to leave it to chance.
+        /// </summary>
+        public void OnDisable()
+        {
+            if (m_updateRoutine != null)
+                StopCoroutine(m_updateRoutine);
+            m_updateRoutine = null;
+        }
+
+        /// <summary>
+        /// Check for energy updates. If one is received, update our texts with it
+        /// </summary>
+        public void Update()
+        {
+            if (m_getEnergyTask == null || !m_getEnergyTask.IsCompleted)
+                return;
+
+            // For convenience, we mark it as used immediately
+            var task = m_getEnergyTask;
+            m_getEnergyTask = null;
+
+            if (!task.IsCompletedSuccessfully)
+            {
+                FeatureLogger.Error("Failed to retrieve energy while updating energy credit");
+                if (task.Exception != null) FeatureLogger.Exception(task.Exception);
+                return;
+            }
+
+            // In case something unusual happens
+            if (m_lobbyBar == null || m_costText == null || m_creditText== null)
+            {
+                Destroy(this);
+                if (m_costText != null) Destroy(m_costText.gameObject);
+                if (m_creditText != null) Destroy(m_creditText.gameObject);
+                return;
+            }
+
+            BoosterImplant? booster = m_lobbyBar.selectedBoosterImplantItem?.BoosterImplant;
+            if (booster == null) return; // We should set our texts inactive; however, we instead trust GTFO set the parent button inactive
+
+            // Updating the current cost and credit
+            long cost = GetArtifactValue((ArtifactCategory)(int)booster.Category);
+            BigInteger credit = task.Result;
+            m_costText.SetText($"Cost:   {cost}");
+            m_creditText.SetText($"Credit: {credit}");
+
+            // Helper to easily notify if the booster can be purchased
+            if (credit >= cost)
+                m_costText.GetTexts()[0].color = Color.green;
+            else
+                m_costText.GetTexts()[0].color = Color.red;
+        }
+
+        /// <summary>
+        /// Immediately start a new task to retrieve energy
+        /// </summary>
+        public void GetEnergy()
+            => m_getEnergyTask ??= EnergyLinkHandler.GetCurrentEnergy();
+    }
+
     /// <summary>
     /// Set up the booster window to show the booster's cost
     /// </summary>
     [ArchivePatch(typeof(CM_PlayerLobbyBar), nameof(CM_PlayerLobbyBar.OnBoosterImplantSlotItemSelected))]
     public static class CM_PlayerLobbyBar__OnBoosterImplantSlotItemSelected__Patch
     {
-        public static void Postfix(CM_PlayerLobbyBar __instance, CM_BoosterImplantSlotItem slotItem)
+        public static void Postfix(CM_PlayerLobbyBar __instance)
         {
-            var func = () =>
-            {
-                CM_ScrollWindowBoosterInfoBox? box = __instance.m_popupScrollWindow.InfoBox?.TryCast<CM_ScrollWindowBoosterInfoBox>();
-                if (box == null) return;
+            CM_ScrollWindowBoosterInfoBox? box = __instance.m_popupScrollWindow.InfoBox.TryCast<CM_ScrollWindowBoosterInfoBox>();
+            if (box == null) return;
+            CreditCostManager.DoUpdate(__instance);
+        }
+    }
 
-                // Purchase button
-                if (slotItem.IsPreparedSlot)
-                    box.m_infoAcceptButton.SetText("Refund");
-                else
-                    box.m_infoAcceptButton.SetText("Purchase");
+    /// <summary>
+    /// Clean up the info box to match our desired style
+    /// </summary>
+    [ArchivePatch(typeof(CM_ScrollWindowInfoBox), nameof(CM_ScrollWindowInfoBox.SetInfoBox))]
+    public static class CM_CM_ScrollWindowInfoBox__SetInfoBox__Patch
+    {
+        public static void Prefix(CM_ScrollWindowInfoBox __instance, ref string acceptText)
+        {
+            // Replace the text with store-themed text
+            if (!Il2CppType.Of<CM_ScrollWindowBoosterInfoBox>().IsAssignableFrom(__instance.GetIl2CppType())) return;
+            if (acceptText == null) return;
 
-                // Disable drop button
-                box.m_infoRejectButton.gameObject.SetActive(false);
+            if (acceptText.Contains("Unprepare", StringComparison.OrdinalIgnoreCase))
+                acceptText = "Refund";
+            else if(acceptText.Contains("Prepare", StringComparison.OrdinalIgnoreCase))
+                acceptText = "Purchase";
+        }
 
-                // Add the cost text
-                const string costTextName = "BoosterPurchasePrice";
-                Transform? costTextTrans = box.m_infoAcceptButton.transform.parent.Find(costTextName);
-                CM_Item costText;
-                if (costTextTrans == null)
-                {
-                    costTextTrans = GameObject.Instantiate(__instance.m_boosterTraitPrefab).transform;
-                    costTextTrans.gameObject.name = costTextName;
-                    costTextTrans.SetParent(box.m_infoAcceptButton.transform.parent);
+        public static void Postfix(CM_ScrollWindowInfoBox __instance)
+        {
+            if (!Il2CppType.Of<CM_ScrollWindowBoosterInfoBox>().IsAssignableFrom(__instance.GetIl2CppType())) return;
 
-                    // The button is anchored at the bottom, our text is anchored at the top
-                    costTextTrans.localPosition = box.m_infoAcceptButton.RectTrans.localPosition + new Vector3(150, 50, 0);
-                    costTextTrans.localRotation = Quaternion.identity;
-                    costTextTrans.localScale = Vector3.one;
+            // Disable the drop button
+            __instance.m_infoRejectButton?.gameObject.SetActive(false);
 
-                    costText = costTextTrans.GetComponent<CM_Item>();
-                    costText.TooltipInfo.TooltipText = "The amount of energy currently owned by your team";
-                    costText.Setup();
-                    costText.SetupCMItem();
-                }
-                else
-                    costText = costTextTrans.GetComponent<CM_Item>();
-
-                costText.SetText("Cost:      600000000");
-
-                // Add the available text
-                const string AvailableTextName = "BoosterAvailableMoney";
-                Transform? availableTextTrans = box.m_infoAcceptButton.transform.parent.Find(AvailableTextName);
-                CM_Item availableText;
-                if (availableTextTrans == null)
-                {
-                    availableTextTrans = GameObject.Instantiate(__instance.m_boosterTraitPrefab).transform;
-                    availableTextTrans.gameObject.name = costTextName;
-                    availableTextTrans.SetParent(box.m_infoAcceptButton.transform.parent);
-
-                    // The button is anchored at the bottom, our text is anchored at the top
-                    availableTextTrans.localPosition = box.m_infoAcceptButton.RectTrans.localPosition + new Vector3(150, 30, 0);
-                    availableTextTrans.localRotation = Quaternion.identity;
-                    availableTextTrans.localScale = Vector3.one;
-
-                    availableText = availableTextTrans.GetComponent<CM_Item>();
-                    availableText.TooltipInfo.TooltipText = "The amount of energy currently owned by your team";
-                    availableText.Setup();
-                    availableText.SetupCMItem();
-                }
-                else
-                    availableText = availableTextTrans.GetComponent<CM_Item>();
-
-                availableText.SetText("Available: 3.14159");
-
-
-            };
-            func();
+            // Update the cost (assuming the shown selection somehow changed)
+            CreditCostManager.DoUpdate(CM_PlayerLobbyBar.instances[SNetwork.SNet.LocalPlayer.PlayerSlotIndex()]);
         }
     }
 
@@ -463,20 +630,15 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
     {
         public static bool Prefix(CM_BoosterImplantSlotItem __instance)
         {
-            var func = () =>
+            var task = EnergyLinkHandler.RequestEnergy(GetArtifactValue(__instance.BoosterImplant.Category switch
             {
-                var task = EnergyLinkHandler.RequestEnergy(GetArtifactValue(__instance.BoosterImplant.Category switch
-                {
-                    BoosterImplantCategory.Muted => ArtifactCategory.Common,
-                    BoosterImplantCategory.Bold => ArtifactCategory.Uncommon,
-                    BoosterImplantCategory.Aggressive => ArtifactCategory.Rare,
-                    _ => throw new ArgumentException("Expected booster type to be one of Muted, Bold, or Aggressive"),
-                }), true);
-                task.Wait();
-                FeatureLogger.Notice($"Booster equip result: {task.IsCompletedSuccessfully}");
-                return task.IsCompletedSuccessfully;
-            };
-            return func();
+                BoosterImplantCategory.Muted => ArtifactCategory.Common,
+                BoosterImplantCategory.Bold => ArtifactCategory.Uncommon,
+                BoosterImplantCategory.Aggressive => ArtifactCategory.Rare,
+                _ => throw new ArgumentException("Expected booster type to be one of Muted, Bold, or Aggressive"),
+            }), true);
+            task.Wait();
+            return task.IsCompletedSuccessfully;
         }
     }
 
