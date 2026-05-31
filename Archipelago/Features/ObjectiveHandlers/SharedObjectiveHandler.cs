@@ -135,7 +135,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         }
 
         public static TagResolver MakeTag(Layer.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfull cleared", data.Tag_SectorClearItems_ByLayer));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfully cleared", data.Tag_SectorClearItems_ByLayer));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsRandomLike = true };
 

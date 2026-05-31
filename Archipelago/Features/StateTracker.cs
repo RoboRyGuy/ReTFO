@@ -65,6 +65,7 @@ public partial class StateTracker : ArchipelagoFeature
     protected HashSet<RandomizationTag> BlacklistTags { get; set; } = new();
     protected List<LocationID> FilledEmptyLocations { get; set; } = new();
     protected SortedList<ItemID, int> GoalItemCounts { get; set; } = new();
+    public int SkippableGoalCount { get; protected set; } = 0;
 
     // Things consistently updated
     protected HashSet<RegionID> FoundRegions { get; init; } = new();
@@ -290,6 +291,7 @@ public partial class StateTracker : ArchipelagoFeature
         BlacklistTags = [ MidManager.GetProcessedGameData().Tag_ExpeditionUnlocks, MidManager.GetProcessedGameData().Tag_LobbySlotUnlocks ];
         FilledEmptyLocations = new();
         GoalItemCounts = new();
+        SkippableGoalCount = 0;
 
         SetupMultiworld();
 
@@ -601,7 +603,15 @@ public partial class StateTracker : ArchipelagoFeature
                     .Select(l => new ItemID() { AsId = l })
                     ?? throw new NullReferenceException("Failed to retrieve goal items from slot data");
             GoalItemCounts = new();
-            foreach (var id in rawGoalItems) GoalItemCounts[id] = GoalItemCounts.GetValueOrDefault(id, 0) + 1;
+            foreach (var id in rawGoalItems) 
+                GoalItemCounts[id] = GoalItemCounts.GetValueOrDefault(id, 0) + 1;
+            SkippableGoalCount = (int)loginSuccessful.SlotData["SkippableGoalCount"];
+
+            if (GoalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
+            {
+                ApSession.SetClientState(AP.Enums.ArchipelagoClientState.ClientGoal);
+                FeatureLogger.Success("Congratulations, you have won the game!");
+            }
         }
         catch (Exception e)
         {
@@ -1473,10 +1483,14 @@ public partial class StateTracker : ArchipelagoFeature
         item.OnItemObtained(this, sourceLocationId, player);
 
         // Check if we've satisifed our win condition
-        if (GoalItemCounts.ContainsKey(id) && GoalItemCounts.All(pair => ActualItemCounts.GetValueOrDefault(pair.Key) >= pair.Value))
+        if (SNetwork.SNet.IsMaster || GoalItemCounts.ContainsKey(id))
         {
-            ApSession?.SetClientState(AP.Enums.ArchipelagoClientState.ClientGoal);
-            FeatureLogger.Success("Congratulations, you have won the game!");
+            GoalItemCounts[id] -= 1;
+            if (GoalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
+            {
+                ApSession?.SetClientState(AP.Enums.ArchipelagoClientState.ClientGoal);
+                FeatureLogger.Success("Congratulations, you have won the game!");
+            }
         }
 
         if (!skipInteraction)
