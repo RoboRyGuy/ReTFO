@@ -425,7 +425,6 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
         {
             var infoBox = lobbyBar.m_popupScrollWindow.InfoBox;
             var acceptButton = infoBox.m_infoAcceptButton;
-
             if (!Il2CppType.Of<CM_ScrollWindowBoosterInfoBox>().IsAssignableFrom(infoBox.GetIl2CppType())) return;
 
             if (acceptButton == null) return;
@@ -445,10 +444,10 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
         {
             const string COST_TEXT_NAME = "BoosterCostText";
             const string CREDIT_TEXT_NAME = "BoosterCreditText";
-            const string ICON_NAME = "Icon";
 
             m_lobbyBar = lobbyBar;
-            var infoBox = lobbyBar.m_popupScrollWindow.InfoBox;
+            var infoBox = lobbyBar.m_popupScrollWindow.InfoBox.TryCast<CM_ScrollWindowBoosterInfoBox>();
+            if (infoBox == null) throw new NotImplementedException("Somehow decided to show booster costs on non-booster popup!");
             var acceptButton = infoBox.m_infoAcceptButton;
 
             // Add the cost text
@@ -458,11 +457,11 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 costTextTrans = GameObject.Instantiate(lobbyBar.m_boosterTraitConditionPrefab).transform;
                 costTextTrans.gameObject.name = COST_TEXT_NAME;
                 costTextTrans.SetParent(acceptButton.transform);
-                costTextTrans.Find(ICON_NAME).gameObject.SetActive(false);
 
                 costTextTrans.localPosition = new Vector3(150, 52, 0);
                 costTextTrans.localRotation = Quaternion.identity;
                 costTextTrans.localScale = Vector3.one;
+                costTextTrans.SetParent(infoBox.transform, true);
 
                 m_costText = costTextTrans.GetComponent<CM_Item>();
                 m_costText.TooltipInfo = new()
@@ -474,6 +473,7 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 };
                 m_costText.Setup();
                 m_costText.SetupCMItem();
+                m_costText.SetText("Cost:   -");
             }
             else
                 m_costText = costTextTrans.GetComponent<CM_Item>();
@@ -485,11 +485,11 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 creditTextTrans = GameObject.Instantiate(lobbyBar.m_boosterTraitConditionPrefab).transform;
                 creditTextTrans.gameObject.name = CREDIT_TEXT_NAME;
                 creditTextTrans.SetParent(acceptButton.transform);
-                creditTextTrans.Find(ICON_NAME).gameObject.SetActive(false);
 
                 creditTextTrans.localPosition = new Vector3(150, 28, 0);
                 creditTextTrans.localRotation = Quaternion.identity;
                 creditTextTrans.localScale = Vector3.one;
+                creditTextTrans.SetParent(infoBox.transform, true);
 
                 m_creditText = creditTextTrans.GetComponent<CM_Item>();
                 m_creditText.TooltipInfo = new()
@@ -501,9 +501,16 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
                 };
                 m_creditText.Setup();
                 m_creditText.SetupCMItem();
+                m_creditText.SetText("Credit: -");
             }
             else
                 m_creditText = creditTextTrans.GetComponent<CM_Item>();
+
+            if (lobbyBar.selectedBoosterImplantItem == null)
+            {
+                m_costText.gameObject.SetActive(false);
+                m_creditText.gameObject.SetActive(false);
+            }
         }
 
         /// <summary>
@@ -514,6 +521,8 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
             m_updateRoutine ??= StartCoroutine(
                 new Il2CppSystem.Collections.IEnumerator(new UpdateCreditRoutine(this).Pointer)
             );
+            m_costText?.gameObject.SetActive(true);
+            m_creditText?.gameObject.SetActive(true);
         }
 
         /// <summary>
@@ -525,6 +534,8 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
             if (m_updateRoutine != null)
                 StopCoroutine(m_updateRoutine);
             m_updateRoutine = null;
+            m_costText?.gameObject.SetActive(false);
+            m_creditText?.gameObject.SetActive(false);
         }
 
         /// <summary>
@@ -564,11 +575,15 @@ public class ArtifactsAndBoostersHandler : ArchipelagoFeature
             m_costText.SetText($"Cost:   {cost}");
             m_creditText.SetText($"Credit: {credit}");
 
-            // Helper to easily notify if the booster can be purchased
+            // Color the text to help notify if the booster can be purchased
+            Color color;
             if (credit >= cost)
-                m_costText.GetTexts()[0].color = Color.green;
+                color = Color.green;
             else
-                m_costText.GetTexts()[0].color = Color.red;
+                color = Color.red;
+
+            m_costText.GetTexts()[0].color = new(color.r, color.g, color.b, .5f);
+            m_costText.UpdateTextColors();
         }
 
         /// <summary>
