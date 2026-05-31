@@ -356,14 +356,14 @@ public class LockGearHandler : ArchipelagoFeature
 
         data.AddOption(new OptionAddToSet()
         {
-            Target = Option.eTarget.Blacklist,
+            Target = Option.eTarget.StartVouchers,
             Tag = choice,
             Condition = toggle,
         });
 
         data.AddOption(new OptionAddCount()
         {
-            Target = Option.eTarget.StartInventory,
+            Target = Option.eTarget.StartVouchers,
             Tag = slotTag,
             Count = startingRange,
             Condition = toggle,

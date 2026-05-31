@@ -12,7 +12,6 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Runtime.Serialization;
 
 public static class SharedObjectiveHandler_Tags
 {
@@ -195,11 +194,12 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             new OptionNotOperation() { Param = secondariesInput, }
         );
 
-        data.AddOption(new OptionAddToSet()
+        data.AddOption(new OptionAddCount()
         {
             Target = Option.eTarget.GoalBlacklist,
             Tag = data.Tag_SectorClearItems(LayerType.Secondary).SelfResolve(),
-            Condition = notSecondaries
+            Condition = notSecondaries,
+            Count = -1,
         });
 
 
@@ -220,11 +220,12 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             new OptionNotOperation() { Param = overloadsInput, }
         );
 
-        data.AddOption(new OptionAddToSet()
+        data.AddOption(new OptionAddCount()
         {
             Target = Option.eTarget.GoalBlacklist,
             Tag = data.Tag_SectorClearItems(LayerType.Overload).SelfResolve(),
-            Condition = notOverloads
+            Condition = notOverloads,
+            Count = -1,
         });
     }
 

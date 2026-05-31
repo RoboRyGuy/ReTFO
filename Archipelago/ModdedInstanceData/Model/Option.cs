@@ -173,6 +173,11 @@ public static class Option
         StartInventory,
 
         /// <summary>
+        /// Add tags to the start vouchers dict.
+        /// </summary>
+        StartVouchers,
+
+        /// <summary>
         /// Add tags to the early item dict.
         /// Note that only randomized items can be declared as early items.
         /// </summary>

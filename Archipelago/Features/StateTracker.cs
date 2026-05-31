@@ -605,7 +605,7 @@ public partial class StateTracker : ArchipelagoFeature
             GoalItemCounts = new();
             foreach (var id in rawGoalItems) 
                 GoalItemCounts[id] = GoalItemCounts.GetValueOrDefault(id, 0) + 1;
-            SkippableGoalCount = (int)loginSuccessful.SlotData["SkippableGoalCount"];
+            SkippableGoalCount = (int)(long)loginSuccessful.SlotData["SkippableGoalCount"];
 
             if (GoalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
             {
@@ -617,9 +617,7 @@ public partial class StateTracker : ArchipelagoFeature
         {
             FeatureLogger.Error("Encountered issues while retrieving slot data!");
             FeatureLogger.Exception(e);
-
-            ApSession.Socket.DisconnectAsync();
-            ApSession = null;
+            Reset();
             return;
         }
 
@@ -1483,7 +1481,7 @@ public partial class StateTracker : ArchipelagoFeature
         item.OnItemObtained(this, sourceLocationId, player);
 
         // Check if we've satisifed our win condition
-        if (SNetwork.SNet.IsMaster || GoalItemCounts.ContainsKey(id))
+        if (SNetwork.SNet.IsMaster && GoalItemCounts.ContainsKey(id))
         {
             GoalItemCounts[id] -= 1;
             if (GoalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
