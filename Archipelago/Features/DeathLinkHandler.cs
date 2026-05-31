@@ -111,12 +111,16 @@ public class DeathLinkHandler : ArchipelagoFeature
     private static float LastTriggerTime = 0f;
     private static float LastSnatcherTime = -1000f;
 
+    /// <summary>
+    /// Create the death service
+    /// </summary>
     public override void OnEnable()
     {
         base.OnEnable();
         StateTracker stateTracker = StateTracker.Get();
         stateTracker.OnStateChange += OnStateTrackerStateChange;
-        s_service ??= stateTracker.ApSession?.CreateDeathLinkService();
+        s_service?.DisableDeathLink(); // Just in case
+        s_service = stateTracker.ApSession?.CreateDeathLinkService();
         if (s_service != null)
         {
             s_service.OnDeathLinkReceived += TryTriggerDeathLink;
@@ -124,21 +128,29 @@ public class DeathLinkHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// Destroy the death service
+    /// </summary>
     public override void OnDisable()
     {
         base.OnDisable();
         StateTracker stateTracker = StateTracker.Get();
         stateTracker.OnStateChange -= OnStateTrackerStateChange;
         s_service?.DisableDeathLink();
+        s_service = null;
     }
 
+    /// <summary>
+    /// React to the state tracker's state changing - create or destroy the death service
+    /// </summary>
     public static void OnStateTrackerStateChange(StateTracker stateTracker)
     {
         if ((UnityEngine.Time.realtimeSinceStartup - Config.Cooldown) <= LastTriggerTime)
             return;
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
-        s_service ??= StateTracker.Get().ApSession?.CreateDeathLinkService();
+        s_service?.DisableDeathLink(); // In case we still have a valid one somehow
+        s_service = stateTracker.ApSession?.CreateDeathLinkService();
         if (s_service != null)
         {
             s_service.OnDeathLinkReceived += TryTriggerDeathLink;
@@ -146,6 +158,9 @@ public class DeathLinkHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// Helper which gets the host's name
+    /// </summary>
     public static string HostName => $"{StateTracker.Get().ApSession?.Players.ActivePlayer.Name ?? SNetwork.SNet.Master?.NickName ?? "Admin"}";
 
     /// <summary>
@@ -162,8 +177,14 @@ public class DeathLinkHandler : ArchipelagoFeature
             return;
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
-        if (Config.DoShowMessages && data.Cause != null)
-            StateTracker.LogForLobby($"<#F0F>[Death]</color> {data.Cause}", false);
+        if (Config.DoShowMessages)
+        {
+            if (data.Cause != null)
+                StateTracker.LogForLobby($"<#F0F>[Death]</color> {data.Cause}", false);
+            else 
+                StateTracker.LogForLobby($"<#F0F>[Death]</color> (Unknown cause)", false);
+
+        }
     
         const uint SingleEnemyWave = 30; // Vanilla survival wave settings which spawns a single enemy (filtered to weakling)
         switch (Config.Effect)
@@ -355,6 +376,9 @@ public class DeathLinkHandler : ArchipelagoFeature
         NotifyDied($"Team {HostName} suffering casualties. Objective success compromised.");
     }
 
+    /// <summary>
+    /// Detect when players die!
+    /// </summary>
     [ArchivePatch(typeof(Dam_PlayerDamageBase), nameof(Dam_PlayerDamageBase.ReceiveSetDead))]
     public static class Dam_PlayerDamageBase__ReceiveSetDead__Patch
     {
@@ -362,6 +386,9 @@ public class DeathLinkHandler : ArchipelagoFeature
             => CheckDeath(__instance, data);
     }
 
+    /// <summary>
+    /// Detect if specifically the local player dies!
+    /// </summary>
     [ArchivePatch(typeof(Dam_PlayerDamageLocal), nameof(Dam_PlayerDamageLocal.ReceiveSetDead))]
     public static class Dam_PlayerDamageLocal__ReceiveSetDead__Patch
     {
@@ -369,6 +396,9 @@ public class DeathLinkHandler : ArchipelagoFeature
             => CheckDeath(__instance, data);
     }
 
+    /// <summary>
+    /// Detect when the game ends
+    /// </summary>
     [ArchivePatch(typeof(GameStateManager), nameof(GameStateManager.DoChangeState))]
     public static class GameStateManager__DoChangeState__Patch
     {
