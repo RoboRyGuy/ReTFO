@@ -54,6 +54,97 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         public FButton ResetAllButton { get; set; } = new FButton("Reset Locks", callback: ResetLocks);
     }
 
+    public const string EXPEDITION_OPTION_CATEGORY = "Expeditions";
+    private OptionChoice? m_choices = null;
+    private OptionChoice GetOrCreateOptions(Game.Data data)
+    {
+        if (m_choices != null) return m_choices;
+
+        OptionID toggle = data.AddOption(new OptionToggle()
+        {
+            DisplayName = "Randomize Expeditions",
+            Description = "If true, starting any expedition will require the relevant expedition unlock item.",
+            Category = EXPEDITION_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = new(),
+        });
+
+        m_choices = new OptionChoice()
+        {
+            DisplayName = "Starting Expedition",
+            Description =
+                "If expeditions are randomized, you may choose a single expedition to start unlocked."
+                + "\nThis should be one of the expeditions you chose in \"Required Expeditions\" or \"none\"",
+            Category = EXPEDITION_OPTION_CATEGORY,
+            DefaultValue = new RandomizationTag().AsId,
+            Condition = new(),
+            ChoiceNames = new() { "None" },
+            ChoiceValues = new() { new RandomizationTag().AsId },
+        };
+        OptionID choice = data.AddOption(m_choices);
+
+        OptionID startRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = "Number of Unlocked Expeditions",
+            Description =
+                "The number of random expeditions which should start unlocked."
+                + "\nIf you did not choose a starting expedition above, this needs to be at least 1.",
+            Category = EXPEDITION_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = new(),
+            Min = 0,
+            Max = 99,
+        });
+
+        OptionID earlyRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = "Number of Early Expeditions",
+            Description =
+                "The number of random expeditions which should be guaranteed reachable before any item is collected."
+                + "\nGTFO has a limited amount of space shared between all early items. Too many early items leads to"
+                + "\nfill errors. Use this setting with care!",
+            Category = EXPEDITION_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = new(),
+            Min = 0,
+            Max = 99,
+        });
+
+        RandomizationTag tag = data.Tag_ExpeditionUnlocks.SelfResolve();
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Tag = tag,
+            Toggle = toggle,
+            Condition = new(),
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartVouchers,
+            Tag = choice,
+            Count = 1,
+            Condition = toggle,
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartVouchers,
+            Tag = tag,
+            Count = startRange,
+            Condition = toggle,
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.EarlyItems,
+            Tag = tag,
+            Count = earlyRange,
+            Condition = toggle,
+        });
+
+        return m_choices;
+    }
+
     /// <summary>
     /// Enumerates all expeditions from a rundown datablock 
     /// </summary>
@@ -139,6 +230,10 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         return new(data.AddItem(newItem), newItem);
     }
 
+    /// <summary>
+    /// Add an unlock item for each expedition (as well as a path).
+    /// Update the choice option.
+    /// </summary>
     [Expedition.Callback]
     public void AddExpeditionUnlock(Expedition.Data data)
     {
@@ -152,6 +247,10 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             ReqItem = reqItem.PathReqs,
             ReqCount = 1u,
         });
+
+        OptionChoice choice = GetOrCreateOptions(data);
+        choice.ChoiceNames.Add(data.ExpeditionName);
+        choice.ChoiceValues.Add(reqItem.NameTag.AsId);
     }
     
     /// <summary>

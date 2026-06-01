@@ -301,9 +301,9 @@ public class LockGearHandler : ArchipelagoFeature
             Description = 
                 "The choosen gear item is guaranteed to be in your starting inventory."
                 + "\nOptionally, you may choose \"none\" if you specify at least one piece of"
-                + $"\n gear in \"Starting {slotName}\"",
+                + $"\ngear in \"Starting {slotName}\"",
             Category = GEAR_OPTION_CATEGORY,
-            DefaultValue = 0,
+            DefaultValue = new RandomizationTag().AsId,
             Condition = toggle,
             ChoiceNames = new() { "None" },
             ChoiceValues = new() { new RandomizationTag().AsId }
@@ -316,7 +316,7 @@ public class LockGearHandler : ArchipelagoFeature
             Description =
                 $"Randomly selects the chosen amount of {slotName.ToLower()} and adds it to your starting inventory."
                 + $"\nIf you leave this at 0 and set \"First {slotName}\" to \"none\", you will be given default gear which"
-                + " will be replaced as soon as you receive a valid gear item. GTFO does not support 0 gear items in a slot.",
+                + "\nwill be replaced as soon as you receive a valid gear item. GTFO does not support 0 gear items in a slot.",
             Category = GEAR_OPTION_CATEGORY,
             DefaultValue = 1,
             Condition = toggle,
@@ -340,24 +340,18 @@ public class LockGearHandler : ArchipelagoFeature
         });
 
         RandomizationTag slotTag = data.Tag_GearItems_BySlot(slot).SelfResolve();
-        data.AddOption(new OptionAddToSet()
+        data.AddOption(new OptionWhiteOrBlacklist()
         {
-            Target = Option.eTarget.Whitelist,
             Tag = slotTag,
-            Condition = toggle,
+            Toggle = toggle,
+            Condition = new(),
         });
 
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Blacklist,
-            Tag = slotTag,
-            Condition = notToggle,
-        });
-
-        data.AddOption(new OptionAddToSet()
+        data.AddOption(new OptionAddCount()
         {
             Target = Option.eTarget.StartVouchers,
             Tag = choice,
+            Count = 1,
             Condition = toggle,
         });
 

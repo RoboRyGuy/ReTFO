@@ -147,6 +147,11 @@ public static class Option
         AddToSet,
 
         /// <summary>
+        /// Adds a single tag to either the whitelist or blacklist
+        /// </summary>
+        WhiteOrBlacklist,
+
+        /// <summary>
         /// Adds a count to a tag count for a particular tag
         /// </summary>
         AddCount,
@@ -381,7 +386,7 @@ public abstract class OptionInput : OptionBase
     /// The default value to use for this input
     /// </summary>
     [DataMember(Name = "default_value")]
-    public int DefaultValue { get; init; }
+    public long DefaultValue { get; init; }
 
     /// <summary>
     /// If non-null, specifies an option which must evaluate to non-zero for this input to be visible.
@@ -482,6 +487,27 @@ public class OptionAddToSet : OptionEffect
 
     /// <summary>
     /// This option parameter will be interpretted as a tag ID and added to the target set
+    /// </summary>
+    [DataMember(Name = "tag")]
+    public OptionParameter Tag { get; init; }
+}
+
+/// <summary>
+/// An option effect which adds a atag to either the whitelist or the blacklist
+/// </summary>
+[DataContract]
+public class OptionWhiteOrBlacklist : OptionEffect
+{
+    public override Option.eType Type => Option.eType.WhiteOrBlacklist;
+
+    /// <summary>
+    /// The option to use to decide which way to toggle. If 0, it's blacklisted; if 1, it's whitelisted
+    /// </summary>
+    [DataMember(Name = "toggle")]
+    public OptionID Toggle { get; init; }
+
+    /// <summary>
+    /// The tag to add to either the whitelist or the blacklist
     /// </summary>
     [DataMember(Name = "tag")]
     public OptionParameter Tag { get; init; }
