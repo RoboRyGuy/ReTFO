@@ -233,6 +233,29 @@ public class ColoredKeyHandler : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Adds options for colored keys
+    /// </summary>
+    [Game.Callback]
+    public void AddOptions(Game.Data data)
+    {
+        OptionID toggle = data.AddOption(new OptionToggle()
+        {
+            DisplayName = "Randomize Colored Keys",
+            Description = "Enables randomization of colored key cards",
+            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
+            Condition = new(),
+            DefaultValue = 1,
+        });
+
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Toggle = toggle,
+            Tag = data.Tag_ColoredKeyItems,
+            Condition = new(),
+        });
+    }
+
+    /// <summary>
     /// Adds colored keys to the world while processing zone data
     /// </summary>
     /// <param name="data">The zone check for colored keys</param>

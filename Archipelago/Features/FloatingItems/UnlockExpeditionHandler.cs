@@ -60,40 +60,55 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     {
         if (m_choices != null) return m_choices;
 
-        OptionID toggle = data.AddOption(new OptionToggle()
-        {
-            DisplayName = "Randomize Expeditions",
-            Description = "If true, starting any expedition will require the relevant expedition unlock item.",
-            Category = EXPEDITION_OPTION_CATEGORY,
-            DefaultValue = 1,
-            Condition = new(),
-        });
-
-        m_choices = new OptionChoice()
-        {
-            DisplayName = "Starting Expedition",
-            Description =
-                "If expeditions are randomized, you may choose a single expedition to start unlocked."
-                + "\nThis should be one of the expeditions you chose in \"Required Expeditions\" or \"none\"",
-            Category = EXPEDITION_OPTION_CATEGORY,
-            DefaultValue = new RandomizationTag().AsId,
-            Condition = new(),
-            ChoiceNames = new() { "None" },
-            ChoiceValues = new() { new RandomizationTag().AsId },
-        };
-        OptionID choice = data.AddOption(m_choices);
-
-        OptionID startRange = data.AddOption(new OptionRange()
+        OptionID unlockRange = data.AddOption(new OptionRange()
         {
             DisplayName = "Number of Unlocked Expeditions",
             Description =
                 "The number of random expeditions which should start unlocked."
-                + "\nIf you did not choose a starting expedition above, this needs to be at least 1.",
+                + " Ensure at least one expedition is unlocked either here or below.",
             Category = EXPEDITION_OPTION_CATEGORY,
             DefaultValue = 1,
             Condition = new(),
-            Min = 0,
+            Min = -1,
             Max = 99,
+        });
+        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
+
+        RandomizationTag tag = data.Tag_ExpeditionUnlocks.SelfResolve();
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Toggle = randomizationEnabled,
+            Tag = tag,
+            Condition = new(),
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartVouchers,
+            Tag = tag,
+            Count = unlockRange,
+            Condition = randomizationEnabled,
+        });
+
+        OptionID choice = data.AddOption(m_choices = new OptionChoice()
+        {
+            DisplayName = "Starting Expedition",
+            Description =
+                "Choose a single expedition to guarantee unlocked. This should be one of the expeditions" 
+                + " you chose in \"Required Expeditions\" or \"none\". This will be in addition to expeditions"
+                + " randomly unlocked.",
+            Category = EXPEDITION_OPTION_CATEGORY,
+            DefaultValue = new RandomizationTag().AsId,
+            Condition = randomizationEnabled,
+            ChoiceNames = new() { "None" },
+            ChoiceValues = new() { new RandomizationTag().AsId },
+        });
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = choice,
+            Condition = randomizationEnabled,
         });
 
         OptionID earlyRange = data.AddOption(new OptionRange()
@@ -101,8 +116,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             DisplayName = "Number of Early Expeditions",
             Description =
                 "The number of random expeditions which should be guaranteed reachable before any item is collected."
-                + "\nGTFO has a limited amount of space shared between all early items. Too many early items leads to"
-                + "\nfill errors. Use this setting with care!",
+                + Option.EARLY_WARNING_SUFFIX,
             Category = EXPEDITION_OPTION_CATEGORY,
             DefaultValue = 1,
             Condition = new(),
@@ -110,36 +124,12 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             Max = 99,
         });
 
-        RandomizationTag tag = data.Tag_ExpeditionUnlocks.SelfResolve();
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            Tag = tag,
-            Toggle = toggle,
-            Condition = new(),
-        });
-
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = choice,
-            Count = 1,
-            Condition = toggle,
-        });
-
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = tag,
-            Count = startRange,
-            Condition = toggle,
-        });
-
         data.AddOption(new OptionAddCount()
         {
             Target = Option.eTarget.EarlyItems,
             Tag = tag,
             Count = earlyRange,
-            Condition = toggle,
+            Condition = randomizationEnabled,
         });
 
         return m_choices;
@@ -244,13 +234,13 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             Name = $"{data.ExpeditionName} Expdition Unlock",
             StartingRegion = data.MenuRegion,
             EndingRegion = data.StartingRegion,
-            ReqItem = reqItem.PathReqs,
+            ReqItem = reqItem.Item.PathReqs,
             ReqCount = 1u,
         });
 
         OptionChoice choice = GetOrCreateOptions(data);
         choice.ChoiceNames.Add(data.ExpeditionName);
-        choice.ChoiceValues.Add(reqItem.NameTag.AsId);
+        choice.ChoiceValues.Add(reqItem.Item.NameTag.AsId);
     }
     
     /// <summary>
@@ -278,7 +268,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             }
 
             KeyedItem reqItem = GetExpeditionUnlockItem(eData);
-            if (reqItem.Item.RandMode.IsTreatedAsRandom && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
+            if (reqItem.Item.RandData.ShouldBeRandomized && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
                 expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
         }
     }

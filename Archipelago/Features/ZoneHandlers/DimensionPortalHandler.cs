@@ -274,7 +274,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = data.LookupOrCreateRegion(data.ZoneName),
             EndingRegion = keyInsertedRegion,
-            ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.MatterWaveProjectorID).PathReqs,
+            ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.MatterWaveProjectorID).Item.PathReqs,
             ReqCount = 1u
         });
 
@@ -293,7 +293,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = keyInsertedRegion,
             EndingRegion = scanCompletedRegion,
-            ReqItem = scanItem.PathReqs,
+            ReqItem = scanItem.Item.PathReqs,
             ReqCount = 1u,
         });
 
@@ -309,7 +309,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = scanCompletedRegion,
             EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName),
-            ReqItem = warpItem.PathReqs,
+            ReqItem = warpItem.Item.PathReqs,
             ReqCount = 1u,
         });
     }
@@ -322,7 +322,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
             Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
             if (data.TryLookupLocation(DimensionPortal_ScanLocation.MakeTag(data), out var loc))
             {
-                if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandMode.IsTreatedAsRandom)
+                if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandData.IsTreatedAsRandom)
                     return false;
             }
             else
@@ -344,7 +344,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
             Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
             if (data.TryLookupLocation(DimensionPortal_WarpLocation.MakeTag(data), out var loc))
             {
-                if (loc.Location.RandMode.IsTreatedAsRandom)
+                if (loc.Location.RandData.IsTreatedAsRandom)
                 {
                     var notifyFoundLocation = () => { StateTracker.Get().NotifyFoundLocation(loc.ID, null); };
                     __instance.m_portalChainPuzzleInstance.OnPuzzleSolved = new Il2CppAction(notifyFoundLocation);

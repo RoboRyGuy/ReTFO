@@ -1,5 +1,6 @@
 ﻿
 using GameData;
+using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;

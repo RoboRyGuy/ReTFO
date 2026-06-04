@@ -1,4 +1,5 @@
-﻿using ReTFO.Archipelago.FeaturesAPI;
+﻿using ReTFO.Archipelago.Features;
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;

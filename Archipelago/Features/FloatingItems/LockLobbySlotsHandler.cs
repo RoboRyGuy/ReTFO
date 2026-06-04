@@ -40,6 +40,8 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    public const string LOBBY_SLOT_OPTION_CATEGORY = "Lobby Slots";
+
     private class LobbySlotUnlockItem : Item
     {
         public LobbySlotUnlockItem(Game.Data data, int index)
@@ -141,11 +143,66 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddSlotUnlockItems(Game.Data data)
     {
+        // Define the items
         for (int i = 1; i < SNet.Slots.CharacterSlots.Count; i++)
         {
             KeyedItem slotUnlock = GetSlotUnlockItem(data, i);
             data.AddFloatingItem(slotUnlock.ID);
         }
+
+        // Add the options
+        OptionID unlockRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = $"Number of Unlocked Lobby Slots",
+            Description =
+                "The number of lobby slots which will be unlocked when the game starts."
+                + " This does not include the host slot, which will always be unlocked."
+                + " This can be 0. To unlock all lobby slots, use -1.",
+            Category = LOBBY_SLOT_OPTION_CATEGORY,
+            DefaultValue = 1,
+            Condition = new(),
+            Min = -1,
+            Max = SNet.Slots.CharacterSlots.Count - 1,
+        });
+        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
+
+        RandomizationTag tag = data.Tag_LobbySlotUnlocks;
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Toggle = randomizationEnabled,
+            Tag = tag,
+            Condition = new(),
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartVouchers,
+            Tag = tag,
+            Count = unlockRange,
+            Condition = randomizationEnabled,
+        });
+
+        OptionID earlyRange = data.AddOption(new OptionRange()
+        {
+            DisplayName = "Early Lobby Slots",
+            Description =
+                "The number of lobby slots which are guaranteed to randomize into locations which can be collected"
+                + " before any player collects any items. You may specify -1 to enable this for all randomized slots."
+                + Option.EARLY_WARNING_SUFFIX,
+            Category = LOBBY_SLOT_OPTION_CATEGORY,
+            DefaultValue = 0,
+            Condition = randomizationEnabled,
+            Min = -1,
+            Max = SNet.Slots.CharacterSlots.Count - 1,
+        });
+
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.EarlyItems,
+            Tag = tag,
+            Count = earlyRange,
+            Condition = randomizationEnabled,
+        });
     }
 
     /// <summary>
@@ -168,7 +225,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return true;
-            if (!item.Item.RandMode.IsTreatedAsRandom) return true;
+            if (!item.Item.RandData.ShouldBeRandomized) return true;
 
             __instance.m_playerSlotPermissions[playerIndex] = SNet_PlayerSlotManager.SlotPermission.Forbidden;
             return false;
@@ -190,14 +247,14 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
 
             if (!data.TryLookupItem(LobbySlotUnlockItem.MakeTag(data, pillarIndex), out KeyedItem item))
             {
-                FeatureLogger.Error("Failed to lookup slot unlock item; not locking slot button!");
+                FeatureLogger.Error("Failed to look up slot unlock item; not locking slot button!");
                 return;
             }
 
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return;
-            if (!item.Item.RandMode.IsTreatedAsRandom) return;
+            if (!item.Item.RandData.ShouldBeRandomized) return;
 
-            item.OnItemLost(stateTracker);
+            item.Item.OnItemLost(stateTracker);
         }
     }
 }

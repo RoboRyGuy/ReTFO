@@ -11,6 +11,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.EventHandlers;
 
+using ReTFO.Archipelago.Features.ZoneHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -159,7 +160,7 @@ public class CustomScanHandler : ArchipelagoFeature
                 {
                     StartingRegion = data.LookupOrCreateRegion(scanZone.ZoneName),
                     EndingRegion = scanRegion,
-                    ReqItem = item.PathReqs,
+                    ReqItem = item.Item.PathReqs,
                     ReqCount = count,
                     AlternateItem = new(),
                 });

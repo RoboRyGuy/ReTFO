@@ -114,7 +114,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
     }
 
     private static bool IsEmpty(StateTracker stateTracker, Tuple<string, KeyedLocation> pair)
-        => pair.Item2.IsNull || pair.Item2.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
+        => pair.Item2.IsNull || pair.Item2.Location.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
 
     /// <summary>
     /// Handles the EXTRACT command
@@ -279,7 +279,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
                 RandomizationTag tag = TerminalExtractReleaseLocation.MakeTag(data, i + 1);
                 if (!gameData.TryLookupLocation(tag, out var loc))
                     FeatureLogger.Error($"Failed to lookup terminal extraction location: {gameData.LookupTagDef(tag).Name}");
-                else if (!loc.ItemID.IsNull && !stateTracker.HasLocation(loc.ID)) ++count;
+                else if (!loc.Location.ItemID.IsNull && !stateTracker.HasLocation(loc.ID)) ++count;
             }
 
             // Add our new item to the output queue

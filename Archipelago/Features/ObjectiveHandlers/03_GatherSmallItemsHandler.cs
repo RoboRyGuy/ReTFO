@@ -281,7 +281,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         };
         if (numMissing > 0)
         {
-            firstPath.ReqItem = actualItem.PathReqs;
+            firstPath.ReqItem = actualItem.Item.PathReqs;
             firstPath.ReqCount = (uint)numMissing;
         }
         data.AddPath(firstPath);
@@ -298,7 +298,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last, 
                 EndingRegion = region,
-                ReqItem = actualItem.PathReqs,
+                ReqItem = actualItem.Item.PathReqs,
                 ReqCount = 1u,
             });
             last = region;

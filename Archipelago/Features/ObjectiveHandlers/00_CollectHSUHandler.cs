@@ -166,7 +166,7 @@ public class CollectHSUHandler : ArchipelagoFeature
         {
             StartingRegion = data.ObjectiveStartRegion,
             EndingRegion = scanStartedRegion,
-            ReqItem = scanItem.PathReqs,
+            ReqItem = scanItem.Item.PathReqs,
             ReqCount = 1u
         });
 
@@ -210,7 +210,7 @@ public class CollectHSUHandler : ArchipelagoFeature
             LocationID id = loc.ID; // Isolate for the lambda
             void OnInteract(PlayerAgent player)
             {
-                if (!StateTracker.Get().NotifyFoundLocation(id, player).RandMode.IsTreatedAsRandom)
+                if (!StateTracker.Get().NotifyFoundLocation(id, player).RandData.IsTreatedAsRandom)
                     __instance.m_hsu._Setup_b__14_2(player); // I'm guessing this is the lambda it usually gives the interact
             }
 

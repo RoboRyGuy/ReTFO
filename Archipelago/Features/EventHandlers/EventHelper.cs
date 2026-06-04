@@ -215,7 +215,7 @@ public class EventHelper : ArchipelagoFeature
                 // Check if the location is randomized. If not, spawp in the original event
                 StateTracker stateTracker = StateTracker.Get();
                 Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(id);
-                if (!loc.RandMode.IsTreatedAsRandom)
+                if (!loc.RandData.IsTreatedAsRandom)
                 {
                     if (loc is EventLocation eLoc)
                         eData = eLoc.SourceEvent;

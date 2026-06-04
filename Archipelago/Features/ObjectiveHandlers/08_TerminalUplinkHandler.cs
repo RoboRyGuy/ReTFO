@@ -205,7 +205,7 @@ public class TerminalUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = foundTerminalRegion,
-                ReqItem = terminalItem.PathReqs,
+                ReqItem = terminalItem.Item.PathReqs,
                 ReqCount = 1u,
             });
 
@@ -222,7 +222,7 @@ public class TerminalUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = foundTerminalRegion,
                 EndingRegion = completionRegion,
-                ReqItem = completionItem.PathReqs,
+                ReqItem = completionItem.Item.PathReqs,
                 ReqCount = 1u,
             });
             last = completionRegion;

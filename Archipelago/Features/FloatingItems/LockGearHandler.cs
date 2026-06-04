@@ -263,8 +263,8 @@ public class LockGearHandler : ArchipelagoFeature
                 choiceOptions.Add(baseItem.inventorySlot, choice);
             }
 
-            choice.ChoiceNames.Add(data.LookupTagDef(gearItem.NameTag).Name);
-            choice.ChoiceValues.Add(gearItem.NameTag.AsId);
+            choice.ChoiceNames.Add(data.LookupTagDef(gearItem.Item.NameTag).Name);
+            choice.ChoiceValues.Add(gearItem.Item.NameTag.AsId);
         }
     }
 
@@ -276,6 +276,8 @@ public class LockGearHandler : ArchipelagoFeature
     /// <returns>The choice option from the generated slots, so choices can be added.</returns>
     private static OptionChoice MakeOptionsForSlot(Game.Data data, InventorySlot slot)
     {
+        OptionChoice result; // Will be set during creation
+
         string slotName = slot switch
         {
             InventorySlot.GearMelee => "Melee Gear",
@@ -285,43 +287,55 @@ public class LockGearHandler : ArchipelagoFeature
             _ => $"{Enum.GetName(slot)} Gear"
         };
 
-        OptionID toggle = data.AddOption(new OptionToggle()
+        OptionID unlockRange = data.AddOption(new OptionRange()
         {
-            DisplayName = $"Ranodmize {slotName}",
-            Description = $"Enables randomization of gear in the \"{Enum.GetName(slot)}\" inventory slot.",
+            DisplayName = $"Number of Unlocked {slotName}",
+            Description =
+                $"Randomly selects the chosen number of {slotName.ToLower()} and adds it to your starting inventory."
+                + " You may also set this to -1 to start with all gear in this slot unlocked."
+                + " GTFO does not support zero gear items in a slot; ensure at least one item is selected here or below.",
             Category = GEAR_OPTION_CATEGORY,
             DefaultValue = 1,
             Condition = new(),
+            Min = -1,
+            Max = 99,
         });
-        OptionID notToggle = data.AddOption(new OptionNotOperation() { Param = toggle });
+        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
 
-        OptionChoice result = new()
+        RandomizationTag slotTag = data.Tag_GearItems_BySlot(slot).SelfResolve();
+        data.AddOption(new OptionWhiteOrBlacklist()
         {
-            DisplayName = $"First {slotName}",
-            Description = 
-                "The choosen gear item is guaranteed to be in your starting inventory."
-                + "\nOptionally, you may choose \"none\" if you specify at least one piece of"
-                + $"\ngear in \"Starting {slotName}\"",
-            Category = GEAR_OPTION_CATEGORY,
-            DefaultValue = new RandomizationTag().AsId,
-            Condition = toggle,
-            ChoiceNames = new() { "None" },
-            ChoiceValues = new() { new RandomizationTag().AsId }
-        };
-        OptionID choice = data.AddOption(result);
+            Toggle = randomizationEnabled,
+            Tag = slotTag,
+            Condition = new(),
+        });
 
-        OptionID startingRange = data.AddOption(new OptionRange()
+        data.AddOption(new OptionAddCount()
+        {
+            Target = Option.eTarget.StartVouchers,
+            Tag = slotTag,
+            Count = unlockRange,
+            Condition = randomizationEnabled,
+        });
+
+        OptionID choice = data.AddOption(result = new OptionChoice()
         {
             DisplayName = $"Starting {slotName}",
             Description =
-                $"Randomly selects the chosen amount of {slotName.ToLower()} and adds it to your starting inventory."
-                + $"\nIf you leave this at 0 and set \"First {slotName}\" to \"none\", you will be given default gear which"
-                + "\nwill be replaced as soon as you receive a valid gear item. GTFO does not support 0 gear items in a slot.",
+                "The chosen gear item is guaranteed to be unlocked at start (in addition to the randomly-selected gear items)."
+                + " You may also choose \"none\" to not add an item.",
             Category = GEAR_OPTION_CATEGORY,
-            DefaultValue = 1,
-            Condition = toggle,
-            Min = 0,
-            Max = 99,
+            DefaultValue = new RandomizationTag().AsId,
+            Condition = randomizationEnabled,
+            ChoiceNames = new() { "None" },
+            ChoiceValues = new() { new RandomizationTag().AsId }
+        });
+
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = choice,
+            Condition = randomizationEnabled,
         });
 
         OptionID earlyRange = data.AddOption(new OptionRange()
@@ -329,38 +343,13 @@ public class LockGearHandler : ArchipelagoFeature
             DisplayName = $"Early {slotName}",
             Description =
                 $"Randomly selects the chosen amount of {slotName.ToLower()} and adds it to the early items list," 
-                + "\nensuring it spawns somewhere it can be reached before any player picks up any item."
-                + "\nGTFO has a very limited early item pool which is shared with all early items. If you add too"
-                + "\nmany early items, you will get a generation error.",
+                + " ensuring it spawns somewhere it can be reached before any player picks up any item."
+                + Option.EARLY_WARNING_SUFFIX,
             Category = GEAR_OPTION_CATEGORY,
             DefaultValue = 0,
-            Condition = toggle,
+            Condition = randomizationEnabled,
             Min = 0,
             Max = 99,
-        });
-
-        RandomizationTag slotTag = data.Tag_GearItems_BySlot(slot).SelfResolve();
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            Tag = slotTag,
-            Toggle = toggle,
-            Condition = new(),
-        });
-
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = choice,
-            Count = 1,
-            Condition = toggle,
-        });
-
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = slotTag,
-            Count = startingRange,
-            Condition = toggle,
         });
 
         data.AddOption(new OptionAddCount()
@@ -368,7 +357,7 @@ public class LockGearHandler : ArchipelagoFeature
             Target = Option.eTarget.EarlyItems,
             Tag = slotTag,
             Count = earlyRange,
-            Condition = toggle,
+            Condition = randomizationEnabled,
         });
 
         return result;

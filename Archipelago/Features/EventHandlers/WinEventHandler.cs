@@ -147,7 +147,7 @@ public class WinEventHandler : ArchipelagoFeature
             ++count;
 
             var item = GetInstantWinItem(data, e.Type == eWardenObjectiveEventType.WinOnDeath);
-            FeatureLogger.Notice($"Adding instant win item: {data.LookupTagDef(item.NameTag).Name}");
+            FeatureLogger.Notice($"Adding instant win item: {data.LookupTagDef(item.Item.NameTag).Name}");
 
             EventHelper.ConvertToCheckLocationEvent(
                 data, e, count, item.ID

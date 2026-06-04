@@ -357,7 +357,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
         // For each wave, there will be a "survive wave" region
         RegionID last = data.ObjectiveStartRegion;
-        Path.RequiredItem reqItem = reactorItem.PathReqs;
+        Path.RequiredItem reqItem = reactorItem.Item.PathReqs;
         count = 0;
         foreach (var wave in data.Objective.ReactorWaves.Iter())
         {
@@ -387,7 +387,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
             // Verification (code and code placement)
             KeyedItem codeItem = GetCodeItem(data, count);
-            reqItem = codeItem.PathReqs; // Queue code as needed for next region
+            reqItem = codeItem.Item.PathReqs; // Queue code as needed for next region
             RegionList placement;
             if (wave.VerifyInOtherZone)
             {
@@ -422,7 +422,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 ReqItem = reqItem,
                 ReqCount = 1u
             });
-            reqItem = reactorItem.PathReqs; // All future events get associated with a different reactor
+            reqItem = reactorItem.Item.PathReqs; // All future events get associated with a different reactor
             last = completeStartupRegion;
             eventWrapper.Process(completeStartupRegion, completeStartupName);
         }
@@ -510,7 +510,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             }
 
             StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) == 0 && loc.Location.RandMode.IsTreatedAsRandom)
+            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.Location.ItemID, 0) <= 0 && loc.Location.RandData.IsTreatedAsRandom)
                 overrideCode = NotACode;
 
             ProgressionObjective_ReactorStartup.Update(data, __instance);
@@ -750,7 +750,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             {
                 bool isObtained = false;
                 if (data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, index + 1), out var loc))
-                    isObtained = stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) > 0 || !loc.Location.RandMode.IsTreatedAsRandom;
+                    isObtained = stateTracker.CollectedItemCounts.GetValueOrDefault(loc.Location.ItemID, 0) > 0 || !loc.Location.RandData.IsTreatedAsRandom;
                 else
                     FeatureLogger.Error($"Failed to lookup code location #{index + 1} during code UI formatting");
 

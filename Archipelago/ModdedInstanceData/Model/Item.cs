@@ -57,12 +57,7 @@ public class Item
     /// Randomization data associated with this item.
     /// </summary>
     [DataMember(Name = "rand_data")]
-    public ItemData RandData { get; init; }
-
-    /// <summary>
-    /// The current randomization mode of this item, with some added data
-    /// </summary>
-    public RandTest RandMode { get; set; }
+    public ItemData RandData { get; set; }
 
     /// <summary>
     /// Optional; if not null, this item can only be randomized if the supplied expedition 
@@ -199,34 +194,6 @@ public struct KeyedItem : INullable
     /// True if the item is null, false otherwise
     /// </summary>
     public bool IsNull => ID.IsNull;
-
-    /// <inheritdoc cref="Item.NameTag"/>
-    public RandomizationTag NameTag => Item.NameTag;
-
-    /// <inheritdoc cref="Item.Tag2"/>
-    public RandomizationTag Tag2 => Item.Tag2;
-
-    /// <inheritdoc cref="Item.Tag3"/>
-    public RandomizationTag Tag3 => Item.Tag3;
-
-    /// <inheritdoc cref="Item.RandData"/>
-    public ItemData RandData => Item.RandData;
-
-    /// <inheritdoc cref="Item.PathReqs"/>
-    public Path.RequiredItem PathReqs => Item.PathReqs;
-
-    /// <inheritdoc cref="Item.OnItemObtained(StateTracker, long, PlayerAgent?)"/>
-    public void OnItemObtained(StateTracker stateTracker, long sourceLocationId, PlayerAgent? player) { }
-
-    /// <inheritdoc cref="Item.OnItemLost(StateTracker)"/>
-    public void OnItemLost(StateTracker stateTracker) { }
-
-    /// <inheritdoc cref="Item.OnStartExpeditionWithItem(StateTracker, Expedition.Data)"/>
-    public void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data) { }
-
-    /// <inheritdoc cref="Item.OnRetrieveFromTerminalSystem(StateTracker, LG_ComputerTerminal)"/>
-    public IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
-        => throw new NotImplementedException();
 }
 
 /// <summary>
@@ -239,6 +206,7 @@ public struct ItemData
     /// Enum values used by this data. Note that, where applicable, these correspond to 
     ///  archipelago's item classifications
     /// </summary>
+    [Flags]
     public enum eType
     {
         /// <summary>
@@ -292,12 +260,33 @@ public struct ItemData
         ///  at the start of the session so the floating item can prep the world.
         /// </summary>
         IsCollectedByDefault = 1 << 7,
+
+        /// <summary>
+        /// This item is in the randomization whitelist
+        /// </summary>
+        IsWhitelisted = 1 << 8,
+
+        /// <summary>
+        /// This item is in the randomization blacklist
+        /// </summary>
+        IsBlacklisted = 1 << 9,
+
+        /// <summary>
+        /// This item is present / obtainable in the current expeditions list
+        /// </summary>
+        IsInRequiredExpeditions = 1 << 10,
     }
 
     /// <summary>
-    /// Construct default item data
+    /// Construct item data; optionally provide the starting type value
     /// </summary>
-    public ItemData() { }
+    public ItemData(eType value = eType.None) => m_value = value;
+
+    /// <summary>
+    /// Copy constructor
+    /// </summary>
+    /// <param name="source"></param>
+    public ItemData(ItemData source) => m_value = source.m_value;
 
     /// <summary>
     /// Stored enum value
@@ -311,11 +300,7 @@ public struct ItemData
     public bool IsProgression
     {
         get => (m_value & eType.Progression) != 0;
-        init
-        {
-            if (value) m_value |= eType.Progression;
-            else m_value &= ~eType.Progression;
-        }
+        init => m_value = value ? (m_value | eType.Progression) : (m_value & ~eType.Progression);
     }
 
     /// <summary>
@@ -325,11 +310,7 @@ public struct ItemData
     public bool IsUseful
     {
         get => (m_value & eType.Useful) != 0;
-        init
-        {
-            if (value) m_value |= eType.Useful;
-            else m_value &= ~eType.Useful;
-        }
+        init => m_value = value ? (m_value | eType.Useful) : (m_value & ~eType.Useful);
     }
 
     /// <summary>
@@ -339,11 +320,7 @@ public struct ItemData
     public bool IsFiller
     {
         get => (m_value & eType.Filler) != 0;
-        init
-        {
-            if (value) m_value |= eType.Filler;
-            else m_value &= ~eType.Filler;
-        }
+        init => m_value = value ? (m_value | eType.Filler) : (m_value & ~eType.Filler);
     }
 
     /// <summary>
@@ -353,11 +330,7 @@ public struct ItemData
     public bool IsTrap
     {
         get => (m_value & eType.Trap) != 0;
-        init
-        {
-            if (value) m_value |= eType.Trap;
-            else m_value &= ~eType.Trap;
-        }
+        init => m_value = value ? (m_value | eType.Trap) : (m_value & ~eType.Trap);
     }
 
     /// <summary>
@@ -367,11 +340,7 @@ public struct ItemData
     public bool DoSkipBalancing
     {
         get => (m_value & eType.SkipBalancing) != 0;
-        init
-        {
-            if (value) m_value |= eType.SkipBalancing;
-            else m_value &= ~eType.SkipBalancing;
-        }
+        init => m_value = value ? (m_value | eType.SkipBalancing) : (m_value & ~eType.SkipBalancing);
     }
 
     /// <summary>
@@ -381,11 +350,7 @@ public struct ItemData
     public bool IsDeprioritized
     {
         get => (m_value & eType.Deprioritized) != 0;
-        init
-        {
-            if (value) m_value |= eType.Deprioritized;
-            else m_value &= ~eType.Deprioritized;
-        }
+        init => m_value = value ? (m_value | eType.Deprioritized) : (m_value & ~eType.Deprioritized);
     }
 
     /// <summary>
@@ -395,11 +360,7 @@ public struct ItemData
     public bool IsCollectedByDefault
     {
         get => (m_value & eType.IsCollectedByDefault) != 0;
-        init
-        {
-            if (value) m_value |= eType.IsCollectedByDefault;
-            else m_value &= ~eType.IsCollectedByDefault;
-        }
+        init => m_value = value ? (m_value | eType.IsCollectedByDefault) : (m_value & ~eType.IsCollectedByDefault);
     }
 
     /// <summary>
@@ -409,12 +370,43 @@ public struct ItemData
     public bool IsRandomLike
     {
         get => (m_value & eType.RandomLike) != 0;
-        init
-        {
-            if (value) m_value |= eType.RandomLike;
-            else m_value &= ~eType.RandomLike;
-        }
+        init => m_value = value ? (m_value | eType.RandomLike) : (m_value & ~eType.RandomLike);
     }
 
+    /// <summary>
+    /// Set or write the IsWhitelisted bit
+    /// </summary>
+    public bool IsWhitelisted
+    {
+        get => (m_value & eType.IsWhitelisted) != 0;
+        init => m_value = value ? (m_value | eType.IsWhitelisted) : (m_value & ~eType.IsWhitelisted);
+    }
 
+    /// <summary>
+    /// Set or write the IsBlacklisted bit
+    /// </summary>
+    public bool IsBlacklisted
+    {
+        get => (m_value & eType.IsBlacklisted) != 0;
+        init => m_value = value ? (m_value | eType.IsBlacklisted) : (m_value & ~eType.IsBlacklisted);
+    }
+
+    /// <summary>
+    /// Set or write the IsInRequiredExpeditions bit
+    /// </summary>
+    public bool IsInRequiredExpeditions
+    {
+        get => (m_value & eType.IsInRequiredExpeditions) != 0;
+        init => m_value = value ? (m_value | eType.IsInRequiredExpeditions) : (m_value & ~eType.IsInRequiredExpeditions);
+    }
+
+    /// <summary>
+    /// Returns true if this item should, on its own merits, be randomized.
+    /// </summary>
+    public bool ShouldBeRandomized => IsInRequiredExpeditions && IsWhitelisted && !IsBlacklisted;
+
+    /// <summary>
+    /// Get a copy without randomization-specific data
+    /// </summary>
+    public ItemData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsInRequiredExpeditions));
 }

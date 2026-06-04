@@ -99,7 +99,7 @@ public class BulkheadKeyHandler : ArchipelagoFeature
             // If the bulkhead key is not randomized, we want to try and give it directly to the player who found it
             if (ExpeditionData.IsCurrentlyInExpedition())
             {
-                if (!RandMode.IsRandomized && player != null)
+                if (RandData.IsRandomLike && player != null)
                 {
                     var wrapper = SpawnItemAsync();
                     wrapper.AddSpawnCallback(item => 
@@ -185,6 +185,29 @@ public class BulkheadKeyHandler : ArchipelagoFeature
                 item.ID
             );
         }
+    }
+
+    /// <summary>
+    /// Adds options for bulkhead keys
+    /// </summary>
+    [Game.Callback]
+    public void AddOptions(Game.Data data)
+    {
+        OptionID toggle = data.AddOption(new OptionToggle()
+        {
+            DisplayName = "Randomize Bulkhead Keys",
+            Description = "Enables randomization of bulkhead key cards",
+            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
+            Condition = new(),
+            DefaultValue = 1,
+        });
+
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Toggle = toggle,
+            Tag = data.Tag_BulkheadKeyItems,
+            Condition = new(),
+        });
     }
 
     /// <summary>

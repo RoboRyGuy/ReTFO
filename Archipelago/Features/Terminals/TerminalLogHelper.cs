@@ -76,7 +76,7 @@ public class TerminalLogHelper : ArchipelagoFeature
         }
 
         Location loc = gameData.LookupLocation(locationId);
-        if (!loc.RandMode.IsTreatedAsRandom) return;
+        if (!loc.RandData.IsTreatedAsRandom) return;
 
         var log = terminal.m_localLogs.entries[entry].value;
         log.FileContent = new()

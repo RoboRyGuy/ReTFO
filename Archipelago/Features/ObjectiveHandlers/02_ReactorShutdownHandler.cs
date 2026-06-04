@@ -173,7 +173,7 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             {
                 StartingRegion = data.ObjectiveStartRegion,
                 EndingRegion = eventRegion,
-                ReqItem = reactorItem.PathReqs,
+                ReqItem = reactorItem.Item.PathReqs,
                 ReqCount = (uint)count
             });
             eventWrapper.Process(eventRegion, eventName);

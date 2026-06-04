@@ -215,7 +215,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = foundRegion,
-                ReqItem = term1.PathReqs,
+                ReqItem = term1.Item.PathReqs,
                 ReqCount = 2u,
             });
 
@@ -234,7 +234,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = foundRegion,
                 EndingRegion = completionRegion,
-                ReqItem = completionItem.PathReqs,
+                ReqItem = completionItem.Item.PathReqs,
                 ReqCount = 1u,
             });
             last = completionRegion;

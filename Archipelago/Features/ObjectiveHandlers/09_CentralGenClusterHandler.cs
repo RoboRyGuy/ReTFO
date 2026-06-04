@@ -284,7 +284,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = data.ObjectiveStartRegion,
             EndingRegion = foundGenClusterRegion,
-            ReqItem = clusterItem.PathReqs,
+            ReqItem = clusterItem.Item.PathReqs,
             ReqCount = 1u,
         });
 
@@ -299,7 +299,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = cellItem.PathReqs,
+                ReqItem = cellItem.Item.PathReqs,
                 ReqCount = 1u,
             });
             last = newRegion;
@@ -321,7 +321,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = last,
             EndingRegion = scanRegion,
-            ReqItem = scanItem.PathReqs,
+            ReqItem = scanItem.Item.PathReqs,
             ReqCount = 1u,
         });
 
@@ -344,7 +344,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             {
                 if (data.TryLookupLocation(GenCluster_ScanLocation.MakeTag(data), out var loc))
                 {
-                    if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandMode.IsTreatedAsRandom)
+                    if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandData.IsTreatedAsRandom)
                         return false;
                 }
                 else

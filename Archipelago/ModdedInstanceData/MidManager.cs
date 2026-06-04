@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using Clonesoft.Json;
 using GameData;
+using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;

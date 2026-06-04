@@ -259,7 +259,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         {
             StartingRegion = startRegion,
             EndingRegion = gotoWinRegion,
-            ReqItem = GetCompleteObjectiveItem(data.GetObjectiveDatas().First()).PathReqs,
+            ReqItem = GetCompleteObjectiveItem(data.GetObjectiveDatas().First()).Item.PathReqs,
             ReqCount = (uint)data.GetObjectiveDatas().Count(),
             AlternateItem = data.LayerType == LayerType.Main ? WinEventHandler.GetInstantWinPathReqs(data) : new()
         });
@@ -276,13 +276,13 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         // If this is secondary or overload, we'll need main to be clearable. Otherwise, we need to reach extraction
         if (data.LayerType.IsMainLayer)
         {
-            path.ReqItem = ExtractionHandler.GetExtractionReachableItem(data).PathReqs;
+            path.ReqItem = ExtractionHandler.GetExtractionReachableItem(data).Item.PathReqs;
             path.ReqCount = 1u;
             path.AlternateItem = WinEventHandler.GetInstantWinPathReqs(data);
         }
         else
         {
-            path.ReqItem = GetSectorClearedItem(data.MainLayer).PathReqs;
+            path.ReqItem = GetSectorClearedItem(data.MainLayer).Item.PathReqs;
             path.ReqCount = 1u;
         }
         data.AddPath(path);

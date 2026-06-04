@@ -53,6 +53,10 @@
     <Reference Remove="$(BepInEx)\interop\netstandard.dll" />
     <Reference Remove="$(BepInEx)\interop\Newtonsoft.Json.dll" />
     <PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.1" />
+    <PackageReference Include="PolySharp" Version="1.16.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <Reference Include="$(BepInEx)\plugins\dakkhuza-MTFO\MTFO.dll" Private="false" />
     <Reference Include="$(BepInEx)\plugins\AuriRex-Clonesoft_Json\Clonesoft.Json.dll" Private="false" />
     <Reference Include="$(BepInEx)\plugins\AuriRex-TheArchive_Core\TheArchive.Core.dll" Private="false" />

@@ -290,7 +290,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = item.PathReqs,
+                ReqItem = item.Item.PathReqs,
                 ReqCount = 1u
             });
             last = newRegion;

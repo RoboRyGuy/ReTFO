@@ -74,7 +74,7 @@ public class ClearAPathHandler : ArchipelagoFeature
         {
             StartingRegion = data.ObjectiveStartRegion,
             EndingRegion = objectiveCompleteRegion,
-            ReqItem = ExtractionHandler.GetExtractionReachableItem(data).PathReqs,
+            ReqItem = ExtractionHandler.GetExtractionReachableItem(data).Item.PathReqs,
             ReqCount = 1u,
         });
         SharedObjectiveHandler.AddObjectiveCompleteItem(data, objectiveCompleteRegion);

@@ -7,6 +7,8 @@ using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
+
 /// <summary>
 /// Represents a location in archipelago. Some example locations:
 /// <list type="bullet">
@@ -72,12 +74,7 @@ public class Location
     /// The data to use for this location.
     /// </summary>
     [DataMember(Name = "rand_data")]
-    public LocationData RandData { get; init; }
-
-    /// <summary>
-    /// Currrent randomization mode of this item, with some added data
-    /// </summary>
-    public RandTest RandMode { get; set; }
+    public LocationData RandData { get; set; }
 
     /// <summary>
     /// Name of the scouted item, if this location has been scouted
@@ -146,31 +143,14 @@ public struct KeyedLocation : INullable
     [DataMember(Name = "id")] public LocationID ID { get; init; }
 
     /// <summary>
-    /// True if null (contains no location)
-    /// </summary>
-    public bool IsNull => ID.IsNull;
-
-    /// <summary>
     /// The location object with the given ID
     /// </summary>
     [DataMember(Name = "location")] public Location Location { get; init; }
 
-    // Below are helper for accessing data in the location
-
-    /// <inheritdoc cref="Location.NameTag"/>
-    public RandomizationTag NameTag => Location.NameTag;
-
-    /// <inheritdoc cref="Location.OwningRegionIDs"/>
-    public RegionID[] OwningRegionIds => Location.OwningRegionIDs;
-
-    /// <inheritdoc cref="Location.ItemID"/>
-    public ItemID ItemID => Location.ItemID;
-
-    /// <inheritdoc cref="Location.RandData"/>
-    public LocationData RandData => Location.RandData;
-
-    /// <inheritdoc cref="Location.ScoutedItem"/>
-    public ScoutedItemInfo? ScoutedItem => ScoutedItem;
+    /// <summary>
+    /// True if null (contains no location)
+    /// </summary>
+    public bool IsNull => ID.IsNull;
 }
 
 /// <summary>
@@ -182,6 +162,7 @@ public struct LocationData
     /// <summary>
     /// Enum values used by this data
     /// </summary>
+    [Flags]
     public enum eType
     {
         /// <summary>
@@ -223,12 +204,43 @@ public struct LocationData
         /// be ignored (and, in general, should be left as the default "null" value).
         /// </summary>
         IsEmpty = 1 << 3,
+
+        /// <summary>
+        /// This location is in the randomization whitelist
+        /// </summary>
+        IsWhitelisted = 1 << 4,
+
+        /// <summary>
+        /// This location is in the randomization blacklist
+        /// </summary>
+        IsBlacklisted = 1 << 5,
+
+        /// <summary>
+        /// This location is present / obtainable in the current expeditions list
+        /// </summary>
+        IsInRequiredExpeditions = 1 << 6,
+
+        /// <summary>
+        /// If this location has an item and both meet the criteria to be randomized
+        /// </summary>
+        IsRandomized = 1 << 7,
+
+        /// <summary>
+        /// If this location has an item and is not randomized and the item is randomlike
+        /// </summary>
+        IsRandomlike = 1 << 8,
     }
 
     /// <summary>
-    /// Construct default location data
+    /// Construct location data; optionally provide its starting value
     /// </summary>
-    public LocationData() { }
+    public LocationData(eType value = eType.Default) => m_value = value;
+
+    /// <summary>
+    /// Copy constructor
+    /// </summary>
+    /// <param name="source"></param>
+    public LocationData(LocationData source) => m_value = source.m_value;
 
     /// <summary>
     /// The stored location data
@@ -242,11 +254,7 @@ public struct LocationData
     public eType PriorityMode
     {
         get => m_value & eType.PriorityMask;
-        init
-        {
-            if (value != (value & eType.PriorityMask)) throw new ArgumentException("Value assigned to PriorityMode must be a priority type!");
-            m_value = value | (m_value & ~eType.PriorityMask);
-        }
+        init => m_value = (m_value & ~eType.PriorityMask) | value;
     }
 
     /// <summary>
@@ -275,11 +283,7 @@ public struct LocationData
     public bool IsAutoDiscovered
     {
         get => (m_value & eType.AutoDiscover) != 0;
-        init
-        {
-            if (value) m_value |= eType.AutoDiscover;
-            else m_value &= ~eType.AutoDiscover;
-        }
+        init => m_value = value ? (m_value | eType.AutoDiscover) : (m_value & eType.AutoDiscover);
     }
 
     /// <summary>
@@ -289,10 +293,64 @@ public struct LocationData
     public bool IsEmpty
     {
         get => (m_value & eType.IsEmpty) != 0;
-        init
-        {
-            if (value) m_value |= eType.IsEmpty;
-            else m_value &= ~eType.IsEmpty;
-        }
+        init => m_value = value ? (m_value | eType.IsEmpty) : (m_value & eType.IsEmpty);
     }
+
+    /// <summary>
+    /// Get or write the IsWhitelisted bit
+    /// </summary>
+    public bool IsWhitelisted
+    {
+        get => (m_value & eType.IsWhitelisted) != 0;
+        init => m_value = value ? (m_value | eType.IsWhitelisted) : (m_value & ~eType.IsWhitelisted);
+    }
+
+    /// <summary>
+    /// Get or write the IsBlacklisted bit
+    /// </summary>
+    public bool IsBlacklisted
+    {
+        get => (m_value & eType.IsBlacklisted) != 0;
+        init => m_value = value ? (m_value | eType.IsBlacklisted) : (m_value & ~eType.IsBlacklisted);
+    }
+
+    /// <summary>
+    /// Get or write the IsInRequiredExpeditions bit
+    /// </summary>
+    public bool IsInRequiredExpeditions
+    {
+        get => (m_value & eType.IsInRequiredExpeditions) != 0;
+        init => m_value = value ? (m_value | eType.IsInRequiredExpeditions) : (m_value & ~eType.IsInRequiredExpeditions);
+    }
+
+    /// <summary>
+    /// True if this location should be randomized purely on its own merit (ignoring its item)
+    /// </summary>
+    public bool ShouldBeRandomized => IsInRequiredExpeditions && IsWhitelisted && !IsBlacklisted;
+
+    /// <summary>
+    /// Get or write the IsRandomized bit
+    /// </summary>
+    public bool IsRandomized
+    {
+        get => (m_value & eType.IsRandomized) != 0;
+        init => m_value = value ? (m_value | eType.IsRandomized) : (m_value & ~eType.IsRandomized);
+    }
+
+    /// <summary>
+    /// Get or write the IsRandomlike bit
+    /// </summary>
+    public bool IsRandomlike
+    {
+        get => (m_value & eType.IsRandomlike) != 0;
+        init => m_value = value ? (m_value | eType.IsRandomlike) : (m_value & ~eType.IsRandomlike);
+    }
+
+    /// <summary>
+    /// True if IsRandomized or IsRandomlike. If testing whether to perform randomization
+    /// behaviour in patches, this is typically the check that should be used.
+    /// </summary>
+    public bool IsTreatedAsRandom => IsRandomized || IsRandomlike;
+
+    public LocationData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsInRequiredExpeditions | eType.IsRandomized | eType.IsRandomlike));
 }

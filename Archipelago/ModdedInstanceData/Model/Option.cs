@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
+using System.Text;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
@@ -230,9 +231,56 @@ public static class Option
     /// <summary>
     /// A default category for options you may use
     /// </summary>
-    public const string DefaultCategory = "GTFO Options";
-}
+    public const string DEFAULT_OPTION_CATEGORY = "miscellaneous Options";
 
+    /// <summary>
+    /// A warning message which should be appended to the description of any input
+    /// which increases the number of early items.
+    /// </summary>
+    public const string EARLY_WARNING_SUFFIX =
+        "\nNote: GTFO has a limited amount of space for early items."
+        + " Adding too many early items many result in FILL errors!";
+
+    /// <summary>
+    /// Adds line breaks to long descriptions so they fit within a specific character width limit
+    /// </summary>
+    /// <param name="source">The text to format</param>
+    /// <param name="maxLen">The max width of the text</param>
+    /// <returns></returns>
+    public static string AddLineBreaks(string source, int maxLen = 80)
+    {
+        StringBuilder output = new(source.Length);
+        int lastSpace = -1;
+        int lastLineBreak = 0;
+        bool isQuoteOpen = false;
+
+        for (int i = 0; i < source.Length; i++)
+        {
+            char c = source[i];
+            if (c == '\"') isQuoteOpen = !isQuoteOpen;
+            else if (c == ' ' && !isQuoteOpen) lastSpace = i;
+            else if (c == '\n')
+            {
+                lastLineBreak = i;
+                lastSpace = -1;
+            }
+            output.Append(c);
+
+            int currentLineLength = i - lastLineBreak;
+            if (
+                (isQuoteOpen && (currentLineLength > (maxLen + 10)) && (lastSpace != -1))
+                || (!isQuoteOpen && (currentLineLength > maxLen) && (lastSpace != -1))
+            )
+            {
+                output[lastSpace] = '\n';
+                lastLineBreak = lastSpace;
+                lastSpace = -1;
+            }
+        }
+
+        return output.ToString();
+    }
+}
 
 /// <summary>
 /// Simple wrapper around a long to help identify it as an OptionID, usable
@@ -256,7 +304,7 @@ public struct OptionID : INullable, IId, IIndex, IComparable<OptionID>, IEquatab
 }
 
 /// <summary>
-/// A Item with an ID associated with it
+/// An option with an ID associated with it
 /// </summary>
 [DataContract]
 public struct KeyedOption : INullable
@@ -267,7 +315,7 @@ public struct KeyedOption : INullable
     public KeyedOption()
     {
         ID = new();
-        Option = null!; // Todo: Class default item?
+        Option = null!;
     }
 
     /// <summary>
@@ -339,6 +387,12 @@ public struct OptionParameter
         => new OptionParameter() { Type = eType.Constant, Value = tag.AsId };
 
     /// <summary>
+    /// Create a new option parameter targeting a tag. This is internally the same as a constant
+    /// </summary>
+    public static implicit operator OptionParameter(TagResolver tag)
+        => tag.SelfResolve();
+
+    /// <summary>
     /// Create a new option parameter targeting an option by ID
     /// </summary>
     public static implicit operator OptionParameter(OptionID id)
@@ -368,25 +422,29 @@ public abstract class OptionInput : OptionBase
     /// The name to present to the user for this input
     /// </summary>
     [DataMember(Name = "display_name")]
-    public string DisplayName { get; init; }
+    public required string DisplayName { get; init; }
 
     /// <summary>
     /// The string name to use for this input
     /// </summary>
     [DataMember(Name = "description")]
-    public string Description { get; init; }
+    public required string Description { 
+        get => m_description; 
+        init => m_description = Option.AddLineBreaks(value); 
+    }
+    private string m_description = null!; // Initialized by required property `Description`
 
     /// <summary>
     /// The category to sort this input under
     /// </summary>
     [DataMember(Name = "category")]
-    public string Category { get; init; }
+    public required string Category { get; init; }
 
     /// <summary>
     /// The default value to use for this input
     /// </summary>
     [DataMember(Name = "default_value")]
-    public long DefaultValue { get; init; }
+    public required long DefaultValue { get; init; }
 
     /// <summary>
     /// If non-null, specifies an option which must evaluate to non-zero for this input to be visible.
@@ -394,7 +452,7 @@ public abstract class OptionInput : OptionBase
     ///  not prevent this input from being used in any way.
     /// </summary>
     [DataMember(Name = "condition")]
-    public OptionID Condition { get; init; }
+    public required OptionID Condition { get; init; }
 }
 
 /// <summary>
@@ -440,13 +498,13 @@ public class OptionRange : OptionInput
     /// The min value of the range
     /// </summary>
     [DataMember(Name = "min")]
-    public float Min { get; init; }
+    public required float Min { get; init; }
 
     /// <summary>
     /// The max value of the range
     /// </summary>
     [DataMember(Name = "max")]
-    public float Max { get; init; }
+    public required float Max { get; init; }
 }
 
 /// <summary>
@@ -467,7 +525,7 @@ public abstract class OptionEffect : OptionBase
     /// If the effect evaluates to zero, the effect is ignored/discarded.
     /// </summary>
     [DataMember(Name = "condition")]
-    public OptionID Condition { get; init; } = new();
+    public required OptionID Condition { get; init; } = new();
 }
 
 /// <summary>
@@ -483,13 +541,13 @@ public class OptionAddToSet : OptionEffect
     /// Note that attempting to target a non-set target will throw an error.
     /// </summary>
     [DataMember(Name = "target")]
-    public Option.eTarget Target { get; init; }
+    public required Option.eTarget Target { get; init; }
 
     /// <summary>
     /// This option parameter will be interpretted as a tag ID and added to the target set
     /// </summary>
     [DataMember(Name = "tag")]
-    public OptionParameter Tag { get; init; }
+    public required OptionParameter Tag { get; init; }
 }
 
 /// <summary>
@@ -504,13 +562,14 @@ public class OptionWhiteOrBlacklist : OptionEffect
     /// The option to use to decide which way to toggle. If 0, it's blacklisted; if 1, it's whitelisted
     /// </summary>
     [DataMember(Name = "toggle")]
-    public OptionID Toggle { get; init; }
+    public required OptionID Toggle { get; init; }
 
     /// <summary>
-    /// The tag to add to either the whitelist or the blacklist
+    /// The tag to add to either the whitelist or the blacklist.
+    /// Typically this is an item tag.
     /// </summary>
     [DataMember(Name = "tag")]
-    public OptionParameter Tag { get; init; }
+    public required OptionParameter Tag { get; init; }
 }
 
 /// <summary>
@@ -526,17 +585,17 @@ public class OptionAddCount : OptionEffect
     /// Note that attempting to target a non-dict target will throw an error.
     /// </summary>
     [DataMember(Name = "target")]
-    public Option.eTarget Target { get; init; }
+    public required Option.eTarget Target { get; init; }
 
     /// <summary>
     /// This option parametere will be interpretted as a tag ID and used as the key for the target count
     /// </summary>
     [DataMember(Name = "tag")]
-    public OptionParameter Tag { get; init; }
+    public required OptionParameter Tag { get; init; }
 
     /// <summary>
     /// The count to add to the key in the specified target
     /// </summary>
     [DataMember(Name = "count")]
-    public OptionParameter Count { get; init; }
+    public required OptionParameter Count { get; init; }
 }

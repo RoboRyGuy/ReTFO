@@ -85,7 +85,7 @@ public class SurvivalHandler : ArchipelagoFeature
         // This is a rare case where we need to block access until we've completed the previous objectives
         if (data.ObjectiveIndex > 0)
         {
-            path.ReqItem = SharedObjectiveHandler.GetCompleteObjectiveItem(data).PathReqs;
+            path.ReqItem = SharedObjectiveHandler.GetCompleteObjectiveItem(data).Item.PathReqs;
             path.ReqCount = (uint)data.ObjectiveIndex;
         }
         data.AddPath(path);

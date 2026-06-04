@@ -134,7 +134,7 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         {
             StartingRegion = data.ObjectiveStartRegion,
             EndingRegion = commandExecutedRegion,
-            ReqItem = item.PathReqs,
+            ReqItem = item.Item.PathReqs,
             ReqCount = 1u,
         });
 

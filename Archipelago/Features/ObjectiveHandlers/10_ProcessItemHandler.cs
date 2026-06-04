@@ -162,7 +162,7 @@ public class ProcessItemHandler : ArchipelagoFeature
         {
             StartingRegion = data.ObjectiveStartRegion,
             EndingRegion = collectItemRegion,
-            ReqItem = startItem.PathReqs,
+            ReqItem = startItem.Item.PathReqs,
             ReqCount = 1u,
         });
 
@@ -182,7 +182,7 @@ public class ProcessItemHandler : ArchipelagoFeature
         {
             StartingRegion = collectItemRegion,
             EndingRegion = processedItemRegion,
-            ReqItem = processorItem.PathReqs,
+            ReqItem = processorItem.Item.PathReqs,
             ReqCount = 1u,
         });
 

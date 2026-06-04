@@ -211,12 +211,12 @@ public class TerminalPasswordHandler : ArchipelagoFeature
 
                 var logNames = terminal.m_localLogs.entries.Where(e => e?.value?.FileName?.StartsWith($"KEY", StringComparison.OrdinalIgnoreCase) ?? false).ToList();
                 if (logNames.Count == 0)
-                    FeatureLogger.Error($"Failed to find any logs for password part location: {data.LookupTagDef(location.NameTag).Name}");
+                    FeatureLogger.Error($"Failed to find any logs for password part location: {data.LookupTagDef(location.Location.NameTag).Name}");
                 else
                     TerminalLogHelper.AssociateLog(terminal, logNames[0].value.FileName, location.ID);
 
                 if (logNames.Count > 1)
-                    FeatureLogger.Warning($"Found multiple possible logs for password part location, using first: {data.LookupTagDef(location.NameTag).Name}");
+                    FeatureLogger.Warning($"Found multiple possible logs for password part location, using first: {data.LookupTagDef(location.Location.NameTag).Name}");
             }
         }
     }

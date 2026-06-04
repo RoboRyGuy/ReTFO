@@ -200,7 +200,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = commandItem.PathReqs,
+                ReqItem = commandItem.Item.PathReqs,
                 ReqCount = 1u,
             });
             last = newRegion;
@@ -261,10 +261,10 @@ public class GatherTerminalHandler : ArchipelagoFeature
                     return true;
                 }
 
-                if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandMode.IsTreatedAsRandom)
+                if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandData.IsTreatedAsRandom)
                 {
                     __instance.m_command.AddOutput("Discovered item(s):", false);
-                    __instance.m_command.AddOutput($"  {(loc.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name)}");
+                    __instance.m_command.AddOutput($"  {(loc.Location.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.Location.ItemID).NameTag).Name)}");
                     return false;
                 }
                 else return true;

@@ -15,7 +15,7 @@ public abstract class OptionUnaryOperation : OptionOperation
     /// The first parameter in this operation
     /// </summary>
     [DataMember(Name = "param")]
-    public OptionParameter Param { get; set; }
+    public required OptionParameter Param { get; set; }
 }
 
 /// <summary>
@@ -64,13 +64,13 @@ public abstract class OptionBinaryOperation : OptionOperation
     /// The "left" parameter, ie 'a' in 'a * b = c'
     /// </summary>
     [DataMember(Name = "l_param")]
-    public OptionParameter LParam { get; set; }
+    public required OptionParameter LParam { get; set; }
 
     /// <summary>
     /// The "right" parameter, ie 'b' in 'a * b = c'
     /// </summary>
     [DataMember(Name = "r_param")]
-    public OptionParameter RParam { get; set; }
+    public required OptionParameter RParam { get; set; }
 }
 
 /// <summary>
@@ -178,19 +178,19 @@ public abstract class OptionTernaryOperation : OptionOperation
     /// The first parameter; its use varies
     /// </summary>
     [DataMember(Name = "a_param")]
-    public OptionParameter AParam { get; set; }
+    public required OptionParameter AParam { get; set; }
 
     /// <summary>
     /// The second parameter; its use varies
     /// </summary>
     [DataMember(Name = "b_param")]
-    public OptionParameter BParam { get; set; }
+    public required OptionParameter BParam { get; set; }
 
     /// <summary>
     /// The third parameter; its use varies
     /// </summary>
     [DataMember(Name = "c_param")]
-    public OptionParameter CParam { get; set; }
+    public required OptionParameter CParam { get; set; }
 }
 
 /// <summary>

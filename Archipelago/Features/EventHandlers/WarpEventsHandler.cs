@@ -120,9 +120,6 @@ public class WarpEventsHandler : ArchipelagoFeature
         return new(targetZone.AddItem(newItem), newItem);
     }
 
-    private static string GetDimensionWarpEventLocationName(Event.Data data, int count)
-        => $"{data.EventName} - Dimension Warp #{count}";
-
     // Warps between dimensions when triggered by an event
     [Event.Callback]
     public void AddEventWarps(Event.Data data)
@@ -151,7 +148,7 @@ public class WarpEventsHandler : ArchipelagoFeature
             {
                 StartingRegion = data.EventRegion,
                 EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName),
-                ReqItem = item.PathReqs,
+                ReqItem = item.Item.PathReqs,
                 ReqCount = 1u,
             });
         }

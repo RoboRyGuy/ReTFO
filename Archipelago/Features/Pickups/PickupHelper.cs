@@ -79,6 +79,30 @@ public class PickupHelper : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    public const string PICKUPS_OPTION_CATEGORY = "Pickups";
+
+    [Game.Callback]
+    public void AddEventScanOptions(Game.Data data)
+    {
+        OptionID warpToggle = data.AddOption(new OptionToggle()
+        {
+            DisplayName = "Randomize Small Pickups",
+            Description =
+                "Randomize all supported small pickups other than those specified in elsewhere. At this time, this only"
+                + " enables randomization of objective pickup items, such as the IDs in R1B1",
+            Category = PICKUPS_OPTION_CATEGORY,
+            Condition = new(),
+            DefaultValue = 1,
+        });
+
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            Toggle = warpToggle,
+            Tag = data.Tag_SmallPickupItems,
+            Condition = new(),
+        });
+    }
+
     /// <summary>
     /// Component placed on pickups to mark them as being associated with a location.
     /// </summary>
@@ -166,7 +190,7 @@ public class PickupHelper : ArchipelagoFeature
 
         StateTracker stateTracker = StateTracker.Get();
         Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(locationId);
-        if (despawnIfFound && stateTracker.HasLocation(locationId) && loc.RandMode.IsTreatedAsRandom)
+        if (despawnIfFound && stateTracker.HasLocation(locationId) && loc.RandData.IsTreatedAsRandom)
         {
             // Try to despawn the item
             if (item.ReplicationWrapper != null)
@@ -181,7 +205,7 @@ public class PickupHelper : ArchipelagoFeature
                 UnityEngine.Object.Destroy(item.gameObject);
             }
         }
-        else if (loc.RandMode.IsRandomized)
+        else if (loc.RandData.IsRandomized)
         {
             // Set the name on the item to match the name Archipelago gave it
             Interact_Pickup_PickupItem? pickup = item.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
@@ -342,7 +366,7 @@ public class PickupHelper : ArchipelagoFeature
             else agent = null;
 
             var location = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
-            if (location.RandMode.IsTreatedAsRandom)
+            if (location.RandData.IsTreatedAsRandom)
             {
                 interaction.pPlayer.SetPlayer(null);
 

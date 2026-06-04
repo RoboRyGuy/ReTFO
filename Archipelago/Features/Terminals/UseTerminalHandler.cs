@@ -39,7 +39,7 @@ public class UseTerminalHandler : ArchipelagoFeature
         // The thought is "if this password is impossible to find in-level, it must be readily available"
         if (data.TerminalStartingStateData.PasswordProtected && data.TerminalStartingStateData.TerminalZoneSelectionDatas.Count > 0)
         {
-            path.ReqItem = TerminalPasswordHandler.GetTerminalPasswordPartItem(data, 1).PathReqs;
+            path.ReqItem = TerminalPasswordHandler.GetTerminalPasswordPartItem(data, 1).Item.PathReqs;
             path.ReqCount = (uint)data.TerminalStartingStateData.PasswordPartCount;
         }
 
