@@ -17,7 +17,7 @@ public static class FreeCheckpointsHandler_Tags
     extension(Game.Data data)
     {
         public TagResolver Tag_FreeCheckpoints
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Free Checkpoint Items", "Items which trigger an immediate checkpoint when used", gd.Tag_OptionalItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Free Checkpoint Items", "Items which trigger an immediate checkpoint when used", gd.Tag_FloatingItems));
     }
 }
 

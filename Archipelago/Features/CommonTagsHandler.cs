@@ -61,12 +61,18 @@ public static class RootRandomizationTags
             => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Goal Items", "Used internally to identify \"goal\" items. All available goal items must be collected for AP to consider the slot won.", gd.Tag_Never));
 
         /// <summary>
-        /// Items which are "optional", as in they don't exist if they're not randomized in.
-        /// This is somewhat equivalent to simply getting the items as part of the starting inventory,
-        ///  but it is not handled that way internally.
+        /// Items which have no location associated with them. This is usually because the item cannot normally be acquired,
+        ///  either because it does not exist or because the player usually starts with the item.
         /// </summary>
-        public TagResolver Tag_OptionalItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Optional Items", "Items which only exist if they are randomized.", gd.Tag_AllItems));
+        public TagResolver Tag_FloatingItems
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Floating Items", "Items with no location, for example gear items or expedition unlocks.", gd.Tag_AllItems));
+
+        /// <summary>
+        /// Locations which are "empty". These locations do not contain an item by default, and can instead be provided a floating item
+        ///  during multiworld setup. They are required for optional items to be collectable.
+        /// </summary>
+        public TagResolver Tag_EmptyLocations
+            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Empty Locations", "Locations which do not contain an item. Empty locations are used by floating items.", gd.Tag_AllLocations));
 
         /// <summary>
         /// Tag matching items which trigger scans
@@ -98,23 +104,42 @@ public class CommonTagsHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddTagOptions(Game.Data data)
     {
-
-        OptionID warpToggle = data.AddOption(new OptionToggle()
+        data.AddOption(new OptionWhiteOrBlacklist()
         {
-            DisplayName = "Randomize Warps",
-            Description = 
-                "Randomize all supported warps. This includes warps triggered by events and"
-                + " warps triggered by the dimension portal, but not \"dimension flashes\".",
+            DisplayName = "Empty Location Randomization",
+            Description =
+                "Customize the randomization of all supported empty locations."
+                + "\nOne empty location is added for each \"floating\" item that gets randomized to maintain"
+                + " the item:location balance required by Archipelago."
+                + "\nEnabling randomization of an empty location makes it available as a candidate for a floating item."
+                + OptionWhiteOrBlacklist.DESC_SUFFIX,
             Category = Option.DEFAULT_OPTION_CATEGORY,
             Condition = new(),
             DefaultValue = 0,
+            Tag = data.Tag_EmptyLocations,
         });
 
         data.AddOption(new OptionWhiteOrBlacklist()
         {
-            Toggle = warpToggle,
-            Tag = data.Tag_WarpItems,
+            DisplayName = "Warp Randomization",
+            Description = "Customize the randomization of all supported warps." + OptionWhiteOrBlacklist.DESC_SUFFIX,
+            Category = Option.DEFAULT_OPTION_CATEGORY,
             Condition = new(),
+            DefaultValue = 2,
+            Tag = data.Tag_WarpItems,
+        });
+
+        data.AddOption(new OptionWhiteOrBlacklist()
+        {
+            DisplayName = "Scan Randomization",
+            Description = 
+                "Customize the randomization of all supported scans." 
+                + "\nCurrently, this includes event scans and certain objective scans, but not door scans."
+                + OptionWhiteOrBlacklist.DESC_SUFFIX,
+            Category = Option.DEFAULT_OPTION_CATEGORY,
+            Condition = new(),
+            DefaultValue = 2,
+            Tag = data.Tag_ScanItems,
         });
     }
 }

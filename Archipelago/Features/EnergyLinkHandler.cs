@@ -357,8 +357,8 @@ public class EnergyLinkHandler : ArchipelagoFeature
     /// <returns>The resulting BigInteger value, truncated to int</returns>
     private static BigInteger Multiply(BigInteger value, double conversion)
     {
-        if (value.Sign < 0) throw new ArgumentException("Cannot use a negative bigint value");
-        if (conversion < 0) throw new ArgumentException("Cannot use a negative conversion multiplier");
+        if (value.Sign < 0) throw new ArgumentException("Cannot multiply a negative bigint value");
+        if (conversion < 0) throw new ArgumentException("Cannot multiply a negative conversion multiplier");
         byte[] bytes = value.ToByteArray();
         BigInteger result = 0;
         if (Math.Abs(conversion) < 1.0) // It's getting smaller
@@ -372,8 +372,6 @@ public class EnergyLinkHandler : ArchipelagoFeature
             for (int i = 0; i < bytes.Length; i++)
                 result += (BigInteger)(conversion * ((ulong)bytes[i])) << (8 * i);
         }
-
-        FeatureLogger.Notice($"BigInt multiplication: {value} * {conversion} = {result}");
         return result;
     }
 

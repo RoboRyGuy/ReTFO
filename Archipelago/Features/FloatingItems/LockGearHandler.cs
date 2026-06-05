@@ -15,17 +15,15 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
 
-using InControl;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Runtime.Serialization;
 
 public static class LockGearHandler_Tags
 { 
     extension (Game.Data data)
     {
         public TagResolver Tag_GearItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Gear Items", "All equippable gear items, including weapons, primaries, specials, tools, and the hacking tool.", gd.Tag_OptionalItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Gear Items", "All equippable gear items, including weapons, primaries, specials, tools, and the hacking tool.", gd.Tag_FloatingItems));
 
         /// <summary>
         /// Get a tag for a specific gear item by its item datablock persistent ID.
@@ -64,8 +62,8 @@ public static class LockGearHandler_Tags
             {
                 InventorySlot.HackingTool => data.Tag_HackingTool,
                 InventorySlot.GearMelee => data.Tag_MeleeItems,
-                InventorySlot.GearStandard => data.Tag_PrimaryGuns,
-                InventorySlot.GearSpecial => data.Tag_SpecialGuns,
+                InventorySlot.GearStandard => data.Tag_PrimaryItems,
+                InventorySlot.GearSpecial => data.Tag_SpecialItems,
                 InventorySlot.GearClass => data.Tag_ToolItems,
                 _ => throw new ArgumentException($"{slot} is not a recognized invetory slot!")
             };
@@ -303,11 +301,17 @@ public class LockGearHandler : ArchipelagoFeature
         OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
 
         RandomizationTag slotTag = data.Tag_GearItems_BySlot(slot).SelfResolve();
-        data.AddOption(new OptionWhiteOrBlacklist()
+        data.AddOption(new OptionAddToSet()
         {
-            Toggle = randomizationEnabled,
+            Target = Option.eTarget.Whitelist,
             Tag = slotTag,
-            Condition = new(),
+            Condition = randomizationEnabled,
+        });
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = slotTag,
+            Condition = data.AddOption(new OptionNotOperation() { Param = randomizationEnabled }),
         });
 
         data.AddOption(new OptionAddCount()

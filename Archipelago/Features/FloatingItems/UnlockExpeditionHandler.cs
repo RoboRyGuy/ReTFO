@@ -21,7 +21,7 @@ public static class UnlockExpeditionHandler_Tags
     extension (Game.Data data)
     {
         public TagResolver Tag_ExpeditionUnlocks
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Expedition Unlock Items", "Items which trigger expeditions to be unlocked", gd.Tag_OptionalItems));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Expedition Unlock Items", "Items which trigger expeditions to be unlocked", gd.Tag_FloatingItems));
     }
 }
 
@@ -75,11 +75,17 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
 
         RandomizationTag tag = data.Tag_ExpeditionUnlocks.SelfResolve();
-        data.AddOption(new OptionWhiteOrBlacklist()
+        data.AddOption(new OptionAddToSet()
         {
-            Toggle = randomizationEnabled,
+            Target = Option.eTarget.Whitelist,
             Tag = tag,
-            Condition = new(),
+            Condition = randomizationEnabled,
+        });
+        data.AddOption(new OptionAddToSet()
+        {
+            Target = Option.eTarget.Blacklist,
+            Tag = tag,
+            Condition = data.AddOption(new OptionNotOperation() { Param = randomizationEnabled }),
         });
 
         data.AddOption(new OptionAddCount()

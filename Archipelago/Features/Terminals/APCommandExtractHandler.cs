@@ -23,7 +23,7 @@ public static class APCommandExtractHandler_Tags
     extension (Game.Data data)
     {
         public TagResolver Tag_TerminalExtractLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Terminal Extract Locations", "Empty locations checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_AllLocations));
+            => new TagResolver(data, gd => gd.LookupOrCreateTag("Terminal Extract Locations", "Empty locations checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_EmptyLocations));
     }
 }
 

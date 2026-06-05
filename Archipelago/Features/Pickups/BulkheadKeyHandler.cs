@@ -193,20 +193,14 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddOptions(Game.Data data)
     {
-        OptionID toggle = data.AddOption(new OptionToggle()
-        {
-            DisplayName = "Randomize Bulkhead Keys",
-            Description = "Enables randomization of bulkhead key cards",
-            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 1,
-        });
-
         data.AddOption(new OptionWhiteOrBlacklist()
         {
-            Toggle = toggle,
-            Tag = data.Tag_BulkheadKeyItems,
+            DisplayName = "Bulkhead Key Randomization",
+            Description = "Enables randomization of bulkhead key cards" + OptionWhiteOrBlacklist.DESC_SUFFIX,
+            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
             Condition = new(),
+            DefaultValue = 0,
+            Tag = data.Tag_BulkheadKeyItems,
         });
     }
 

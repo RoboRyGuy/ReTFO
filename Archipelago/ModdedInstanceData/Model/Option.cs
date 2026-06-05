@@ -148,14 +148,18 @@ public static class Option
         AddToSet,
 
         /// <summary>
-        /// Adds a single tag to either the whitelist or blacklist
-        /// </summary>
-        WhiteOrBlacklist,
-
-        /// <summary>
         /// Adds a count to a tag count for a particular tag
         /// </summary>
         AddCount,
+
+        // ====================================================================
+        // Special
+
+        /// <summary>
+        /// Creates a simple choice input field allowing users to whitelist, blacklist,
+        ///  or ignore a specific tag. 
+        /// </summary>
+        WhiteOrBlacklist,
     }
 
     /// <summary>
@@ -231,7 +235,7 @@ public static class Option
     /// <summary>
     /// A default category for options you may use
     /// </summary>
-    public const string DEFAULT_OPTION_CATEGORY = "miscellaneous Options";
+    public const string DEFAULT_OPTION_CATEGORY = "Miscellaneous Options";
 
     /// <summary>
     /// A warning message which should be appended to the description of any input
@@ -551,28 +555,6 @@ public class OptionAddToSet : OptionEffect
 }
 
 /// <summary>
-/// An option effect which adds a atag to either the whitelist or the blacklist
-/// </summary>
-[DataContract]
-public class OptionWhiteOrBlacklist : OptionEffect
-{
-    public override Option.eType Type => Option.eType.WhiteOrBlacklist;
-
-    /// <summary>
-    /// The option to use to decide which way to toggle. If 0, it's blacklisted; if 1, it's whitelisted
-    /// </summary>
-    [DataMember(Name = "toggle")]
-    public required OptionID Toggle { get; init; }
-
-    /// <summary>
-    /// The tag to add to either the whitelist or the blacklist.
-    /// Typically this is an item tag.
-    /// </summary>
-    [DataMember(Name = "tag")]
-    public required OptionParameter Tag { get; init; }
-}
-
-/// <summary>
 /// An option effect which adds a count to the specified tag key in a tag count
 /// </summary>
 [DataContract]
@@ -598,4 +580,26 @@ public class OptionAddCount : OptionEffect
     /// </summary>
     [DataMember(Name = "count")]
     public required OptionParameter Count { get; init; }
+}
+
+/// <summary>
+/// A special option which creates an input field allowing users to whitelist,
+///  blacklist, or ignore a tag. This also applies the effect.
+/// Option values: 0 = Whitelisted, 1 = None, 2 = Blacklist
+/// </summary>
+[DataContract]
+public class OptionWhiteOrBlacklist : OptionInput
+{
+    public override Option.eType Type => Option.eType.WhiteOrBlacklist;
+
+    public const string DESC_SUFFIX = ""
+        + "\nWhitelist: Enables for all unless blacklisted elsewhere"
+        + "\nBlacklist: Disables for all."
+        + "\nNone: Defer to other settings. If no other setting is relevant, defaults to blacklisted.";
+
+    /// <summary>
+    /// The tag to add to either the whitelist or the blacklist.
+    /// </summary>
+    [DataMember(Name = "tag")]
+    public required OptionParameter Tag { get; init; }
 }

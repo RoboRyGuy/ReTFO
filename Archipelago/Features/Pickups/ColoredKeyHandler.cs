@@ -238,20 +238,14 @@ public class ColoredKeyHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddOptions(Game.Data data)
     {
-        OptionID toggle = data.AddOption(new OptionToggle()
-        {
-            DisplayName = "Randomize Colored Keys",
-            Description = "Enables randomization of colored key cards",
-            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 1,
-        });
-
         data.AddOption(new OptionWhiteOrBlacklist()
         {
-            Toggle = toggle,
-            Tag = data.Tag_ColoredKeyItems,
+            DisplayName = "Colored Keys Randomization",
+            Description = "Enables randomization of colored key cards" + OptionWhiteOrBlacklist.DESC_SUFFIX,
+            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
             Condition = new(),
+            DefaultValue = 0,
+            Tag = data.Tag_ColoredKeyItems,
         });
     }
 

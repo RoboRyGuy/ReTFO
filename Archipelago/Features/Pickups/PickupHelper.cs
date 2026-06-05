@@ -84,22 +84,14 @@ public class PickupHelper : ArchipelagoFeature
     [Game.Callback]
     public void AddEventScanOptions(Game.Data data)
     {
-        OptionID warpToggle = data.AddOption(new OptionToggle()
-        {
-            DisplayName = "Randomize Small Pickups",
-            Description =
-                "Randomize all supported small pickups other than those specified in elsewhere. At this time, this only"
-                + " enables randomization of objective pickup items, such as the IDs in R1B1",
-            Category = PICKUPS_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 1,
-        });
-
         data.AddOption(new OptionWhiteOrBlacklist()
         {
-            Toggle = warpToggle,
-            Tag = data.Tag_SmallPickupItems,
+            DisplayName = "Randomize Small Pickups",
+            Description = "Randomize all supported small pickups. This includes colored keys, bulkhead keys, and objective pickups (ie IDs)",
+            Category = PICKUPS_OPTION_CATEGORY,
             Condition = new(),
+            DefaultValue = 0,
+            Tag = data.Tag_SmallPickupItems,
         });
     }
 
@@ -399,17 +391,17 @@ public class PickupHelper : ArchipelagoFeature
         public static void Postfix(LG_PickupItem_Sync __instance)
         {
             var comp = __instance.item?.GetComponent<ContainsLocationPickupComp>();
-            if (comp != null)
-            {
-                var interact = __instance.item?.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
-                if (interact != null)
-                {
-                    Game.Data gameData = StateTracker.Get().MidManager.GetProcessedGameData();
-                    Location loc = gameData.LookupLocation(comp.StoredLocation);
-                    string backupName = gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name;
-                    interact.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
-                }
-            }
+            if (comp == null) return;
+
+            var interact = __instance.item?.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
+            if (interact == null) return;
+            
+            Game.Data data = StateTracker.Get().MidManager.GetProcessedGameData();
+            Location loc = data.LookupLocation(comp.StoredLocation);
+            if (!loc.RandData.IsRandomized) return;
+
+            string backupName = data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name;
+            interact.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
         }
     }
 }
