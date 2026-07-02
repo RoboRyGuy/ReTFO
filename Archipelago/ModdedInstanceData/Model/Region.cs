@@ -1,13 +1,13 @@
-﻿using ReTFO.Archipelago.FeaturesAPI;
-using ReTFO.Archipelago.Utilities;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
+using BepInEx;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Linq;
 
 /// <summary>
 /// Represents a region in archipelago. Some examples of regions:
@@ -19,88 +19,123 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 /// </list>
 /// </summary>
 [DataContract]
-public struct Region
+public readonly struct Region
 {
     /// <summary>
-    /// Create a new region by name.
-    /// Typically, prefer using <see cref="Game.Data.LookupOrCreateRegion"/>
+    /// Create a new region.
     /// </summary>
-    /// <param name="name"></param>
-    public Region(string name) { Name = name; }
-    
+    public Region() { }
+
     /// <summary>
     /// Copy constructor
     /// </summary>
     public Region(Region other)
     {
-        Name = other.Name;
         Reachable = other.Reachable;
-        ConnectedPaths = other.ConnectedPaths;             // Note that this copies elements to our owned list
-        ConnectedLocations = other.ConnectedLocations; // Note that this copies elements to our owned list
+        ConnectedPaths = other.ConnectedPaths;         // Note that this copies elements to our owned array
+        ConnectedLocations = other.ConnectedLocations; // Note that this copies elements to our owned array
+        RegionData = other.RegionData;
     }
-
-    /// <summary>
-    /// Unique name of the region, used to identify it
-    /// </summary>
-    [DataMember(Name = "name")]
-    public string Name { get; private init; }
 
     /// <summary>
     /// Whether this region is reachable, typically populated during the graph traversal checks.
     /// </summary>
-    public bool Reachable { get; set; } = false;
+    public bool Reachable { get; init; } = false;
 
     /// <summary>
     /// All paths starting in this region
     /// </summary>
-    public IReadOnlyCollection<PathID> ConnectedPaths 
+    public IReadOnlyList<PathID> ConnectedPaths 
     { 
-        get => m_connectedPaths; 
-        init => m_connectedPaths.AddRange(value);
+        get => m_connectedPaths ?? []; 
+        init => m_connectedPaths = value.ToArray();
     }
-    private List<PathID> m_connectedPaths = new();
+    private readonly PathID[]? m_connectedPaths = null;
 
     /// <summary>
     /// Locations that can be discovered in this region.
     /// During randomization, locations are considered discoverable if and only if all regions they can be in are discoverable.
     /// </summary>
-    public IReadOnlyCollection<LocationID> ConnectedLocations 
+    public IReadOnlyList<LocationID> ConnectedLocations 
     { 
-        get => m_connectedLocations; 
-        init => m_connectedLocations.AddRange(value);
+        get => m_connectedLocations ?? []; 
+        init => m_connectedLocations = value.ToArray();
     }
-    private List<LocationID> m_connectedLocations = new();
+    private readonly LocationID[]? m_connectedLocations = null;
 
     /// <summary>
-    /// Add a path to the connected paths list. Note that this cannot be removed later
+    /// Custom region data, typically used by game data or similar
     /// </summary>
-    public void AddPath(PathID pathID)
+    public object? RegionData { get; init; }
+
+    /// <summary>
+    /// Creates a new region with the requested reachability
+    /// </summary>
+    public Region WithReachable(bool newValue)
+        => new(this) { Reachable = newValue };
+
+    /// <summary>
+    /// Creates a new region with the listed paths added to its connected paths array
+    /// </summary>
+    public Region WithAdded(params PathID[] paths)
     {
-        if (m_connectedPaths.Contains(pathID))
-            FeatureLogger.Error($"Cannot add duplicated path {pathID} to region: {Name}");
+        if (paths.Length == 0) return new(this);
+        int existingCount = m_connectedPaths?.Length ?? 0;
+        PathID[] ids = new PathID[existingCount + paths.Length];
+        for (int i = 0; i < existingCount; i++)
+            ids[i] = m_connectedPaths![i];
+        for (int i = 0; i < paths.Length; i++)
+            ids[existingCount + i] = paths[i];
+        return new(this) { ConnectedPaths = ids };
+    }
+
+    /// <summary>
+    /// Creates a new region with the listed paths added to its locations array
+    /// </summary>
+    public Region WithAdded(params LocationID[] locations)
+    {
+        if (locations.Length == 0) return new(this);
+        int existingCount = m_connectedLocations?.Length ?? 0;
+        LocationID[] ids = new LocationID[existingCount + locations.Length];
+        for (int i = 0; i < existingCount; i++)
+            ids[i] = m_connectedLocations![i];
+        for (int i = 0; i < locations.Length; i++)
+            ids[existingCount + i] = locations[i];
+        return new(this) { ConnectedLocations = ids };
+    }
+
+    /// <summary>
+    /// Helper to get extract the custom data from this region type-safely and to fail if it's the wrong type
+    /// </summary>
+    public T GetData<T>() where T : class
+        => (RegionData as T) ?? throw new NullReferenceException();
+
+    /// <summary>
+    /// Helper to extract custom data from this region type-safely.
+    /// If the stored data is null, returns false; if the stored data is non-null but cannot
+    ///  be cast to the requested type, throws; else, returns true and sets the result to the value.
+    /// </summary>
+    public bool GetDataAllowNull<T>([MaybeNullWhen(false)] out T result) where T : class
+    {
+        if (RegionData == null)
+        {
+            result = null;
+            return false;
+        }
         else
-            m_connectedPaths.Add(pathID);
+        {
+            result = RegionData as T
+                ?? throw new InvalidCastException($"Cannot cast region data from {RegionData.GetType().FullName} to {typeof(T).FullName}");
+            return true;
+        }
     }
 
     /// <summary>
-    /// Add a location to the location IDs list. Note that this cnanot be removed later
+    /// Try to cast the RegionData to the requested type; returns true if 
+    ///  successful, false if the data is null or cannot be cast
     /// </summary>
-    public void AddLocation(LocationID locationID)
-    {
-        if (m_connectedLocations.Contains(locationID))
-            FeatureLogger.Error($"Cannot add duplicate location {locationID.AsId} to region: {Name}");
-        else
-            m_connectedLocations.Add(locationID);
-    }
-
-    /// <summary>
-    /// Called at the end of processing to trim lists
-    /// </summary>
-    public void CleanUp()
-    {
-        m_connectedPaths.TrimExcess();
-        m_connectedLocations.TrimExcess();
-    }
+    public bool TryGetData<T>([NotNullWhen(true)] out T? result) where T : class
+        => (RegionData is T test ? (true, result = test) : (false, result = null)).Item1;
 }
 
 /// <summary>
@@ -108,95 +143,20 @@ public struct Region
 ///  for looking up a Region instance in GameData.
 /// </summary>
 [DataContract]
-public struct RegionID : INullable, IId, IIndex, IComparable<RegionID>, IEquatable<RegionID>
+public struct RegionID : ITagID, IEquatable<RegionID>, IComparable<RegionID>
 {
-    public RegionID() { }
-    [DataMember(Name = "value")] 
-    private readonly long m_value = 0;
+    [DataMember(Name = "id")]
+    public uint ID { get; init; }
 
-    public bool IsNull => m_value == 0;
-    public long AsId { get => m_value; init => m_value = value; }
-    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
-    public int CompareTo(RegionID other) => m_value.CompareTo(other.m_value);
-    public bool Equals(RegionID other) => m_value.Equals(other.m_value);
-    public override bool Equals([NotNullWhen(true)] object? obj) => obj is RegionID id && Equals(id);
-    public override int GetHashCode() => m_value.GetHashCode();
-    public override string ToString() => $"RegionID: {m_value}";
-}
+    public bool IsNull => ID == 0;
+    public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+    public bool Equals(RegionID other) => ID == other.ID;
+    public int CompareTo(RegionID other) => ID.CompareTo(other.ID);
+    public override string ToString() => $"RegionID {ID}";
 
-/// <summary>
-/// A Region with an ID associated with it
-/// </summary>
-[DataContract]
-public struct KeyedRegion : INullable
-{
-    /// <summary>
-    /// Create a deafult, null KeyedRegion
-    /// </summary>
-    public KeyedRegion()
-    {
-        ID = new();
-        Region = new();
-    }
+    public static RegionID From(Game.Data data, string name, Func<TagDefinition<RegionID>> definitionFactory, Region item = default)
+        => data.Regions.LookUpOrCreate(name, definitionFactory, item);
 
-    /// <summary>
-    /// Create a keyed item with the given item and ID
-    /// </summary>
-    public KeyedRegion(RegionID id, ReadOnlyRegion region)
-    {
-        ID = id;
-        Region = region;
-    }
-
-    /// <summary>
-    /// Unique ID of the Region
-    /// </summary>
-    [DataMember(Name = "id")] public readonly RegionID ID;
-
-    /// <summary>
-    /// The Region object
-    /// </summary>
-    [DataMember(Name = "region")] public ReadOnlyRegion Region;
-
-    public bool IsNull => ID.IsNull;
-}
-
-/// <summary>
-/// A variation of region which is readonly
-/// </summary>
-[DataContract]
-public struct ReadOnlyRegion
-{
-    /// <summary>
-    /// Create a new read-only region wrapping the provided region
-    /// </summary>
-    public ReadOnlyRegion(Region source) => m_region = source;
-
-    /// <summary>
-    /// Implicitly construct a new ReadOnlyRegion from the provided region
-    /// </summary>
-    public static implicit operator ReadOnlyRegion(Region source) => new(source);
-
-    /// <summary>
-    /// Create a mutable copy of the contained region
-    /// </summary>
-    public Region MakeMutable() => new Region(m_region);
-
-    /// <summary>
-    /// Contained region
-    /// </summary>
-    [DataMember(Name = "ContainedRegion")] 
-    private Region m_region;
-
-    /// <inheritdoc cref="Region.Name"/>
-    public string Name => m_region.Name;
-
-    /// <inheritdoc cref="Region.Reachable"/>
-    public bool Reachable => m_region.Reachable;
-
-    /// <inheritdoc cref="Region.ConnectedPaths"/>
-    public IReadOnlyCollection<PathID> ConnectedPaths => m_region.ConnectedPaths;
-
-    /// <inheritdoc cref="Region.ConnectedLocations"/>
-    public IReadOnlyCollection<LocationID> ConnectedLocationIds => m_region.ConnectedLocations;
+    public static RegionID From<TData>(TData data, string name, Func<TData, TagDefinition<RegionID>> definitionFactory, Region item = default) where TData : Game.Data
+        => data.Regions.LookUpOrCreate(data, name, definitionFactory, item);
 }

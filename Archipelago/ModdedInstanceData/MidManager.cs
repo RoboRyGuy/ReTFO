@@ -1,7 +1,7 @@
 ﻿using BepInEx;
 using Clonesoft.Json;
 using GameData;
-using ReTFO.Archipelago.Features;
+using ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -154,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
     { 
-        { "ePf-U1c50s2jBHuRUqS3HIMOql80zCZtB18XVZ5ZeyA=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "os2wxWxv1I5a61i-5BOVTSOZRsPZTKDH_KUTMzoOQdQ=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -284,7 +284,7 @@ public class MidManager
 
         // Check that the game is winnable and such
         FeatureLogger.Notice("Checking for winability");
-        if (DoGraphTraversal(gameData, true, null, true))
+        if (DoGraphTraversal(gameData, true, true))
             FeatureLogger.Success("Game is beatable!");
         else
             FeatureLogger.Fail("Game is not beatable!");
@@ -294,10 +294,10 @@ public class MidManager
         byte[] delim = [ 0 ];
 
         var strings = Enumerable.Empty<string>()
-            .Concat(gameData.GetAllExpeditions().Select(e => e.Key))
-            .Concat(gameData.GetAllRegions().Select(r => r.Value.Name))
+            .Concat(gameData.Regions.GetAllEntries().Select(r => r.Value.Name))
+            .Concat(gameData.Locations.GetAllEntries().Select(r => r.Value.Name))
+            .Concat(gameData.Items.GetAllEntries().Select(r => r.Value.Name))
             .Concat(gameData.GetAllPaths().Select(p => p.Value.Name ?? "null"))
-            .Concat(gameData.GetAllTags().Select(t => t.Value.Name))
         ;
         foreach (string s in strings)
         {
@@ -358,50 +358,18 @@ public class MidManager
             directory = SHGetKnownFolderPath(DownloadsGUID, 0);
         string filename = System.IO.Path.Combine(directory, gameData.Name == null ? "GTFO.ini" : $"GTFO-{gameData.Name}.ini");
 
-        DoGraphTraversal(gameData, true, null, false);
-
-        // Identify regions rechable by all possible expeditions
-        List<MidExpeditionData> eData = new();
-        HashSet<RegionID> reachableRegionIds = new();
-        Queue<PathID> queuedPaths = new();
-
-        foreach (var pair in gameData.GetAllExpeditions())
-        {
-            reachableRegionIds.Clear();
-            queuedPaths.Clear();
-
-            reachableRegionIds.Add(pair.Value.StartingRegion);
-            foreach (var path in gameData.LookupRegion(reachableRegionIds.First()).ConnectedPaths)
-                queuedPaths.Enqueue(path);
-
-            while (queuedPaths.Count > 0)
-            {
-                var path = gameData.LookupPath(queuedPaths.Dequeue());
-                if (reachableRegionIds.Contains(path.EndingRegion)) continue;
-                
-                var newRegion = gameData.LookupRegion(path.EndingRegion);
-                if (!newRegion.Reachable) continue;
-                
-                reachableRegionIds.Add(path.EndingRegion);
-                foreach (var id in newRegion.ConnectedPaths) 
-                    queuedPaths.Enqueue(id);
-            }
-
-            eData.Add(new() { Name = pair.Key, ReachableRegions = reachableRegionIds.ToList() });
-        }
+        DoGraphTraversal(gameData, true, false);
 
         var dumpData = new
         {
             name = gameData.Name,
             version = Version.Parse(Plugin.Version),
-            expeditions = eData,
-            tags = gameData.GetAllTags().Select(t => new KeyedRandomizationTag(t.Key, t.Value)).ToList(),
-            regions = gameData.GetAllRegions().Select(r => new KeyedRegion(r.Key, r.Value)).ToList(),
-            paths = gameData.GetAllPaths().Select(p => new KeyedPath(p.Key, p.Value)).ToList(),
-            locations = gameData.GetAllLocations().Select(l => new KeyedLocation(l.Key, l.Value)).ToList(),
-            items = gameData.GetAllItems().Select(i => new KeyedItem(i.Key, i.Value)).ToList(),
-            floating_items = gameData.GetAllFloatingItemIds(),
-            options = gameData.GetAllOptions().Select(o => new KeyedOption(o.Key, o.Value)).ToList(),
+            regions = gameData.Regions.GetAllEntries(),
+            locations = gameData.Locations.GetAllEntries(),
+            items = gameData.Items.GetAllEntries(),
+            paths = gameData.GetAllPaths().ToList(),
+            floating_items = gameData.GetAllFloatingItems(),
+            options = gameData.GetAllOptions().ToList(),
         };
 
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
@@ -409,15 +377,15 @@ public class MidManager
         settings.Converters.Add(new SimplifiedListConverter<long>(20));   // Compress long lists of longs (unpacked IDs) for readability
         settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
         settings.Converters.Add(new IdConverter());                       // Convert IDs to longs
-        Type[] containerTypes = [ 
-            typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), 
-            typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem), typeof(KeyedOption) 
-        ];
-        Type[] inlinedTypes = [ 
-            typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), 
-            typeof(Path), typeof(Location), typeof(Item), typeof(OptionBase) 
-        ];
-        settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
+        //Type[] containerTypes = [ 
+        //    typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), 
+        //    typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem), typeof(KeyedOption) 
+        //];
+        //Type[] inlinedTypes = [ 
+        //    typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), 
+        //    typeof(Path), typeof(Location), typeof(Item), typeof(OptionBase) 
+        //];
+        //settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
         string json = JsonConvert.SerializeObject(dumpData, settings);
         File.WriteAllText(filename, json);
         FeatureLogger.Success($"MID data saved to: {filename}");
@@ -435,8 +403,18 @@ public class MidManager
         if (filename == null)
             filename = System.IO.Path.Combine(SHGetKnownFolderPath(DownloadsGUID, 0), "gtfoTags.csv");
 
-        IEnumerable<string> text = Enumerable.Repeat("\"ID\",\"NAME\",\"PARENT\",\"DESCRIPTION\"", 1)
-            .Concat(GetProcessedGameData().GetAllTags().Select(pair => $"\"{pair.Key.AsId.ToString()}\"\"{pair.Value.Name}\",\"{pair.Value.Parent}\",\"{pair.Value.Description}\""));
+        string FormatEntry<TID, TItem>(KeyValuePair<TID, TagStorage<TID, TItem>.TagEntry> entry) where TID : struct, ITagID
+            => $"\"{entry.Key.ToString()}\","
+             + $"\"{entry.Value.Name}\","
+             + $"\"{entry.Value.Definition.Description}\","
+             + $"\"{entry.Value.Definition.Parent.ToString()}\","
+             + $"\"{(entry.Value.Definition.OtherParents == null ? "" : string.Join(", ", entry.Value.Definition.OtherParents.Select(p => p.ToString())))}\"";
+
+        Game.Data data = GetProcessedGameData();
+        IEnumerable<string> text = Enumerable.Repeat("\"ID\",\"NAME\",\"DESCRIPTION\",\"PARENT\",\"OTHER_PARENTS\"", 1)
+            .Concat(data.Regions.GetAllEntries().Select(FormatEntry))
+            .Concat(data.Locations.GetAllEntries().Select(FormatEntry))
+            .Concat(data.Items.GetAllEntries().Select(FormatEntry));
         
         File.WriteAllLines(filename, text);
         FeatureLogger.Success($"Tags saved to: {filename}");
@@ -446,16 +424,26 @@ public class MidManager
     /// Struct used to help serialize tags for JSON (for hierarchal viewing)
     /// </summary>
     [DataContract]
-    private struct JsonTag
+    private struct JsonTag<TID> where TID : struct, ITagID
     {
-        [DataMember(Name = "id")] public RandomizationTag ID { get; init; }
-        [DataMember(Name = "name")] public string Name { get; init; }
-        [DataMember(Name = "description")] public string Description { get; init; }
-        private List<JsonTag>? m_children;
-        [DataMember(Name = "children", EmitDefaultValue = false)] public List<JsonTag>? Children
+        public JsonTag(TID id, string name, string description, TID[]? otherParents, List<JsonTag<TID>>? children)
+        {
+            ID = id;
+            Name = name;
+            Description = description;
+            OtherParents = otherParents;
+            Children = children;
+        }
+
+        [DataMember(Name = "id")] public TID ID { get; private init; }
+        [DataMember(Name = "name")] public string Name { get; private init; }
+        [DataMember(Name = "description")] public string Description { get; private init; }
+        [DataMember(Name = "other_parents", EmitDefaultValue = false)] public TID[]? OtherParents { get; private init; }
+        private List<JsonTag<TID>>? m_children;
+        [DataMember(Name = "children", EmitDefaultValue = false)] public List<JsonTag<TID>>? Children
         { 
             get => m_children; 
-            init => m_children = (value?.Count ?? 0) == 0 ? null : value; 
+            private init => m_children = (value?.Count ?? 0) == 0 ? null : value; 
         }
     }
 
@@ -473,32 +461,44 @@ public class MidManager
 
         Game.Data data = GetProcessedGameData();
 
-        // Create lookup to greatly accelerate this process
-        Dictionary<RandomizationTag, List<RandomizationTag>?> tagsByParent = new();
-        foreach (var tag in data.GetAllTags())
+        List<JsonTag<TID>> MakeJsonList<TID, TItem>(IReadOnlyDictionary<TID, TagStorage<TID, TItem>.TagEntry> storage) where TID : struct, ITagID
         {
-            if (tagsByParent.TryGetValue(tag.Value.Parent, out var list))
-                list!.Add(tag.Key);
-            else
-                tagsByParent.Add(tag.Value.Parent, new() { tag.Key });
-        }
-
-        // Helper to create hierarchal structure
-        List<JsonTag> MakeJsonRecursive(RandomizationTag parentTag)
-        {
-            return (tagsByParent.GetValueOrDefault(parentTag, null) ?? Enumerable.Empty<RandomizationTag>())
-                .Select(t => new KeyedRandomizationTag(t, data.LookupTagDef(t)))
-                .Select(t => new JsonTag()
+            Dictionary<TID, List<TID>> tagsByParent = new();
+            foreach (var entry in storage)
+            {
+                foreach (var parent in entry.Value.Definition.AllParents)
                 {
-                    ID = t.ID,
-                    Name = t.Definition.Name,
-                    Description = t.Definition.Description,
-                    Children = MakeJsonRecursive(t.ID)
-                }).ToList();
+                    if (tagsByParent.TryGetValue(parent, out var children))
+                        children.Add(entry.Key);
+                    else
+                        tagsByParent.Add(parent, new List<TID>() { entry.Key });
+                }
+            }
+
+            // Helper to create hierarchal structure
+            List<JsonTag<TID>> MakeJsonRecursive(TID parentTag)
+            {
+                return (tagsByParent.GetValueOrDefault(parentTag, null!) ?? Enumerable.Empty<TID>())
+                    .Select(id => KeyValuePair.Create(id, storage[id]))
+                    .Select(t => new JsonTag<TID>(
+                        t.Key, 
+                        t.Value.Name, 
+                        t.Value.Definition.Description, 
+                        t.Value.Definition.OtherParents == null ? null : t.Value.Definition.AllParents.Where(p => !p.Equals(parentTag)).ToArray(),
+                        MakeJsonRecursive(t.Key)
+                    )).ToList();
+            }
+
+            return MakeJsonRecursive(new TID());
         }
 
         // Output to file as JSON
-        var obj = new { Tags = MakeJsonRecursive(new RandomizationTag()) };
+        var obj = new
+        {
+            Regions = MakeJsonList(data.Regions.GetAllEntries()),
+            Locations = MakeJsonList(data.Locations.GetAllEntries()),
+            Items = MakeJsonList(data.Items.GetAllEntries()),
+        };
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
         settings.Converters.Add(new IdConverter());
         string json = JsonConvert.SerializeObject(obj, settings);
@@ -507,84 +507,105 @@ public class MidManager
     }
 
     /// <summary>
+    /// Region data used during graph traversal to perform updates and do checks
+    /// </summary>
+    private struct ExtendedRegionData
+    {
+        public ExtendedRegionData() { }
+        public ExtendedRegionData(ExtendedRegionData source) 
+        {
+            IsReachable = source.IsReachable;
+            UsedItemCounts = source.UsedItemCounts;
+            UsedCategoryCounts = source.UsedCategoryCounts;
+        }
+        public bool IsReachable = false;
+        public SortedList<ItemID, uint>? UsedItemCounts = null;
+        public SortedList<ItemID, uint>? UsedCategoryCounts = null;
+    }
+
+    /// <summary>
     /// Performs a graph traversal on the provided Game.Data, optionally performing processing / modifications along the way
     /// </summary>
     /// <param name="gameData">The Game.Data data to traverse</param>
     /// <param name="doProcessing">If true, overwrite the region reachability. Also calculates and add direct path requirements if necessary</param>
-    /// <param name="expeditions">The list of expeditions to test for traversal. If null, includes all expeditions</param>
     /// <param name="logDebugInfo">If true and the Game.Data is not beatable, log info describing the stuck state to help debug why it's considered unbeatable</param>
     /// <returns>True if the Game.Data can be fully traversed (all goal items reachable), false otherwise</returns>
     /// <remarks>All floating items are collected immediately with the assumption they'll be placed somewhere reachable</remarks>
-    public static bool DoGraphTraversal(Game.Data gameData, bool doProcessing = false, ICollection<Expedition.Data>? expeditions = null, bool logDebugInfo = true)
+    public static bool DoGraphTraversal(Game.Data gameData, bool doProcessing = false, bool logDebugInfo = true)
     {
-        // Handle default values
-        expeditions ??= gameData.GetAllExpeditions().Select(e => e.Value).ToHashSet(new Expedition.Data.Comparer());
+        // Count of which items have been obtained by exact item count
+        Dictionary<ItemID, uint> itemCounts = new();
 
-        // Progress tracking
-        // List of items that have been collected
-        List<Item> collectedItems = new();
+        // Count of which items have been obtained by exact category
+        Dictionary<ItemID, uint> categoryCounts = new();
 
-        // Counts by tag for items requiring an "item" name
-        Dictionary<RandomizationTag, int> itemCounts = new();
-
-        // Counts by tag for items requiring a "category" name
-        Dictionary<RandomizationTag, int> categoryCounts = new();
-
-        // Used item and category counts for each region
-        // In the tuple, the first is the item count, and the second is the category count
-        List<Tuple<SortedList<RandomizationTag, int>?, SortedList<RandomizationTag, int>?>> usedItemsPerRegion = gameData.IsComplete ? new(0)
-            : Enumerable.Repeat<Tuple<SortedList<RandomizationTag, int>?, SortedList<RandomizationTag, int>?>>(Tuple.Create<SortedList<RandomizationTag, int>?, SortedList<RandomizationTag, int>?>(null, null), gameData.GetAllRegions().Count).ToList();
-
-        // IsReachable lookup for each region. Used when doProcessing is false
-        List<bool> isReachable = doProcessing ? null!
-            : Enumerable.Repeat(false, gameData.GetAllRegions().Count).ToList();
+        // Extended region data used for performing processing
+        List<ExtendedRegionData> regionData = Enumerable.Repeat<ExtendedRegionData>(new(), gameData.Regions.GetAllEntries().Count).ToList();
 
         // Paths queued for checking
         List<PathID> queuedPaths = new();
 
-        // If processing, we can reset all path's reachability
+        // If processing, we can reset all regions' reachability
         if (doProcessing)
-            foreach (var pair in gameData.GetAllRegions()) gameData.SetRegionReachable(pair.Key, false);
+        {
+            foreach (var entry in gameData.Regions.GetAllEntries())
+                gameData.SetRegionReachable(entry.Key, false);
+        }
 
-        // Reachability for a reagion
+        // Collect an item by ID
         void collectItem(ItemID id)
         {
-            if (id.IsNull) return;
-            Item item = gameData.LookupItem(id);
+            if (id.IsNull) 
+                return;
+
+            Item? item = gameData.Items.LookUpValue(id);
+            if (item == null)
+            {
+                FeatureLogger.Error($"Attempted to collect {id} during traversal, but this is not an actual item! Item name: {gameData.Items.LookUpName(id)}");
+                return;
+            }
             if (!item.RandData.IsProgression) return; // Only progression items can be considered for path reqs
-            if (item.RequiredExpedition != null && !expeditions.Contains(item.RequiredExpedition)) return; // This item is not considered part of the expedition set
-            collectedItems.Add(item);
-            Path.RequiredItem req = item.PathReqs;
-            if (req.Type == Path.RequiredItem.eType.None) return;
-            else if (req.Type == Path.RequiredItem.eType.Item) itemCounts[req.Target] = itemCount(req.Target) + 1;
-            else if (req.Type == Path.RequiredItem.eType.Category) categoryCounts[req.Target] = catsCount(req.Target) + 1;
+
+            // One copy goes into item counts, and another copy into cateogry + one for each parent recursively
+            itemCounts[id] = itemCounts.GetValueOrDefault(id, 0u) + 1u;
+            void collectRecursive(ItemID id)
+            {
+                if (id.IsNull) return;
+                categoryCounts[id] = categoryCounts.GetValueOrDefault(id, 0u) + 1u;
+                foreach (var parent in gameData.Items.LookUpDefinition(id).AllParents)
+                    collectRecursive(parent);
+            }
+            collectRecursive(id);
         }
 
         // Abstractions for getting / setting reachability
-        bool getReachable(RegionID id) => doProcessing ? gameData.LookupRegion(id).Reachable : isReachable[id.AsIndex];
-        void setReachable(RegionID id) { if (doProcessing) gameData.SetRegionReachable(id, true); else isReachable[id.AsIndex] = true; }
+        bool getReachable(RegionID id) => doProcessing ? gameData.Regions.LookUpValue(id).Reachable : regionData[id.AsIndex].IsReachable;
+        void setReachable(RegionID id) { if (doProcessing) gameData.SetRegionReachable(id, true); else regionData[id.AsIndex] = new(regionData[id.AsIndex]) { IsReachable = true }; }
 
         // Item helpers
-        int itemCount(RandomizationTag tag) => itemCounts.GetValueOrDefault(tag, 0);
-        int catsCount(RandomizationTag tag) => categoryCounts.GetValueOrDefault(tag, 0);
+        uint itemCount(ItemID item) => itemCounts.GetValueOrDefault(item, 0u);
+        uint catsCount(ItemID item) => categoryCounts.GetValueOrDefault(item, 0u);
 
-        int usedItemCount(RegionID region, RandomizationTag tag) => gameData.IsComplete ? 0 : usedItemsPerRegion[region.AsIndex].Item1?.GetValueOrDefault(tag, 0) ?? 0;
-        int usedCatsCount(RegionID region, RandomizationTag tag) => gameData.IsComplete ? 0 : usedItemsPerRegion[region.AsIndex].Item2?.GetValueOrDefault(tag, 0) ?? 0;
+        uint usedItemCount(RegionID region, ItemID item) => gameData.IsComplete ? 0u : regionData[region.AsIndex].UsedItemCounts?.GetValueOrDefault(item, 0u) ?? 0u;
+        uint usedCatsCount(RegionID region, ItemID item) => gameData.IsComplete ? 0u : regionData[region.AsIndex].UsedCategoryCounts?.GetValueOrDefault(item, 0u) ?? 0u;
+
+        // Floating items are auto-collected - we assumed they'll be randomized somewhere they are logically guaranteed reachable
+        // For simplicity, we just collect all items
+        foreach (var pair in gameData.GetAllFloatingItems())
+            collectItem(pair.Item2);
 
         // Starting state
-        RegionID startingRegionID = gameData.MenuRegion;
-        ReadOnlyRegion startingRegion = gameData.LookupRegion(startingRegionID);
-        setReachable(startingRegionID);
-
-        // Floating items are auto-collected
-        foreach (ItemID id in gameData.GetAllFloatingItemIds())
-            collectItem(id);
+        setReachable(gameData.Region_Menu);
+        Region startRegion = gameData.Regions.LookUpValue(gameData.Region_Menu);
 
         // Collecting items in the starting region
-        foreach (Location location in startingRegion.ConnectedLocationIds.Select(gameData.LookupLocation))
-            if (location.OwningRegionIDs.Length == 1 && !location.ItemID.IsNull) collectItem(location.ItemID);
+        foreach (Location? location in startRegion.ConnectedLocations.Select(gameData.Locations.LookUpValueChecked))
+        {
+            if ((location?.OwningRegionIDs.Count) == 1 && !location!.ItemID.IsNull) 
+                collectItem(location.ItemID);
+        }
 
-        queuedPaths.AddRange(startingRegion.ConnectedPaths);
+        queuedPaths.AddRange(startRegion.ConnectedPaths);
 
         // Traversal iterations
         int newCount = 1; // Number of regions found
@@ -594,90 +615,77 @@ public class MidManager
             for (int i = 0; i < queuedPaths.Count; i++)
             {
                 // Whether it's worth checking this path
-                ReadOnlyPath path = gameData.LookupPath(queuedPaths[i]);
+                Path path = gameData.LookUpPath(queuedPaths[i]);
                 if (getReachable(path.EndingRegion))
                 {
                     queuedPaths.RemoveAt(i--);
                     continue;
                 }
 
-                // Checking if path is traversable
-                int mainCount;
-                if (path.ReqItem.Type == Path.RequiredItem.eType.Item)
-                    mainCount = itemCount(path.ReqItem.Target) - usedItemCount(path.StartingRegion, path.ReqItem.Target);
-                else if (path.ReqItem.Type == Path.RequiredItem.eType.Category)
-                    mainCount = catsCount(path.ReqItem.Target) - usedCatsCount(path.StartingRegion, path.ReqItem.Target);
-                else mainCount = 0;
+                // Checks if a specific req item for the current path can be satisfied
+                bool checkTraversable(Path.RequiredItem req, uint reqCount)
+                {
+                    if (req.Type == Path.RequiredItem.eType.None) return true;
+                    else if (req.Type == Path.RequiredItem.eType.Blocked) return false;
 
-                int alternateCount ;
-                if (path.AlternateItem.Type == Path.RequiredItem.eType.Item)
-                    alternateCount = itemCount(path.AlternateItem.Target);
-                else if (path.AlternateItem.Type == Path.RequiredItem.eType.Category)
-                    alternateCount = catsCount(path.AlternateItem.Target);
-                else alternateCount = 0;
+                    // Fetch counts from relevant dicts
+                    uint availableCount, usedCount;
+                    (availableCount, usedCount) = req.Type switch
+                    {
+                        Path.RequiredItem.eType.Item         => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
+                        Path.RequiredItem.eType.ItemConsumed => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
+                        Path.RequiredItem.eType.Category     => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
+                        _ => throw new NotSupportedException($"Unexpected path requirement type: {(int)req.Type}")
+                    };
 
-                if ((path.ReqItem.Type == Path.RequiredItem.eType.None) || (mainCount >= path.ReqCount) || (alternateCount >= 1))
+                    if (availableCount < (reqCount + usedCount))
+                        return false; // Insufficient items to pass
+
+                    // Perform processing if relevant / necessary
+                    if (!gameData.IsComplete)
+                    {
+                        // Updating used counts
+                        ExtendedRegionData newData = new(regionData[path.StartingRegion.AsIndex]);
+                        if (req.Type == Path.RequiredItem.eType.ItemConsumed)
+                        {
+                            // Update both dicts with the consumed counts
+                            newData.UsedItemCounts = newData.UsedItemCounts == null ? new(1) : new(newData.UsedItemCounts);
+                            newData.UsedItemCounts[req.Target] = usedCount + reqCount;
+
+                            var usedCatsDict = newData.UsedCategoryCounts = newData.UsedCategoryCounts == null ? new() : new(newData.UsedCategoryCounts);
+                            void updateUsedRecursive(ItemID id)
+                            {
+                                if (id.IsNull) return;
+                                usedCatsDict[id] = usedCatsDict.GetValueOrDefault(id, 0u) + reqCount;
+                                foreach (var parent in gameData.Items.LookUpDefinition(id).AllParents)
+                                    updateUsedRecursive(parent);
+                            }
+                            updateUsedRecursive(req.Target);
+                        }
+                        regionData[path.EndingRegion.AsIndex] = newData;
+
+                        // Update the path's req count directly
+                        if (doProcessing)
+                            gameData.SetPathReqCount(queuedPaths[i], usedCount + reqCount);
+                    }
+                    return true;
+                }
+
+                if (checkTraversable(path.AlternateItem, 1u) || checkTraversable(path.ReqItem, path.ReqCount))
                 {
                     setReachable(path.EndingRegion);
                     ++newCount;
-                    queuedPaths.AddRange(gameData.LookupRegion(path.EndingRegion).ConnectedPaths);
-
-                    // Since this is the first time we're here, mark the direct requirements
-                    if (!gameData.IsComplete)
-                    {
-                        if (path.ReqItem.Type != Path.RequiredItem.eType.None)
-                        {
-                            Path.RequiredItem reqItem;
-                            int reqCount;
-                            if (mainCount >= path.ReqCount)
-                            {
-                                reqItem = path.ReqItem;
-                                reqCount = (int)path.ReqCount;
-                            }
-                            else
-                            {
-                                reqItem = path.AlternateItem;
-                                reqCount = 1;
-                            }
-
-                            SortedList<RandomizationTag, int> dict = new();
-                            SortedList<RandomizationTag, int>? oldDict;
-
-                            if (reqItem.Type == Path.RequiredItem.eType.Item)
-                            {
-                                oldDict = usedItemsPerRegion[path.StartingRegion.AsIndex].Item1;
-                                usedItemsPerRegion[path.EndingRegion.AsIndex] = Tuple.Create(dict, usedItemsPerRegion[path.StartingRegion.AsIndex].Item2)!;
-                            }
-                            else // if (reqItem.Type == Path.RequiredItem.eType.Category)
-                            {
-                                oldDict = usedItemsPerRegion[path.StartingRegion.AsIndex].Item2;
-                                usedItemsPerRegion[path.EndingRegion.AsIndex] = Tuple.Create(usedItemsPerRegion[path.StartingRegion.AsIndex].Item1, dict)!;
-                            }
-
-                            foreach (var pair in oldDict ?? Enumerable.Empty<KeyValuePair<RandomizationTag, int>>())
-                                dict.Add(pair.Key, pair.Value);
-                            dict[reqItem.Target] = dict.GetValueOrDefault(reqItem.Target, 0) + reqCount;
-                        }
-                        else
-                            usedItemsPerRegion[path.EndingRegion.AsIndex] = usedItemsPerRegion[path.StartingRegion.AsIndex];
-
-                        if (doProcessing && path.ReqItem.Type != Path.RequiredItem.eType.None)
-                        {
-                            uint count;
-                            if (path.ReqItem.Type == Path.RequiredItem.eType.Item) 
-                                count = (uint)usedItemCount(path.StartingRegion, path.ReqItem.Target);
-                            else // if (path.ReqItem.Type == Path.RequiredItem.eType.Category) 
-                                count = (uint)usedCatsCount(path.StartingRegion, path.ReqItem.Target);
-                            gameData.SetPathReqCount(queuedPaths[i], count + path.ReqCount);
-                        }
-                    }
+                    Region endingRegion = gameData.Regions.LookUpValue(path.EndingRegion);
 
                     // Collect all locations newly available because of this region
-                    foreach (var loc in gameData.LookupRegion(path.EndingRegion).ConnectedLocationIds.Select(gameData.LookupLocation))
+                    foreach (var loc in endingRegion.ConnectedLocations.Select(gameData.Locations.LookUpValueChecked))
                     {
-                        if (loc.OwningRegionIDs.Any(id => !getReachable(id))) continue;
+                        if (loc!.OwningRegionIDs.Any(id => !getReachable(id))) continue;
                         collectItem(loc.ItemID);
                     }
+
+                    // Queue all new paths available because of this region
+                    queuedPaths.AddRange(endingRegion.ConnectedPaths);
 
                     // Finally, remove the queued path
                     queuedPaths.RemoveAt(i--);
@@ -689,16 +697,22 @@ public class MidManager
 
         // We've stopped making progress. Check if we've won!
         // @Todo: Can't use HashSet, we need multiset. Too lazy to implement right now
-        List<Item> requiredItems = gameData.GetAllLocations()
-            .Select(pair => pair.Value.ItemID)
-            .Concat(gameData.GetAllFloatingItemIds())
-            .Where(id => !id.IsNull)
-            .Select(gameData.LookupItem)
-            .Where(i => i.RequiredExpedition == null || expeditions.Contains(i.RequiredExpedition))
-            .Where(item => gameData.TagMatches(gameData.Tag_GoalItems, item))
-            .ToList();
-        foreach (var item in collectedItems) 
-            requiredItems.Remove(item); // Intentionally ignore cases where there is no such item to remove
+        Dictionary<ItemID, uint> requiredItems = gameData.Locations.GetAllEntries()
+            .Where(pair => pair.Value.Value != null && !pair.Value.Value.ItemID.IsNull)
+            .Select(pair => (pair.Value.Value!.OwningRegionIDs.AsEnumerable(), pair.Value.Value.ItemID))
+            .Concat(gameData.GetAllFloatingItems().Select(pair => (Enumerable.Repeat(pair.Item1, 1), pair.Item2)))
+            .GroupBy(pair => pair.Item2)
+            .Where(group => gameData.Items.IsChild(group.Key, gameData.Item_SectorClears))
+            .ToDictionary(group => group.Key, group => (uint)group.Count());
+
+        foreach (var pair in itemCounts.Concat(categoryCounts))
+        {
+            if (requiredItems.TryGetValue(pair.Key, out uint count))
+            {
+                if (count > pair.Value) requiredItems[pair.Key] = count - pair.Value;
+                else requiredItems.Remove(pair.Key);
+            }
+        }
 
         if (requiredItems.Count == 0) return true;
         if (!logDebugInfo) return false;
@@ -713,7 +727,7 @@ public class MidManager
 
         ConsoleManager.SetConsoleColor(ConsoleColor.White);
         foreach (var item in requiredItems)
-            ConsoleManager.ConsoleStream.WriteLine($"  - {gameData.LookupTagDef(item.NameTag).Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  - {item.Value:00}x {gameData.Items.LookUpName(item.Key)}");
 
         // ----------------------------------------------------------------------------------------
 
@@ -721,12 +735,12 @@ public class MidManager
         ConsoleManager.ConsoleStream.WriteLine("\n    Regions:");
 
         bool printed = false;
-        foreach (var pair in gameData.GetAllRegions())
+        foreach (var pair in gameData.Regions.GetAllEntries())
         {
             bool reachable = getReachable(pair.Key);
             if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);
             else ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-            ConsoleManager.ConsoleStream.WriteLine($"  {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{pair.Key.AsId.ToString("000")}] {pair.Value.Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{pair.Key.ID:000}] {pair.Value.Name}");
             printed = true;
         }
         if (!printed) ConsoleManager.ConsoleStream.WriteLine($"\n  NO REGIONS FOUND");
@@ -742,72 +756,84 @@ public class MidManager
         printed = false;
         foreach (var pathID in sortedPaths)
         {
-            ReadOnlyPath path = gameData.LookupPath(pathID);
+            printed = true;
+            Path path = gameData.LookUpPath(pathID);
             ConsoleManager.ConsoleStream.WriteLine();
             ConsoleManager.ConsoleStream.WriteLine($"  Name:  {path.Name ?? "None"}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Green);
-            ConsoleManager.ConsoleStream.WriteLine($"  Start: [{path.StartingRegion.AsId.ToString("000")}] {gameData.LookupRegion(path.StartingRegion).Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  Start: [{path.StartingRegion.ID:000}] {gameData.Regions.LookUpName(path.StartingRegion)}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-            ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.AsId.ToString("000")}] {gameData.LookupRegion(path.EndingRegion).Name}");
+            ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.ID:000}] {gameData.Regions.LookUpName(path.EndingRegion)}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
             if (path.ReqItem.Type == Path.RequiredItem.eType.None)
-                ConsoleManager.ConsoleStream.WriteLine($"  No required item!");
-            else if (path.ReqItem.Type == Path.RequiredItem.eType.Item)
-                ConsoleManager.ConsoleStream.WriteLine($"  Item:  {(usedItemCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount).ToString("000")}x {gameData.LookupTagDef(path.ReqItem.Target).Name}");
-            else //(path.ReqItem.Type == Path.RequiredItem.eType.Category)
-                ConsoleManager.ConsoleStream.WriteLine($"  Cats:  {(usedCatsCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount).ToString("000")}x {gameData.LookupTagDef(path.ReqItem.Target).Name}");
-            if (path.AlternateItem.Type != Path.RequiredItem.eType.None)
-                ConsoleManager.ConsoleStream.WriteLine($"  Alt:   001x {gameData.LookupTagDef(path.AlternateItem.Target).Name}");
-            printed = true;
+                ConsoleManager.ConsoleStream.WriteLine($"  No required item");
+            else if (path.ReqItem.Type == Path.RequiredItem.eType.Item || path.ReqItem.Type == Path.RequiredItem.eType.ItemConsumed)
+                ConsoleManager.ConsoleStream.WriteLine($"  Item:  {usedItemCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
+            else if (path.ReqItem.Type == Path.RequiredItem.eType.Category)
+                ConsoleManager.ConsoleStream.WriteLine($"  Cats:  {usedCatsCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
+            if (path.AlternateItem.Type != Path.RequiredItem.eType.Blocked)
+                if (path.AlternateItem.Type == Path.RequiredItem.eType.None)
+                    ConsoleManager.ConsoleStream.WriteLine($"  Alt:   Not blocked");
+                else
+                    ConsoleManager.ConsoleStream.WriteLine($"  Alt:   001x {gameData.Items.LookUpName(path.AlternateItem.Target)}");
+
+            bool printed2 = false;
+            ConsoleManager.ConsoleStream.WriteLine("\n  Potential unfound items which unblock:");
+            foreach (var entry in gameData.Locations.GetAllEntries())
+            {
+                if (entry.Value.Value == null) continue;
+                if (entry.Value.Value.ItemID.IsNull) continue;
+                if (entry.Value.Value.OwningRegionIDs.All(getReachable)) continue; // Item was already collected
+
+                bool meetsMain = path.ReqItem.Type switch
+                {
+                    Path.RequiredItem.eType.None => true,
+                    Path.RequiredItem.eType.Blocked => false,
+                    Path.RequiredItem.eType.Item => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.RequiredItem.eType.ItemConsumed => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.RequiredItem.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.ReqItem.Target),
+                    _ => throw new NotSupportedException("Unexpected path req type!"),
+                };
+
+                bool meetsAlt = path.AlternateItem.Type switch
+                {
+                    Path.RequiredItem.eType.None => true,
+                    Path.RequiredItem.eType.Blocked => false,
+                    Path.RequiredItem.eType.Item => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.RequiredItem.eType.ItemConsumed => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.RequiredItem.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.AlternateItem.Target),
+                    _ => throw new NotSupportedException("Unexpected path req type!"),
+                };
+
+                if (meetsMain || meetsAlt)
+                {
+                    printed2 = true;
+                    ConsoleManager.ConsoleStream.WriteLine();
+                    if (meetsMain && meetsAlt) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Main, Alt");
+                    else if (meetsMain) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Main");
+                    else if (meetsAlt) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Alt");
+                    ConsoleManager.ConsoleStream.WriteLine($"    Item: [{entry.Value.Value.ItemID.ID}] {gameData.Items.LookUpName(entry.Value.Value.ItemID)}");
+                    ConsoleManager.ConsoleStream.WriteLine($"    Loc:  [{entry.Key.ID}] {gameData.Locations.LookUpName(entry.Key)}");
+
+                    ConsoleManager.ConsoleStream.WriteLine($"    Regions:");
+                    if (entry.Value.Value.OwningRegionIDs.Count == 0)
+                    {
+                        ConsoleManager.SetConsoleColor(ConsoleColor.Red);
+                        ConsoleManager.ConsoleStream.WriteLine("    LOCATION HAS NO REGIONS AND CANNOT BE DISCOVERED");
+                    }
+                    else foreach (var i in entry.Value.Value.OwningRegionIDs)
+                    {
+                        bool reachable = getReachable(i);
+                        if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);
+                        else ConsoleManager.SetConsoleColor(ConsoleColor.Red);
+                        ConsoleManager.ConsoleStream.WriteLine($"     {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{i.ID:000}] {gameData.Regions.LookUpName(i)}");
+                    }
+                    ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
+                }
+            }
+            if (!printed2) ConsoleManager.ConsoleStream.WriteLine("\n    NO ITEMS FOUND");
         }
         if (!printed) ConsoleManager.ConsoleStream.WriteLine($"\n  NO BLOCKED PATHS FOUND");
-
-        // ----------------------------------------------------------------------------------------
-
-        ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
-        ConsoleManager.ConsoleStream.WriteLine("\n    Notable unfound locations:");
-
-        HashSet<RandomizationTag> neededTags = queuedPaths.Select(gameData.LookupPath).SelectMany(p =>
-            Enumerable.Empty<RandomizationTag>().Append(p.ReqItem.Target).Append(p.AlternateItem.Target)
-        ).ToHashSet();
-
-        printed = false;
-        foreach (var loc in gameData.GetAllLocations().Select(pair => pair.Value))
-        {
-            if (loc.ItemID.IsNull) continue;
-            if (loc.OwningRegionIDs.All(getReachable)) continue;
-            Item item = gameData.LookupItem(loc.ItemID);
-            if (!gameData.TagMatches(neededTags, item.PathReqs.Target)) continue;
-
-            ConsoleManager.ConsoleStream.WriteLine();
-            ConsoleManager.ConsoleStream.WriteLine($"  Name: {gameData.LookupTagDef(loc.NameTag).Name}");
-            ConsoleManager.ConsoleStream.WriteLine($"  Item: {gameData.LookupTagDef(item.NameTag).Name}");
-            if (!item.Tag2.IsNull)
-                ConsoleManager.ConsoleStream.WriteLine($"   Cat: {gameData.LookupTagDef(item.Tag2).Name}");
-            if (!item.Tag3.IsNull)
-                ConsoleManager.ConsoleStream.WriteLine($"   Cat: {gameData.LookupTagDef(item.Tag3).Name}");
-
-            ConsoleManager.ConsoleStream.WriteLine($"  Regions:");
-            if (loc.OwningRegionIDs.Length == 0)
-            {
-                ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-                ConsoleManager.ConsoleStream.WriteLine("  LOCATION HAS NO REGIONS AND CANNOT BE DISCOVERED");
-            }
-            else foreach (var i in loc.OwningRegionIDs)
-            {
-                bool reachable = getReachable(i);
-                if (reachable) ConsoleManager.SetConsoleColor(ConsoleColor.Green);
-                else ConsoleManager.SetConsoleColor(ConsoleColor.Red);
-                ConsoleManager.ConsoleStream.WriteLine($"   {(reachable ? "[ Reachable ]" : "[Unreachable]")} [{i.AsId.ToString("000")}] {gameData.LookupRegion(i).Name}");
-            }
-            ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
-            printed = true;
-        }
-
-        if (neededTags.Count == 0)
-            ConsoleManager.ConsoleStream.WriteLine($"\n  NO NEEDED ITEMS FOUND");
-        else if (!printed)
-            ConsoleManager.ConsoleStream.WriteLine($"\n  NO NOTABLE LOCATIONS FOUND");
 
         ConsoleManager.ConsoleStream.WriteLine();
         return false;

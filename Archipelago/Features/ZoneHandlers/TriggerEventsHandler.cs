@@ -1,4 +1,6 @@
 ﻿using GameData;
+using ReTFO.Archipelago.Features.ObjectiveHandlers;
+using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -13,6 +15,15 @@ namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+
+public static class TriggerEventsHandler_Tags
+{
+    extension (Zone.Data data)
+    {
+        public RegionID Region_OnTriggerEvents(string trigger)
+            => RegionID.From(data, $"{data.ZoneName} OnTrigger ({trigger})", data => new("Region entered by trigger a particular WorldEventObject trigger", data.Region_Zone));
+    }
+}
 
 [EnableFeatureByDefault, AutomatedFeature]
 public class TriggerEventsHandler : ArchipelagoFeature
@@ -31,19 +42,19 @@ public class TriggerEventsHandler : ArchipelagoFeature
     }
 
     // A few triggers in vanilla are in misleading locations. Currently, my best workaround is just to use this dict to correct errors
-    private static Dictionary<string, Tuple<LayerType, eLocalZoneIndex>> WorldEventObjectOverrides
-        = new Dictionary<string, Tuple<LayerType, eLocalZoneIndex>>()
+    private static Dictionary<string, (LayerType, eLocalZoneIndex)> WorldEventObjectOverrides
+        = new Dictionary<string, (LayerType, eLocalZoneIndex)>()
     {
-        { "Evt_Shuttlebox_Interact_R8A1", Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_4) }, // R8A1 shuttlebox (for MWP)
-        { "WE_Hearsay_Interact_02",       Tuple.Create(LayerType.Main, eLocalZoneIndex.Zone_7) }, // I don't remember
+        { "Evt_Shuttlebox_Interact_R8A1", (LayerType.Main, eLocalZoneIndex.Zone_4) }, // R8A1 shuttlebox (for MWP)
+        { "WE_Hearsay_Interact_02",       (LayerType.Main, eLocalZoneIndex.Zone_7) }, // I don't remember
     };
 
-    private static Dictionary<string, Func<Zone.Data, KeyedItem>> PathReqsOverride
-        = new Dictionary<string, Func<Zone.Data, KeyedItem>>()
+    private static Dictionary<string, Func<Zone.Data, ItemID>> PathReqsOverride
+        = new Dictionary<string, Func<Zone.Data, ItemID>>()
     {
-        { "Evt_Shuttlebox_Interact_R8A1", (data) => ObjectiveHandlers.RetrieveBigItemsHandler.GetItem(data.GetObjectiveDatas().ElementAt(0), 1) }, // R8A1 - Shuttlebox near the end. That MWP is a retrieval target, so this is a bit odd
-        { "WE_Dataextractor_Interact", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 181) }, // R8C2 - Fake "Process Item" objective at start
-        { "Evt_Shuttlebox_Interact_R7B1", (data) => Pickups.BigPickupHandler.GetBigPickupItem(data, 173) }, // R7B1 - The collection case interaction
+        { "Evt_Shuttlebox_Interact_R8A1", (data) => data.GetObjectiveDatas().ElementAt(0).Item_BigRetrieval_Instance(1) }, // R8A1 - Shuttlebox near the end. That MWP is a retrieval target, so this is a bit odd
+        { "WE_Dataextractor_Interact",    (data) => data.Item_BigPickup_Instance(181) },                                   // R8C2 - Fake "Process Item" objective at start
+        { "Evt_Shuttlebox_Interact_R7B1", (data) => data.Item_BigPickup_Instance(173) },                                   // R7B1 - The collection case interaction
     };
 
     [Zone.Callback]
@@ -55,7 +66,7 @@ public class TriggerEventsHandler : ArchipelagoFeature
         if (data.Zone.EventsOnTrigger.Count == 0) return;
 
         // Faux list is required since this event list uses a different underlying type
-        // Of note, faux list will be sorted
+        // Of note, faux list will be sorted by trigger filter
         EventList fauxList = new(data.Zone.EventsOnTrigger.Count);
         foreach (var item in data.Zone.EventsOnTrigger.Iter().GroupBy(e => e.WorldEventTriggerObjectFilter).SelectMany(g => g))
             fauxList.Add(item);
@@ -84,23 +95,22 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 }
 
                 // Identify the item needed to trigger the event. Again, using a simple override to identify this
-                Path.RequiredItem reqs = new();
+                Path.RequiredItem reqs = new(Path.RequiredItem.eType.None, new());
                 if (PathReqsOverride.TryGetValue(trigger, out var itemGetter))
                 {
-                    reqs = itemGetter.Invoke(data).Item.PathReqs;
+                    reqs = new(Path.RequiredItem.eType.ItemConsumed, itemGetter.Invoke(data));
                 }
 
                 // Process the events
                 // Note: Skipping/ignoring event breaks, since how would those work here?
-                string eventName = $"{sourceZone.ZoneName} OnTrigger ({trigger})";
-                RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+                RegionID eventRegion = data.Region_OnTriggerEvents(trigger);
                 data.AddPath(new Path() {
-                    StartingRegion = data.LookupOrCreateRegion(sourceZone.ZoneName), 
+                    StartingRegion = sourceZone.Region_Zone,
                     EndingRegion = eventRegion,
                     ReqItem = reqs,
                     ReqCount = reqs.IsNull ? 0u : 1u,
                 });
-                Event.Data eventData = data.ProcessEvents(eventRegion, eventName, fauxList, eventStart, eventEnd - eventStart);
+                Event.Data eventData = data.ProcessEvents(eventRegion, fauxList, eventStart, eventEnd - eventStart);
 
                 // Update based on entries added/removed
                 eventStart = eventData.EventStart;

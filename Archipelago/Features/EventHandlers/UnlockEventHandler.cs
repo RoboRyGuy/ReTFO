@@ -14,8 +14,36 @@ public static class UnlockEventHandler_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_UnlockEventItem
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Unlock Event Items", "Event items which trigger sec doors to unlock", gd.Tag_EventItems));
+        /// <summary>
+        /// Parent tag for all zone door unlock items
+        /// </summary>
+        public ItemID Item_DoorUnlockEvent
+            => ItemID.From(gameData, "Zone Unlock Event Items", data => new("Event items which trigger sec doors to unlock", data.Item_Event));
+    }
+
+    extension (Zone.Data data)
+    {
+        /// <summary>
+        /// Parent tag for unlock evnet items for a particular zone's door
+        /// </summary>
+        public ItemID Item_DoorUnlockEvent_ByZone
+            => ItemID.From(
+                data,
+                $"{data.ZoneName} Unlock Event",
+                data => new("Event item which unlocks a particular door", data.Item_DoorUnlockEvent)
+            );
+
+        /// <summary>
+        /// Unlock event item for a particular zone
+        /// </summary>
+        /// <param name="isUnlock">If this event strictly unlocks the door, or (if false) also opens it</param>
+        public ItemID Item_DoorUnlockEvent_Instance(bool isUnlock)
+            => ItemID.From(
+                data,
+                $"{data.ZoneName} Unlock Event ({(isUnlock ? "Unlock" : "Open")})",
+                data => new("Event item which immediately opens a particular door", data.Item_DoorUnlockEvent_ByZone),
+                new UnlockEventHandler.UnlockZoneItem(data.Region_Zone, isUnlock)
+            );
     }
 }
 
@@ -33,55 +61,40 @@ public class UnlockEventHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private class UnlockZoneItem : Item
+    public class UnlockZoneItem : ExpeditionItem
     {
-        public UnlockZoneItem(Zone.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public UnlockZoneItem(RegionID zone, bool isUnlock)
+            : base(MakeRandData())
         {
-            ZoneData = data;
+            ZoneRegion = zone;
+            IsUnlock = isUnlock;
         }
-
-        public static TagResolver MakeTag(Zone.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Unlock Event", "Event item which unlocks a particular door", gd.Tag_UnlockEventItem));
 
         public static ItemData MakeRandData() => new ItemData { IsProgression = true };
 
         /// <summary>
         /// Zone that this event unlocks
         /// </summary>
-        public Zone.Data ZoneData { get; set; }
+        public RegionID ZoneRegion { get; private init; }
 
-        private void UnlockZoneNow()
+        /// <summary>
+        /// If true, this is an unlock event; if false, this is an open event
+        /// </summary>
+        public bool IsUnlock { get; private init; }
+
+        public override RegionID TargetRegion => ZoneRegion;
+
+        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
+            Zone.Data zone = new(stateTracker.GameData, ZoneRegion);
             WorldEventManager.ExecuteEvent(new WardenObjectiveEventData
             {
                 Type = eWardenObjectiveEventType.UnlockSecurityDoor,
-                DimensionIndex = ZoneData.LayerType,
-                Layer = ZoneData.LayerType,
-                LocalIndex = ZoneData.Zone!.LocalIndex
+                DimensionIndex = zone.LayerType,
+                Layer = zone.LayerType,
+                LocalIndex = zone.Zone!.LocalIndex
             });
         }
-
-        public override Expedition.Data? RequiredExpedition => ZoneData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (ZoneData.IsCurrentlyInExpedition()) UnlockZoneNow();
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ZoneData.IsSameExpedition(data)) UnlockZoneNow();
-        }
-    }
-
-    public static KeyedItem GetUnlockEventItem(Zone.Data data)
-    {
-        if (data.TryLookupItem(UnlockZoneItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new UnlockZoneItem(data);
-        return new(data.AddItem(newItem), newItem);
     }
 
     [Event.Callback]
@@ -96,13 +109,9 @@ public class UnlockEventHandler : ArchipelagoFeature
 
             Zone.Data? targetZone = data.FindZoneByEvent(e);
             if (targetZone != null)
-            {
-                EventHelper.ConvertToCheckLocationEvent(data, e, count, GetUnlockEventItem(targetZone).ID);
-            }
+                EventHelper.CreateEventLocation(data, e, count, targetZone.Item_DoorUnlockEvent_Instance(e.Type == eWardenObjectiveEventType.UnlockSecurityDoor));
             else
-            {
                 FeatureLogger.Debug($"Failed to find zone for unlock event: {data.EventName} #{count}");
-            }
         }
     }
 

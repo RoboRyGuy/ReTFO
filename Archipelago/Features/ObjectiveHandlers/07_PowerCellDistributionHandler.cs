@@ -19,30 +19,59 @@ public static class PowerCellDistributionHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_PowerCellDistributionCellLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("PowerCell Distribution Cell Locations", "Locations checked by picking up cells spawned for the PowerCell Distribution objective (always in the starting lift, if spawned)", gd.Tag_BigPickupLocations));
+        public LocationID Location_PowerCellDistributionCells
+            => LocationID.From(data, "PowerCell Distribution Cell Locations", data => new("Locations checked by picking up cells spawned for the PowerCell Distribution objective (always in the starting lift, if spawned)", data.Location_BigPickups));
 
         // Note: Cell items are just normal big pickups, so they don't get their own tag
 
-        public TagResolver Tag_PowerCellDistributionGenLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("PowerCell Distribution Gen Locations", "Locations checked by finding generators for the PowerCell Distribution objective", gd.Tag_Never));
+        public LocationID Location_PowerCellDistributionGens
+            => LocationID.From(data, "PowerCell Distribution Gen Locations", data => new("Locations checked by finding generators for the PowerCell Distribution objective", data.Location_Never));
 
-        public TagResolver Tag_PowerCellDistributionGenItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("PowerCell Distribution Gen Items", "Items indicating access to a PowerCell Distribution generator", gd.Tag_Never));
+        public ItemID Item_PowerCellDistributionGens
+            => ItemID.From(data, "PowerCell Distribution Gen Items", data => new("Items indicating access to a PowerCell Distribution generator", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.PowerCellDistribution;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension(Objective.Data data)
     {
-        public TagResolver Tag_PowerCellDistributionCellLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} PowerCell Distribution Cell Locations", "Locations checked by picking up cells spawned for a particular objective", gd.Tag_PowerCellDistributionCellLocations));
+        public RegionID Region_PowercellDistributionCellFound(int count)
+            => RegionID.From(data, $"{data.ObjectiveName} Obtained {count} Cells", data => new("Region entered by obtaining a particular number of cells during a powercell distribution objective", data.Region_Objective));
 
-        // Note: Cell items are just normal big pickups, so they don't get their own tag
+        public RegionID Region_PowercellDistributionGeneratorPowered(int count)
+            => RegionID.From(data, $"{data.ObjectiveName} Powered {count} Generators", data => new("Region entered by powering a specific number of cells during a powercell distribution objective", data.Region_Objective));
 
-        public TagResolver Tag_PowerCellDistributionGenLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} PowerCell Distribution Gen Locations", "Locations checked by finding generators for a particular objective", gd.Tag_PowerCellDistributionGenLocations));
+        public LocationID Location_PowerCellDistributionCells_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} PowerCell Distribution Cell Locations", data => new("Locations checked by picking up cells spawned for a particular objective", data.Location_PowerCellDistributionCells));
 
-        public TagResolver Tag_PowerCellDistributionGenItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} PowerCell Distribution Gen Items", "Items indicating access to a PowerCell Distribution generator for a particular objective", gd.Tag_PowerCellDistributionGenItems));
+
+        public LocationID Location_PowerCellDistributionGens_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} PowerCell Distribution Gen Locations", data => new("Locations checked by finding generators for a particular objective", data.Location_PowerCellDistributionGens));
+
+        public ItemID Item_PowerCellDistributionGens_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} PowerCell Distribution Gen Items", data => new("Items indicating access to a PowerCell Distribution generator for a particular objective", data.Item_PowerCellDistributionGens));
+
+
+        public LocationID Location_PowerCellDistributionCell_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} PowerCell Distribution Cell Location #{count}", data => new("Locations checked by picking up a particular cell", data.Location_PowerCellDistributionCells_PerObjective));
+
+
+        public LocationID Location_PowerCellDistributionGen_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} PowerCell Distribution Gen Location #{count}", data => new("Locations checked by finding a particular generator", data.Location_PowerCellDistributionGens_PerObjective));
+
+        public ItemID Item_PowerCellDistributionGen_Instance(int count)
+            => ItemID.From(
+                Checked(data),
+                $"{data.ObjectiveName} PowerCell Distribution Gen #{count}",
+                data => new("Item indicating access to a particular PowerCell Distribution generator", data.Item_PowerCellDistributionGens_PerObjective),
+                new PowerCellDistributionHandler.PowerCellDistribution_GenItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -61,111 +90,39 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    public class PowerCellDistribution_GenItem : Item
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.PowerCellDistribution;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public PowerCellDistribution_GenItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            CheckIsCorrectObjective(data);
-            return $"Distribute {data.Objective.PowerCellsToDistribute} Power Cells";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached by finding a cell
-        public static string CellFound(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Obtained {count} Cells";
-
-        // Region reached by powering a generator
-        public static string GeneratorPowered(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Powered {count} Generators";
-    }
-
-    private static class PowerCellDistribution_CellLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Cell Location #{count}", "A particular cell spawned for a particular objective", data.Tag_PowerCellDistributionCellLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    private static class PowerCellDistribution_GenLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Location #{count}", "A particular generator spawn for a particular objective", data.Tag_PowerCellDistributionGenLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private class PowerCellDistribution_GenItem : Item
-    {
-        public PowerCellDistribution_GenItem(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
-        {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
             Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Item #{count}", "A particular generator for a particular objective", data.Tag_PowerCellDistributionGenItems_PerObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public int Count { get; set; }
-
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_PowerCellDistributionGenItems_PerObjective);
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetGenItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(PowerCellDistribution_GenItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new PowerCellDistribution_GenItem(data, count);
-        return new(data.AddItem(newItem), newItem);
+        public int Count { get; private init; }
     }
 
     // Objective requiring power cells be taken from the elevator zone and to various generators throughout the layer
     [Objective.Callback]
     public void HandlePowerCellDistributionObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.PowerCellDistribution)
             return;
 
         // Place starting cells in elevator zone - Only for main layer (and possibly only for first objective?)
-        KeyedItem cellItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID);
+        ItemID cellItem = data.Item_BigPickup_Cell;
         if (data.LayerType.IsMainLayer) // && data.ObjectiveIndex == 0)
         {
-            RegionID region = data.LookupOrCreateRegion(data.FirstZone.ZoneName);
+            RegionID region = data.FirstZone.Region_Zone;
             for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
             {
-                data.AddLocation(
-                    PowerCellDistribution_CellLocation.MakeTag(data, i),
+                data.Locations.CreateValue(
+                    data.Location_PowerCellDistributionCell_Instance(i),
                     region,
-                    PowerCellDistribution_CellLocation.MakeRandData(),
-                    cellItem.ID
+                    new LocationData(),
+                    cellItem
                 );
             }
         }
@@ -174,42 +131,41 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
         // For each gen needed, create two regions: One checks for access to cells, the other to gens
         List<List<RegionID>> regionSets = data.ObjectiveToZoneRegionSets(data.Objective.PowerCellsToDistribute).ToList();
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
-        RegionID last = data.ObjectiveStartRegion;
+        RegionID last = data.Region_Objective;
         for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
         {
             // Place gen
-            KeyedItem genItem = GetGenItem(data, i);
-            data.AddLocation(
-                PowerCellDistribution_GenLocation.MakeTag(data, i),
+            ItemID genItem = data.Item_PowerCellDistributionGen_Instance(i);
+            data.Locations.CreateValue(
+                data.Location_PowerCellDistributionGen_Instance(i),
                 regionSets[i - 1],
-                PowerCellDistribution_GenLocation.MakeRandData(),
-                genItem.ID
+                new LocationData() { IsAutoDiscovered = true},
+                genItem
             );
 
             // Check that we have enough cells
-            RegionID cellRegion = data.LookupOrCreateRegion(ThisRegions.CellFound(data, i));
+            RegionID cellRegion = data.Region_PowercellDistributionCellFound(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = cellRegion,
-                ReqItem = cellItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, cellItem),
                 ReqCount = 1u,
             });
 
             // Check that we've found enough gens
-            string genName = ThisRegions.GeneratorPowered(data, i);
-            RegionID genRegion = data.LookupOrCreateRegion(genName);
+            RegionID genRegion = data.Region_PowercellDistributionGeneratorPowered(i);
             data.AddPath(new Path()
             {
                 StartingRegion = cellRegion,
                 EndingRegion = genRegion,
-                ReqItem = genItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, genItem),
                 ReqCount = 1u,
             });
             last = genRegion;
 
             // Recgonize events triggered by inserting a cell
-            eventWrapper.Process(genRegion, genName);
+            eventWrapper.Process(genRegion);
         }
 
         // Place objective complete item in last region
@@ -218,17 +174,17 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
 
     /// <summary>
     /// Normally we'd patch the relevant job, but that can causes null reference errors
-    ///  for cargo cage items. Fortunately, we can grab them when it's done building
+    ///  for cargo cage items. Fortunately, we can just grab them when it's done building
     /// </summary>
     [ArchivePatch(typeof(LG_Factory), nameof(LG_Factory.FactoryDone))]
     public static class LG_Factory__FactoryDone__Patch
     {
         public static void Postfix()
         {
-            var data = Expedition.Data.FromCurrentExpedition()
+            var data = Expedition.Data.GetFromCurrentExpedition()
                 .MainLayer.GetObjectiveDatas().First();
-            
-            if (!This.IsCorrectObjective(data))
+
+            if (data.Objective.Type != eWardenObjectiveType.PowerCellDistribution)
                 return;
 
             var items = ElevatorCage.Current.m_cargoCage.m_itemsToMoveToCargo.Iter();
@@ -238,15 +194,10 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             int count = 0;
             foreach (var item in items)
             {
-                if (!data.TryLookupLocation(PowerCellDistribution_CellLocation.MakeTag(data, ++count), out var loc))
-                {
-                    FeatureLogger.Error("Failed to identify powercell distribution cell location during association!");
-                    continue;
-                }
                 var comp = item.GetComponentInChildren<CarryItemPickup_Core>();
                 if (comp.ItemDataBlock.persistentID != BigPickupHandler.CellItemID)
                     FeatureLogger.Warning("Associated a non-cell item with distribution objective starting cell location!");
-                PickupHelper.AssociateItem(comp, loc.ID);
+                PickupHelper.AssociateItem(comp, data.Location_PowerCellDistributionCell_Instance(++count));
             }
         }
     }

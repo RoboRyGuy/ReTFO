@@ -5,7 +5,6 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features;
 
-using ReTFO.Archipelago.Features.ZoneHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -13,78 +12,86 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 /// <summary>
 /// Class implementing extension properties for shared randomization tags
 /// </summary>
-public static class RootRandomizationTags
+public static class CommonTagsHandler_Tags
 {
-    extension(Game.Data gameData)
+    extension(Game.Data data)
     {
         /// <summary>
-        /// Base of all tags; matcheas all entities. The only entities not derived from this do not support randomization.
+        /// Parent tag of all regions that are always randomized.
         /// </summary>
-        public TagResolver Tag_All
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("All", "Enables randomization of all items and locations", null));
+        public RegionID Region_Always
+            => RegionID.From(data, "Always", () => new("Parent tag of all regions that are always randomized.", new()));
 
         /// <summary>
-        /// This tag is always placed in the whitelist, guaranteeing derived entites are randomized
+        /// Parent tag of all regions that cannot be randomized.
         /// </summary>
-        public TagResolver Tag_Always
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Always", "This tag is always in the whitelist", null));
+        public RegionID Region_Never
+            => RegionID.From(data, "Never", () => new("Parent tag of all regions that cannot be randomized.", new()));
+
+        // ========================================================================================
 
         /// <summary>
-        /// This tag is always placed in the blacklist, guaranteeing derived entities are not randomized
+        /// Parent tag of all locations that can be randomized.
         /// </summary>
-        public TagResolver Tag_Never
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Never", "This tag is always in the blacklist", null));
+        public LocationID Location_All
+            => LocationID.From(data, "All", () => new("Parent tag of all locations that can be randomized.", new()));
 
         /// <summary>
-        /// Matches all locations. The only locations not derived from this do not support randomization.
+        /// Parent tag of all locations that are always randomized.
         /// </summary>
-        public TagResolver Tag_AllLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("All Locations", "Enables randomization of all locations", gd.Tag_All));
+        public LocationID Location_Always
+            => LocationID.From(data, "Always", () => new("Parent tag of all locations that are always randomized.", new()));
 
         /// <summary>
-        /// Matcheas all items. The only items not derived from this do not support randomization.
+        /// Parent tag of all locations that cannot be randomized.
         /// </summary>
-        public TagResolver Tag_AllItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("All Items", "Enables randomization of all items", gd.Tag_All));
-
-        /// <summary>
-        /// Base tag for unlock items, which are floating items required to enter a group of regions.
-        /// The best example of an unlock item is the expedition unlock item
-        /// </summary>
-        public TagResolver Tag_UnlockItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Unlock Items", "Used internally to identify items needed to access certain groups of regions.", null));
-
-        /// <summary>
-        /// Base tag for goal items. A player must collect all available goal items for AP to consider the slot won.
-        /// </summary>
-        public TagResolver Tag_GoalItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Goal Items", "Used internally to identify \"goal\" items. All available goal items must be collected for AP to consider the slot won.", gd.Tag_Never));
-
-        /// <summary>
-        /// Items which have no location associated with them. This is usually because the item cannot normally be acquired,
-        ///  either because it does not exist or because the player usually starts with the item.
-        /// </summary>
-        public TagResolver Tag_FloatingItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Floating Items", "Items with no location, for example gear items or expedition unlocks.", gd.Tag_AllItems));
+        public LocationID Location_Never
+            => LocationID.From(data, "Never", () => new("Parent tag of all locations that cannot be randomized.", new()));
 
         /// <summary>
         /// Locations which are "empty". These locations do not contain an item by default, and can instead be provided a floating item
         ///  during multiworld setup. They are required for optional items to be collectable.
         /// </summary>
-        public TagResolver Tag_EmptyLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Empty Locations", "Locations which do not contain an item. Empty locations are used by floating items.", gd.Tag_AllLocations));
+        public LocationID Location_Empty
+            => LocationID.From(data, "Empty Locations", data => new("Locations which do not contain an item. Empty locations are used by floating items.", data.Location_All));
+
+        // ========================================================================================
 
         /// <summary>
-        /// Tag matching items which trigger scans
+        /// Parent tag of all items that can be randomized.
         /// </summary>
-        public TagResolver Tag_ScanItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Scan Items", "Items which trigger scans", gd.Tag_AllItems));
+        public ItemID Item_All
+            => ItemID.From(data, "All", () => new("Parent tag of all items that can be randomized.", new()));
 
         /// <summary>
-        /// Tag matching all items which trigger any player to teleport
+        /// Parent tag of all items that are always randomized.
         /// </summary>
-        public TagResolver Tag_WarpItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Warp Items", "All items which cause players to teleport", gd.Tag_AllItems));
+        public ItemID Item_Always
+            => ItemID.From(data, "Always", () => new("Parent tag of all items that are always randomized.", new()));
+
+        /// <summary>
+        /// Items which can never be randomized
+        /// </summary>
+        public ItemID Item_Never
+            => ItemID.From(data, "Never", () => new("Parent of all items that cannot be randomized.", new()));
+
+        /// <summary>
+        /// Items which trigger scans
+        /// </summary>
+        public ItemID Item_Scans
+            => ItemID.From(data, "Scan Items", data => new("Items which trigger scans", data.Item_All));
+
+        /// <summary>
+        /// Items which cause players to teleport
+        /// </summary>
+        public ItemID Item_Warps
+            => ItemID.From(data, "Warp Items", data => new("Items which cause players to teleport", data.Item_All));
+
+        /// <summary>
+        /// Items representing codes of some kind; for example, terminal passwords and reactor codes.
+        /// </summary>
+        public ItemID Item_Codes
+            => ItemID.From(data, "Code Items", data => new("Items representing codes of some kind; for example, terminal passwords and reactor codes.", data.Item_All));
     }
 }
 
@@ -104,42 +111,67 @@ public class CommonTagsHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddTagOptions(Game.Data data)
     {
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            DisplayName = "Empty Location Randomization",
-            Description =
+        // Ensuring these special tags end up defined, just for simplicity's sake
+        CommonTagsHandler_Tags.get_Region_Always(data);
+        CommonTagsHandler_Tags.get_Region_Never(data);
+        CommonTagsHandler_Tags.get_Location_Always(data);
+        CommonTagsHandler_Tags.get_Location_Never(data);
+        CommonTagsHandler_Tags.get_Item_Always(data);
+        CommonTagsHandler_Tags.get_Item_Never(data);
+
+        LocationID loc = data.Location_Empty;
+        data.AddOption(new OptionLocationTagOption(
+            displayName: "Empty Location Randomization",
+            description:
                 "Customize the randomization of all supported empty locations."
                 + "\nOne empty location is added for each \"floating\" item that gets randomized to maintain"
                 + " the item:location balance required by Archipelago."
                 + "\nEnabling randomization of an empty location makes it available as a candidate for a floating item."
-                + OptionWhiteOrBlacklist.DESC_SUFFIX,
-            Category = Option.DEFAULT_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 0,
-            Tag = data.Tag_EmptyLocations,
-        });
+                + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, loc),
+            condition: new(),
+            defaultValue: 0,
+            tag: loc
+        ));
 
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            DisplayName = "Warp Randomization",
-            Description = "Customize the randomization of all supported warps." + OptionWhiteOrBlacklist.DESC_SUFFIX,
-            Category = Option.DEFAULT_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 2,
-            Tag = data.Tag_WarpItems,
-        });
+        ItemID item = data.Item_Warps;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Warp Randomization",
+            description: "Customize the randomization of all supported warps." + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, item),
+            condition: new(),
+            defaultValue: 2,
+            tag: item
+        ));
 
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            DisplayName = "Scan Randomization",
-            Description = 
-                "Customize the randomization of all supported scans." 
+        item = data.Item_Scans;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Scan Randomization",
+            description:
+                "Customize the randomization of all supported scans."
                 + "\nCurrently, this includes event scans and certain objective scans, but not door scans."
-                + OptionWhiteOrBlacklist.DESC_SUFFIX,
-            Category = Option.DEFAULT_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 2,
-            Tag = data.Tag_ScanItems,
-        });
+                + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, item),
+            condition: new(),
+            defaultValue: 2,
+            tag: item
+        ));
+
+        item = data.Item_Codes;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Code Randomization",
+            description:
+                "Customize the randomization of all supported codes."
+                + "\nThis is currently reactor codes and terminal password."
+                + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, item),
+            condition: new(),
+            defaultValue: 0,
+            tag: item
+        ));
     }
 }

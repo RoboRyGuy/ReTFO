@@ -15,26 +15,67 @@ public static class TimedSequenceHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_TimedSequenceMainLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Timed Sequence Main Locations", "Locations containing the main terminal for a timed sequence", gd.Tag_Never));
+        public LocationID Location_TimedSequenceMains
+            => LocationID.From(data, "Timed Sequence Main Terminal Locations", data => new("Locations containing the main terminal for a timed sequence", data.Location_Never));
 
-        public TagResolver Tag_TimedSequenceMainItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Timed Sequence Main Items", "Timed Sequence main terminal items", gd.Tag_Never));
+        public ItemID Item_TimedSequenceMains
+            => ItemID.From(data, "Timed Sequence Main Terminals", data => new("The main (central) terminals for timed sequences", data.Item_Never));
 
-        public TagResolver Tag_TimedSequenceVerifyLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Timed Sequence Verify Locations", "Locations containing a verify terminal for a timed sequence", gd.Tag_Never));
+        public LocationID Location_TimedSequenceVerifies
+            => LocationID.From(data, "Timed Sequence Verify Terminal Locations", data => new("Locations containing a verify terminal for all timed sequences", data.Location_Never));
 
-        public TagResolver Tag_TimedSequenceVerifyItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Timed Sequence Verify Items", "Timed Sequence verify terminal items", gd.Tag_Never));
+        public ItemID Item_TimedSequenceVerifies
+            => ItemID.From(data, "Timed Sequence Verify Terminals", data => new("The verification terminals for timed sequences", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.TimedTerminalSequence;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension(Objective.Data data)
     {
-        public TagResolver Tag_TimedSequenceVerifyLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Timed Sequence Verify Locations", "Locations containing a verify terminal for a particular timed sequence", gd.Tag_TimedSequenceVerifyLocations));
+        public RegionID Region_TimedRoundStarted(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Start Round {count}", data => new("Region entered by starting a particular timed sequence verification round", data.Region_Objective));
 
-        public TagResolver Tag_TimedSequenceVerifyItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Timed Sequence Verify Items", "Timed Sequence verify terminal items for a particular objective", gd.Tag_TimedSequenceVerifyItems));
+        public RegionID Region_TimedRoundFailed(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Fail Round {count}", data => new("Region entered by failing a particular timed sequence verification round", data.Region_Objective));
+
+        public RegionID Region_TimedRoundCompleted(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Complete Round {count}", data => new("Region entered by successfully completing a particular timed sequence verification round", data.Region_Objective));
+
+
+        public LocationID Location_TimedSequenceVerifies_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Timed Sequence Verify Terminal Locations", data => new("Locations containing a verify terminal for a particular timed sequence", data.Location_TimedSequenceVerifies));
+
+        public ItemID Item_TimedSequenceVerifies_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Timed Sequence Verify Terminals", data => new("Timed Sequence verify terminal items for a particular objective", data.Item_TimedSequenceVerifies));
+
+
+        public LocationID Location_TimedSequenceMain_Instance
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Timed Sequence Main Terminal Location", data => new("Locations containing a verify terminal for a particular timed sequence", data.Location_TimedSequenceVerifies));
+
+        public ItemID Item_TimedSequenceMain_Instance
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Timed Sequence Main Terminal", 
+                data => new("Timed Sequence verify terminal items for a particular objective", data.Item_TimedSequenceVerifies),
+                new TimedSequenceHandler.TimedSequence_MainItem(data.Region_Objective)
+            );
+
+        public LocationID Location_TimedSequenceVerify_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Timed Sequence Verify Terminal Location #{count}", data => new("Locations containing a verify terminal for a particular timed sequence", data.Location_TimedSequenceVerifies));
+
+        public ItemID Item_TimedSequenceVerify_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Timed Sequence Verify Terminal #{count}", 
+                data => new("Timed Sequence verify terminal items for a particular objective", data.Item_TimedSequenceVerifies),
+                new TimedSequenceHandler.TimedSequence_VerifyItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -55,131 +96,41 @@ public class TimedSequenceHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    public class TimedSequence_MainItem : Item
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.TimedTerminalSequence;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public TimedSequence_MainItem(RegionID objective)
+            : base(new ItemData() { IsProgression = true })
         {
-            CheckIsCorrectObjective(data);
-            return $"Perform {data.Objective.TimedTerminalSequence_NumberOfRounds}-Round Timed Sequence";
+            ObjectiveRegion = objective;
+        }
+        
+        public RegionID ObjectiveRegion { get; private init; }
+    }
+
+    public class TimedSequence_VerifyItem : Item
+    {
+        public TimedSequence_VerifyItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
+        {
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
+        public RegionID ObjectiveRegion { get; private init; }
 
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
+        public int Count { get; private init; }
     }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached by starting a Timed Sequence
-        public static string StartRound(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Start Round {count}";
-
-        // Region reached by failing a Time Sequence
-        public static string FailRound(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Fail Round {count}";
-
-        // Region reached by completing a Time Sequence
-        public static string CompleteRound(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Complete Round {count}";
-    }
-
-    private static class TimedSequence_MainLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Main Terminal Location", "Location of a particular terminal", gd.Tag_TimedSequenceMainLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private static class TimedSequence_VerifyLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Verify Terminal Location ${count}", "Location of a particular terminal", data.Tag_TimedSequenceVerifyLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private class TimedSequence_MainItem : Item
-    {
-        public TimedSequence_MainItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
-        {
-            ObjectiveData = data;
-        }
-
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Main Terminal Item", "A particular terminal", gd.Tag_TimedSequenceMainItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    private class TimedSequence_VerifyItem : Item
-    {
-        public TimedSequence_VerifyItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
-        {
-            ObjectiveData = data;
-        }
-
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Verify Terminal Item", "A particular terminal", data.Tag_TimedSequenceVerifyItems_PerObjective));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TimedSequenceVerifyItems_PerObjective);
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetMainTerminal(Objective.Data data)
-    {
-        if (data.TryLookupItem(TimedSequence_MainItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new TimedSequence_MainItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static KeyedItem GetVerifyTerminal(Objective.Data data)
-    {
-        if (data.TryLookupItem(TimedSequence_VerifyItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new TimedSequence_VerifyItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
 
     // Objective requiring the completion of one or more timed terminal sequences
     [Objective.Callback]
     public void HandleTimedSequenceObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.TimedTerminalSequence)
             return;
 
         if (data.Objective.TimedTerminalSequence_NumberOfRounds < 1)
         {
-            FeatureLogger.Error($"{data.ObjectiveName()}: Cannot have fewer than 1 TimedSequence round!");
+            FeatureLogger.Error($"{data.ObjectiveName}: Cannot have fewer than 1 TimedSequence round!");
             return;
         }
 
@@ -188,103 +139,94 @@ public class TimedSequenceHandler : ArchipelagoFeature
         var regionSets = data.PlacementsToTerminalRegions(data.ObjectiveData.ZonePlacementDatas);
 
         // Place main terminal in world
-        KeyedItem mainTerminalItem = GetMainTerminal(data);
-        data.AddLocation(
-            TimedSequence_MainLocation.MakeTag(data),
+        ItemID mainTerminalItem = data.Item_TimedSequenceMain_Instance;
+        data.Locations.CreateValue(
+            data.Location_TimedSequenceMain_Instance,
             regionSets.First().Select(info => info.Region).ToList(),
-            TimedSequence_MainLocation.MakeRandData(),
-            mainTerminalItem.ID
+            new LocationData() { IsAutoDiscovered = true },
+            mainTerminalItem
         );
 
         // Place verificaiton terminals in world
-        KeyedItem verifyTerminalItem = GetVerifyTerminal(data);
         int count = 0;
         foreach (var regionSet in regionSets.Skip(1))
         {
             ++count;
-            data.AddLocation(
-                TimedSequence_VerifyLocation.MakeTag(data, count),
+            data.Locations.CreateValue(
+                data.Location_TimedSequenceVerify_Instance(count),
                 regionSet.Select(i => i.Region).ToList(),
-                TimedSequence_VerifyLocation.MakeRandData(),
-                verifyTerminalItem.ID
+                new LocationData() { IsAutoDiscovered = true },
+                data.Item_TimedSequenceVerify_Instance(count)
             );
         }
 
         // Note: The first iteration (i = 1) has been unrolled so that we can add checks to the paths
-        string startName, failName, succeedName;
         RegionID startRegion, failRegion, succeedRegion;
         int i = 1;
-
-        startName = ThisRegions.StartRound(data, i);
-        startRegion = data.LookupOrCreateRegion(startName);
+        startRegion = data.Region_TimedRoundStarted(i);
         data.AddPath(new Path()
         {
-            StartingRegion = data.ObjectiveStartRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = startRegion,
-            ReqItem = mainTerminalItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, mainTerminalItem),
             ReqCount = 1u,
         });
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count >= i)
-            data.ProcessEvents(startRegion, startName, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1]);
+            data.ProcessEvents(startRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1]);
 
-        failName = ThisRegions.FailRound(data, i);
-        failRegion = data.LookupOrCreateRegion(failName);
+        failRegion = data.Region_TimedRoundFailed(i);
         data.AddPath(new Path()
         {
             StartingRegion = startRegion,
             EndingRegion = failRegion,
         });
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceFail.Count >= i)
-            data.ProcessEvents(failRegion, failName, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i - 1]);
+            data.ProcessEvents(failRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i - 1]);
 
-        succeedName = ThisRegions.CompleteRound(data, i);
-        succeedRegion = data.LookupOrCreateRegion(succeedName);
+        succeedRegion = data.Region_TimedRoundCompleted(i);
         data.AddPath(new Path()
         {
             StartingRegion = startRegion,
             EndingRegion = succeedRegion,
-            ReqItem = verifyTerminalItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Category, data.Item_TimedSequenceVerifies),
             ReqCount = (uint)count,
         });
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceDone.Count >= i)
-            data.ProcessEvents(succeedRegion, succeedName, data.Objective.TimedTerminalSequence_EventsOnSequenceDone[i - 1]);
+            data.ProcessEvents(succeedRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceDone[i - 1]);
 
         for (i = 2; i <= data.Objective.TimedTerminalSequence_NumberOfRounds; i++)
         {
-            startName = ThisRegions.StartRound(data, i);
-            startRegion = data.LookupOrCreateRegion(startName);
+            startRegion = data.Region_TimedRoundStarted(i);
             data.AddPath(new Path()
             {
-                StartingRegion = data.ObjectiveStartRegion,
+                StartingRegion = succeedRegion,
                 EndingRegion = startRegion,
             });
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count >= i)
-                data.ProcessEvents(startRegion, startName, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1]);
+                data.ProcessEvents(startRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceStart[i - 1]);
 
-            failName = ThisRegions.FailRound(data, i);
-            failRegion = data.LookupOrCreateRegion(failName);
+            failRegion = data.Region_TimedRoundFailed(i);
             data.AddPath(new Path()
             {
                 StartingRegion = startRegion,
                 EndingRegion = failRegion,
             });
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceFail.Count >= i)
-                data.ProcessEvents(failRegion, failName, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i - 1]);
+                data.ProcessEvents(failRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceFail[i - 1]);
 
-            succeedName = ThisRegions.CompleteRound(data, i);
-            succeedRegion = data.LookupOrCreateRegion(succeedName);
+            succeedRegion = data.Region_TimedRoundCompleted(i);
             data.AddPath(new Path()
             {
                 StartingRegion = startRegion,
                 EndingRegion = succeedRegion,
             });
             if (data.Objective.TimedTerminalSequence_EventsOnSequenceDone.Count >= i)
-                data.ProcessEvents(succeedRegion, succeedName, data.Objective.TimedTerminalSequence_EventsOnSequenceDone[i - 1]);
+                data.ProcessEvents(succeedRegion, data.Objective.TimedTerminalSequence_EventsOnSequenceDone[i - 1]);
         }
 
         // OnActivateOnSolveItem triggers when the full sequence is compelte
         if (data.Objective.OnActivateOnSolveItem && data.Objective.EventsOnActivate.Any())
-            data.ProcessEvents(succeedRegion, succeedName, data.Objective.EventsOnActivate);
+            data.ProcessEvents(succeedRegion, data.Objective.EventsOnActivate);
 
         // Place CompleteObjective item in the final succeed region
         SharedObjectiveHandler.AddObjectiveCompleteItem(data, succeedRegion);

@@ -18,7 +18,7 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 /// </list>
 /// </summary>
 [DataContract]
-public struct Path : INullable
+public readonly struct Path : INullable
 {
     /// <summary>
     /// Constructs a default (null) path
@@ -26,10 +26,23 @@ public struct Path : INullable
     public Path() { }
 
     /// <summary>
+    /// Copy constructor
+    /// </summary>
+    public Path(Path source)
+    {
+        Name = source.Name;
+        StartingRegion = source.StartingRegion;
+        EndingRegion = source.EndingRegion;
+        ReqItem = source.ReqItem;
+        ReqCount = source.ReqCount;
+        AlternateItem = source.AlternateItem;
+    }
+
+    /// <summary>
     /// Simple requires need to traverse a path
     /// </summary>
     [DataContract]
-    public struct RequiredItem : INullable
+    public readonly struct RequiredItem : INullable
     {
         /// <summary>
         /// Type of requirements possibly needed
@@ -42,30 +55,32 @@ public struct Path : INullable
             None,
 
             /// <summary>
-            /// Requires a certain number of items
+            /// A path req that cannot be met
+            /// </summary>
+            Blocked,
+
+            /// <summary>
+            /// Requires a certain number of a specific item, specified exactly by ID
             /// </summary>
             Item,
 
             /// <summary>
-            /// Requires a certain number of items, all of which are part of a specified category
+            /// Requires a certain number of a specific item, specified exactly by ID.
+            /// Passing through the path consumes the specified item, preventing its reuse.
             /// </summary>
-            Category,
+            ItemConsumed,
 
             /// <summary>
-            /// A path req that cannot be met
+            /// Requires a certain number of items which are all children of one shared category ID.
+            /// This includes items in the provided category.
             /// </summary>
-            Blocked,
+            Category,
         }
-
-        /// <summary>
-        /// Default constructor; constructs a null RequiredItem
-        /// </summary>
-        public RequiredItem() { }
 
         /// <summary>
         /// Constructs a path requirements struct using the given target and target type
         /// </summary>
-        public RequiredItem(eType type, RandomizationTag target)
+        public RequiredItem(eType type, ItemID target)
         {
             Type = type;
             Target = target;
@@ -75,16 +90,15 @@ public struct Path : INullable
         /// The type of requirement this represents
         /// </summary>
         [DataMember(Name = "type")]
-        public eType Type { get; init; } = eType.None;
+        public eType Type { get; private init; } = eType.None;
 
         /// <summary>
         /// The tag utilized to identify the target
         /// </summary>
         [DataMember(Name = "target")]
-        public RandomizationTag Target { get; init; } = new();
+        public ItemID Target { get; private init; } = new();
 
         public bool IsNull => Type == eType.None;
-
     }
 
     /// <summary>
@@ -117,31 +131,31 @@ public struct Path : INullable
     /// Optional name for this path
     /// </summary>
     [DataMember(Name = "name")]
-    public string? Name { get; set; } = null;
+    public string? Name { get; init; } = null;
 
     /// <summary>
     /// Region this path starts in
     /// </summary>
     [DataMember(Name = "starting_region")]
-    public RegionID StartingRegion { get; set; } = new();
+    public RegionID StartingRegion { get; init; } = new();
 
     /// <summary>
     /// Region this path ends in
     /// </summary>
     [DataMember(Name = "ending_region")]
-    public RegionID EndingRegion { get; set; } = new();
+    public RegionID EndingRegion { get; init; } = new();
 
     /// <summary>
     /// Requirements for accessing this path
     /// </summary>
     [DataMember(Name = "req_item")]
-    public RequiredItem ReqItem { get; set; } = new();
+    public RequiredItem ReqItem { get; init; } = new(RequiredItem.eType.None, new ItemID());
 
     /// <summary>
     /// How many ReqItems are needed to traverse this path.
     /// </summary>
     [DataMember(Name = "req_count")]
-    public uint ReqCount { get; set; } = 0;
+    public uint ReqCount { get; init; } = 0;
 
     /// <summary>
     /// Alternate item required to traverse this path
@@ -152,7 +166,7 @@ public struct Path : INullable
     /// </list>
     /// </summary>
     [DataMember(Name = "alt_item")]
-    public RequiredItem AlternateItem { get; set; } = new();
+    public RequiredItem AlternateItem { get; init; } = new(RequiredItem.eType.Blocked, new ItemID());
 
     /// <summary>
     /// If this path is null. Considered true if the starting and ending region are the same.
@@ -170,134 +184,14 @@ public struct Path : INullable
 ///  for looking up a Path instance in GameData.
 /// </summary>
 [DataContract]
-public struct PathID : INullable, IId, IIndex, IComparable<PathID>, IEquatable<PathID>
+public struct PathID : ITagID, IEquatable<PathID>, IComparable<PathID>
 {
-    public PathID () { }
-    [DataMember(Name = "value")] 
-    private readonly long m_value = 0;
+    [DataMember(Name = "id")]
+    public uint ID { get; init; }
 
-    public bool IsNull => m_value == 0;
-    public long AsId { get => m_value; init => m_value = value; }
-    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
-    public int CompareTo(PathID other) => m_value.CompareTo(other.m_value);
-    public bool Equals(PathID other) => m_value.Equals(other.m_value);
-    public override bool Equals([NotNullWhen(true)] object? obj) => obj is PathID id && Equals(id);
-    public override int GetHashCode() => m_value.GetHashCode();
-    public override string ToString() => $"PathID: {m_value}";
-}
-
-/// <summary>
-/// Wrapper around a path struct which makes it immutable.
-/// This is often used as a return value where modifying it wouldn't make sense.
-/// </summary>
-[DataContract]
-public struct ReadOnlyPath : INullable
-{
-    /// <summary>
-    /// Constructs a new ReadOnlyPath wrapping around the source path object.
-    /// </summary>
-    /// <param name="source"></param>
-    public ReadOnlyPath(Path source) => m_path = source;
-
-    /// <summary>
-    /// Internal path which should be treated as immutable
-    /// </summary>
-    [DataMember(Name = "contained_path")] 
-    private readonly Path m_path;
-
-    /// <inheritdoc cref="Path.Name"/>
-    public string? Name => m_path.Name;
-
-    /// <inheritdoc cref="Path.StartingRegion"/>
-    public RegionID StartingRegion => m_path.StartingRegion;
-
-    /// <inheritdoc cref="Path.EndingRegion"/>
-    public RegionID EndingRegion => m_path.EndingRegion;
-
-    /// <inheritdoc cref="Path.ReqItem"/>
-    public Path.RequiredItem ReqItem => m_path.ReqItem;
-
-    /// <inheritdoc cref="Path.ReqCount"/>
-    public uint ReqCount => m_path.ReqCount;
-
-    /// <inheritdoc cref="Path.AlternateItem"/>
-    public Path.RequiredItem AlternateItem => m_path.AlternateItem;
-
-    /// <inheritdoc cref="Path.IsNull"/>
-    public bool IsNull => m_path.IsNull;
-
-    /// <inheritdoc cref="Path.ToString"/>
-    public override string ToString() => m_path.ToString();
-
-    /// <summary>
-    /// Converts this to a mutable path, allowing modifications.
-    /// Note that this creates a copy, and is not the same as modifying the original path.
-    /// </summary>
-    /// <returns></returns>
-    public Path MakeMutable() => m_path;
-
-    /// <summary>
-    /// Implicitly constructs a ReadOnlyPath from a mutable path
-    /// </summary>
-    public static implicit operator ReadOnlyPath(Path source) => new(source);
-}
-
-/// <summary>
-/// A Path with an ID associated with it
-/// </summary>
-[DataContract]
-public struct KeyedPath : INullable
-{
-    /// <summary>
-    /// Create a new null KeyedPath
-    /// </summary>
-    public KeyedPath()
-    {
-        ID = new();
-        Path = new();
-    }
-
-    /// <summary>
-    /// Create a new KeyedPath with the given path and ID
-    /// </summary>
-    public KeyedPath(PathID id, ReadOnlyPath path)
-    {
-        ID = id;
-        Path = path;
-    }
-
-    /// <summary>
-    /// Unique ID of the Path
-    /// </summary>
-    [DataMember(Name = "id")] public PathID ID { get; init; }
-
-    /// <summary>
-    /// True if null (contains no path)
-    /// </summary>
-    public bool IsNull => ID.IsNull;
-
-    /// <summary>
-    /// The path object with the given ID
-    /// </summary>
-    [DataMember(Name = "path")] public ReadOnlyPath Path { get; init; }
-
-    // Below are helper for accessing data in the path
-
-    /// <inheritdoc cref="Path.Name"/>
-    public string? Name => Path.Name;
-
-    /// <inheritdoc cref="Path.StartingRegion"/>
-    public RegionID StartingRegion => Path.StartingRegion;
-
-    /// <inheritdoc cref="Path.EndingRegion"/>
-    public RegionID EndingRegion => Path.EndingRegion;
-
-    /// <inheritdoc cref="Path.ReqItem"/>
-    public Path.RequiredItem ReqItem => Path.ReqItem;
-
-    /// <inheritdoc cref="Path.ReqCount"/>
-    public uint ReqCount => Path.ReqCount;
-
-    /// <inheritdoc cref="Path.AlternateItem"/>
-    public Path.RequiredItem AlternateItem => Path.AlternateItem;
+    public bool IsNull => ID == 0;
+    public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+    public bool Equals(PathID other) => ID == other.ID;
+    public int CompareTo(PathID other) => ID.CompareTo(other.ID);
+    public override string ToString() => $"PathID {ID}";
 }

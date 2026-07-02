@@ -1,6 +1,5 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using CellMenu;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppInterop.Runtime.InteropTypes;
@@ -9,6 +8,7 @@ using ReTFO.Archipelago.ModdedInstanceData;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -17,7 +17,6 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago;
 
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 // Marks a class as needing to be injected to Il2Cpp. Optionally accepts a list of interfaces the type implements
@@ -65,7 +64,7 @@ public class Plugin : BasePlugin
         _plugin = this;
         harmony.PatchAll(GetType());
 
-        var types = Assembly.GetExecutingAssembly().GetTypes();
+        var types = Assembly.GetExecutingAssembly().GetTypes().Where(t => t.DeclaringType == null);
         InjectRecursive(types);
         PatchRecursive(types);
         AddProcessors(MidManager);
@@ -79,7 +78,7 @@ public class Plugin : BasePlugin
         return true;
     }
 
-    private void InjectRecursive(Type[] types)
+    private void InjectRecursive(IEnumerable<Type> types)
     {
         foreach (var type in types)
         {
@@ -97,12 +96,19 @@ public class Plugin : BasePlugin
         }
     }
 
-    private void PatchRecursive(Type[] types)
+    private void PatchRecursive(IEnumerable<Type> types)
     {
         foreach (Type type in types)
         {
             if (type.GetCustomAttribute<HarmonyPatch>() == null) continue;
-            harmony.PatchAll(type);
+            try
+            {
+                harmony.PatchAll(type);
+            }
+            catch
+            {
+                throw;
+            }
             PatchRecursive(type.GetNestedTypes(AccessTools.all));
         }
     }
@@ -169,19 +175,4 @@ public class Plugin : BasePlugin
         get => m_midManager;
         protected set => m_midManager = value;
     }
-
-    /// <summary>
-    /// Debug patch I added to try and figure out a checkpoint bug.
-    /// Since I've added it, though, the bug has not occured. So, I guess it fixes the bug?
-    /// The bug: When loading a checkpoint, it gets stuck in a loop (bricking the game)
-    /// You can tell if it happens because the screen will flash white a lot and the
-    ///  short "checkpoint loaded" beep will play over and over
-    /// </summary>
-    [HarmonyPatch(typeof(SNet_Replication), nameof(SNet_Replication.RecallBytes))]
-    [HarmonyPrefix]
-    public static void PreRecallBytes(SNet_Replication __instance, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> bytes, uint size)
-    {
-
-    }
-
 }

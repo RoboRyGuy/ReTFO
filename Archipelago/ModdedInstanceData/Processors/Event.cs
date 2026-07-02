@@ -1,10 +1,12 @@
-﻿
-using GameData;
+﻿using GameData;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+
+using EventList = Il2CppSystem.Collections.Generic.List<GameData.WardenObjectiveEventData>;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -12,67 +14,95 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 
 public static class Event
 {
+    private record class ScopeData
+    {
+        public ScopeData(EventList rawEvents, int eventStart, int eventCount)
+        {
+            RawEvents = rawEvents;
+            EventStart = eventStart;
+            EventCount = eventCount;
+        }
+
+        public EventList RawEvents { get; init; }
+        public int EventStart { get; set; }
+        public int EventCount { get; set; }
+    }
+
     // Interface class passed to processing giving access to necessary data
     public class Data : Layer.Data, IList<WardenObjectiveEventData>
     {
         /// <summary>
-        /// Region the event occurs in
+        /// The custom data stored in the region object for this data
         /// </summary>
-        public RegionID EventRegion { get; private init; }
+        private readonly ScopeData EventScopeData;
 
         /// <summary>
-        /// Unique name for the event
+        /// The region associated with this event
         /// </summary>
-        public string EventName { get; private init; }
-
-        /// <summary>
-        /// Raw list of events
-        /// </summary>
-        protected Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData>? RawEvents { get; private init; }
-        
-        /// <summary>
-        /// Index of the first event in the list
-        /// </summary>
-        public int EventStart { get; protected set; }
-
-        /// <summary>
-        /// How many events are being processed, starting with EventStart
-        /// </summary>
-        public int EventCount { get; protected set; }
+        public RegionID Region_Event { get; private init; }
 
         /// <summary>
         /// Construct a new data with the given parameters
         /// </summary>
-        public Data(
-            Layer.Data data,
-            RegionID eventRegion, 
-            string eventName,
-            Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> rawEvents,
-            int eventStart = 0,
-            int eventCount = -1
-        ) 
+        public Data(Layer.Data data, RegionID region, EventList rawEvents, int eventStart = 0, int eventCount = -1) 
             : base(data)
         {
-            EventRegion = eventRegion;
-            EventName = eventName;
-            RawEvents = rawEvents;
-            EventStart = eventStart;
-            EventCount = eventCount == -1 ? rawEvents.Count - eventStart : eventCount;
+            Region_Event = region;
+            if (Regions.LookUpValue(region).RegionData != null)
+                throw new NotSupportedException("Cannot create new event data wrapping a region which contains data already");
+            Regions.SetData(region, EventScopeData = new ScopeData(rawEvents, eventStart, eventCount == -1 ? rawEvents.Count : eventCount));
+        }
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid event region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data, data.Regions.LookUpDefinition(region).Parent)
+        {
+            Region_Event = region;
+            EventScopeData = Regions.GetData<ScopeData>(region);
         }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Event.Data other)
-            : base(other as Layer.Data)
+            : base(other)
         {
-            EventRegion = other.EventRegion;
-            EventName = other.EventName;
-            RawEvents = other.RawEvents;
-            EventStart = other.EventStart;
-            EventCount = other.EventCount;
+            Region_Event = other.Region_Event;
+            EventScopeData = other.EventScopeData;
         }
 
+        /// <summary>
+        /// Raw list of events
+        /// </summary>
+        protected EventList RawEvents => EventScopeData.RawEvents;
+
+        /// <summary>
+        /// The actual Il2Cpp type of the events in the event list; it's allowed for the list to refer to only derived types
+        /// </summary>
+        public Il2CppSystem.Type EventType 
+        { 
+            get => m_eventType ??= RawEvents.GetIl2CppType().GetGenericArguments()[0]; 
+            init => m_eventType = value; 
+        }
+        private Il2CppSystem.Type? m_eventType = null;
+
+        /// <summary>
+        /// Index of the first event in the list
+        /// </summary>
+        public int EventStart { get => EventScopeData.EventStart; protected set => EventScopeData.EventStart = value; }
+
+        /// <summary>
+        /// How many events are being processed, starting with EventStart
+        /// </summary>
+        public int EventCount { get => EventScopeData.EventCount; protected set => EventScopeData.EventCount = value; }
+
+        /// <summary>
+        /// Gets the name of the event
+        /// </summary>
+        public string EventName => Regions.LookUpName(Region_Event);
 
         /// <summary>
         /// Grants access to events via an enumerator
@@ -82,6 +112,15 @@ public static class Event
 
         // Implementing IList<WardenObjectiveEventData> - Used to give access to the event set currently being processed
         #region IList<WardenObjectiveEventData>
+        private void CheckEntry(WardenObjectiveEventData data)
+        {
+            if (!EventType.IsAssignableFrom(data.GetIl2CppType()))
+                throw new ArgumentException(
+                    $"Cannot perform add or modify operation using object of type {data.GetIl2CppType().FullName} on a list of {EventType.FullName}"
+                    + "\nConsider using the Event.Data.EventType property to ensure your event data is correctly typed."
+                );
+        }
+
         public int Count => EventCount;
         public bool IsReadOnly => false;
         public WardenObjectiveEventData this[int index]
@@ -94,6 +133,7 @@ public static class Event
             }
             set
             {
+                CheckEntry(value);
                 if (index < 0 || index >= EventCount)
                     throw new ArgumentOutOfRangeException(nameof(index));
                 RawEvents![EventStart + index] = value;
@@ -105,6 +145,7 @@ public static class Event
 
         public void Insert(int index, WardenObjectiveEventData item)
         {
+            CheckEntry(item);
             if (index < 0 || index > EventCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
             RawEvents!.Insert(EventStart + index, item);
@@ -121,6 +162,7 @@ public static class Event
 
         public void Add(WardenObjectiveEventData item)
         {
+            CheckEntry(item);
             RawEvents!.Insert(EventStart + EventCount, item);
             ++EventCount;
         }
@@ -165,7 +207,7 @@ public static class Event
         /// <summary>
         /// Standard constructor
         /// </summary>
-        public Wrapper(Layer.Data layerData, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
+        public Wrapper(Layer.Data layerData, EventList events)
         {
             this.layerData = layerData;
             this.events = events;
@@ -186,7 +228,7 @@ public static class Event
         }
 
         private readonly Layer.Data layerData;
-        private readonly Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events;
+        private readonly EventList events;
         private int eventStart;
         private int eventCount;
 
@@ -216,16 +258,15 @@ public static class Event
         /// Process the current set of events; optionally create a new set if necessary
         /// </summary>
         /// <param name="eventRegion">Region the events occur in</param>
-        /// <param name="eventSource">Unique name for the event source</param>
         /// <param name="extendIfNecessary">If true and at the end of the event list, extend the list using an event break</param>
-        public void Process(RegionID eventRegion, string eventSource, bool extendIfNecessary = false)
+        public void Process(RegionID eventRegion, bool extendIfNecessary = false)
         {
             if (IsDone)
             {
                 if (!extendIfNecessary) return;
                 events.Add(new WardenObjectiveEventData() { Type = eWardenObjectiveEventType.EventBreak });
             }
-            Data data = new Data(layerData, eventRegion, eventSource, events, eventStart, eventCount);
+            Data data = new Data(layerData, eventRegion, events, eventStart, eventCount);
             layerData.EventProcessor.Process(data);
             eventStart = data.EventStart;
             eventCount = data.EventCount;
@@ -264,15 +305,15 @@ public static class Event
         /// <summary>
         /// Wrap any list of events for processing with respct to event breaks
         /// </summary>
-        public Wrapper WrapEvents(Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
+        public Wrapper WrapEvents(EventList events)
             => new Wrapper(layerData, events);
 
         /// <summary>
         /// Quickly process a full list of events. Return the processed data
         /// </summary>
-        public Data ProcessEvents(RegionID eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events)
+        public Data ProcessEvents(RegionID eventRegion, EventList events)
         {
-            Data data = new Data(layerData, eventRegion, eventSource, events);
+            Data data = new Data(layerData, eventRegion, events);
             layerData.EventProcessor.Process(data);
             return data;
         }
@@ -280,9 +321,9 @@ public static class Event
         /// <summary>
         /// Process a custom list of events
         /// </summary>
-        public Data ProcessEvents(RegionID eventRegion, string eventSource, Il2CppSystem.Collections.Generic.List<WardenObjectiveEventData> events, int eventStart, int eventCount)
+        public Data ProcessEvents(RegionID eventRegion, EventList events, int eventStart, int eventCount)
         {
-            Data data = new Data(layerData, eventRegion, eventSource, events, eventStart, eventCount);
+            Data data = new Data(layerData, eventRegion, events, eventStart, eventCount);
             layerData.EventProcessor.Process(data);
             return data;
         }

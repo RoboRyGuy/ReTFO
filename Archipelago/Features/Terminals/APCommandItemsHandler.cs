@@ -96,11 +96,11 @@ public class APCommandItemsHandler : ArchipelagoFeature
             StateTracker stateTracker = StateTracker.Get();
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
 
-            IEnumerable<Tuple<ItemID, string>> items;
+            IEnumerable<(ItemID, string)> items;
             if ((param2?.Length ?? 0) == 0)
                 items = stateTracker.ItemsInTerminalSystem;
             else
-                items = stateTracker.ItemsInTerminalSystem.Where(pair => gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2!, StringComparison.OrdinalIgnoreCase));
+                items = stateTracker.ItemsInTerminalSystem.Where(pair => gameData.Items.LookUpName(pair.Item1).Contains(param2!, StringComparison.OrdinalIgnoreCase));
 
 
             if (!items.Any())
@@ -113,7 +113,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 terminal.AddLine(string.Empty);
                 terminal.AddLine(" <u>ITEM CODE</u>     <u>ITEM NAME</u>", false);
                 foreach (var item in items)
-                    terminal.AddLine($"{item.Item2}   {gameData.LookupTagDef(gameData.LookupItem(item.Item1).NameTag).Name}", false);
+                    terminal.AddLine($"{item.Item2}   {gameData.Items.LookUpName(item.Item1)}", false);
                 terminal.AddLine(string.Empty);
             }
         }
@@ -137,8 +137,8 @@ public class APCommandItemsHandler : ArchipelagoFeature
         {
             StateTracker stateTracker = StateTracker.Get();
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-            bool predicate(Tuple<ItemID, string> pair) 
-                => param2 == null ? true : gameData.LookupTagDef(gameData.LookupItem(pair.Item1).NameTag).Name.Contains(param2, StringComparison.OrdinalIgnoreCase);
+            bool predicate((ItemID, string) pair) 
+                => param2 == null ? true : gameData.Items.LookUpName(pair.Item1).Contains(param2, StringComparison.OrdinalIgnoreCase);
             var pairs = stateTracker.ItemsInTerminalSystem.Where(predicate).ToList();
             string firstMessage = (param2 == null || param2.Trim().Length == 0)
                 ? "Preparing all items to be claimed"
@@ -158,7 +158,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 void postMessage()
                     => terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, firstMessage, ClaimAllDelay, onWaitDoneSound: TerminalSoundType.Positive);
 
-                List<Action> claimActions = pairs.SelectMany(p => gameData.LookupItem(p.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal)).ToList();
+                List<Action> claimActions = pairs.SelectMany(p => gameData.Items.LookUpValueChecked(p.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal, p.Item1)).ToList();
                 stateTracker.ItemsInTerminalSystem.RemoveAll(predicate);
 
                 // Add actions to queue if it exists
@@ -216,9 +216,9 @@ public class APCommandItemsHandler : ArchipelagoFeature
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
             StateTracker stateTracker = StateTracker.Get();
-            var pair = stateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0);
+            var pair = stateTracker.ItemsInTerminalSystem.FirstOrDefault(pair => string.Compare(pair.Item2, param2, StringComparison.OrdinalIgnoreCase) == 0, (new ItemID(), string.Empty));
 
-            if (pair == null)
+            if (pair.Item1.IsNull)
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitNoDone, "Searching for item " + param2.ToUpper(), ClaimDelay, onWaitDoneSound: TerminalSoundType.Negative);
                 terminal.m_command.AddOutput("<#F00>Incorrect item code!</color>");
@@ -231,7 +231,7 @@ public class APCommandItemsHandler : ArchipelagoFeature
                 {
                     terminal = terminal.m_command.m_terminal,
                     currentIndex = 0,
-                    claimActions = stateTracker.MidManager.GetProcessedGameData().LookupItem(pair.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal).ToList(),
+                    claimActions = stateTracker.MidManager.GetProcessedGameData().Items.LookUpValueChecked(pair.Item1).OnRetrieveFromTerminalSystem(stateTracker, terminal, pair.Item1).ToList(),
                 };
                 terminal.m_command.OnEndOfQueue += helper.thisAction;
                 stateTracker.ItemsInTerminalSystem.Remove(pair);

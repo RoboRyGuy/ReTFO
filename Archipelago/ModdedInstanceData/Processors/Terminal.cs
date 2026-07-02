@@ -6,6 +6,7 @@ using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using DoublePlacementList = Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.List<GameData.ZonePlacementData>>;
@@ -18,11 +19,27 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 
 public static class Terminal
 {
+    private record class ScopeData
+    {
+        public ScopeData(int terminalIndex) => TerminalIndex = terminalIndex;
+        public int TerminalIndex { get; init; }
+    }
+
     /// <summary>
     /// Data class passed to processing
     /// </summary>
     public class Data : Zone.Data
     {
+        /// <summary>
+        /// The custom data stored in the region object for this data
+        /// </summary>
+        private readonly ScopeData TerminalScopeData;
+
+        /// <summary>
+        /// The region associated with this terminal
+        /// </summary>
+        public RegionID Region_Terminal { get; private init; }
+
         /// <summary>
         /// Create a new terminal data
         /// </summary>
@@ -31,31 +48,48 @@ public static class Terminal
         public Data(Zone.Data data, int terminalIndex)
             : base(data)
         {
-            TerminalIndex = terminalIndex;
+            string name
+                = (terminalIndex >= 0) ? $"{ZoneName} Terminal #{terminalIndex + 1}"
+                : $"{ZoneName} Terminal ({data.Zone!.SpecificTerminalSpawnDatas[-(terminalIndex + 1)].WorldEventObjectFilter})";
+            Region_Terminal = Regions.LookUpOrCreate(
+                data, name,
+                data => new("A region for a particular terminal in a zone", data.Region_Zone)
+            );
+            if (!Regions.GetDataAllowNull(Region_Terminal, out TerminalScopeData!))
+                Regions.SetData(Region_Terminal, TerminalScopeData = new(terminalIndex));
+        }
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid terminal region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data, data.Regions.LookUpDefinition(region).Parent)
+        {
+            Region_Terminal = region;
+            TerminalScopeData = Regions.GetData<ScopeData>(Region_Terminal);
         }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Terminal.Data other)
-            : base(other as Zone.Data)
+            : base(other)
         {
-            TerminalIndex = other.TerminalIndex;
+            Region_Terminal = other.Region_Terminal;
+            TerminalScopeData = other.TerminalScopeData;
         }
 
         /// <summary>
         /// Index of this terminal in the zone. 
         /// A negative index is for specific terminal placements. (-1 => specific terminal 0, etc)
         /// </summary>
-        public int TerminalIndex { get; private init; }
+        public int TerminalIndex => TerminalScopeData.TerminalIndex;
 
         /// <summary>
-        /// Name uniquely identifying this terminal
+        /// The unique name for this terminal
         /// </summary>
-        public string TerminalName
-           => IsStandardTerminal ? $"{ZoneName} Terminal #{TerminalIndex + 1}"
-            : IsSpecificTerminal ? $"{ZoneName} Terminal ({SpecificTerminalData.WorldEventObjectFilter})"
-            : throw new NotImplementedException();
+        public string TerminalName => Regions.LookUpName(Region_Terminal);
 
         /// <summary>
         /// True if this is a standard terminal
@@ -141,11 +175,15 @@ public static class Terminal
             => IdentifyingLogHandler.RetrieveDataFromLog(terminal);
 
         /// <summary>
-        /// A potentially expensive operation which attempts to get the spawned terminal instance.
-        /// Returns null on fail; assumes the correct expedition is loaded.
+        /// Attempt to get the relevant spawned terminal instance, assuming we're in the level
         /// </summary>
         public LG_ComputerTerminal? GetLG_Terminal()
-            => GetLG_Zone()?.TerminalsSpawnedInZone?.FirstOrDefault(t => (FromTerminal(t).Data?.TerminalIndex ?? 0) == TerminalIndex);
+        {
+            LG_Zone? zone = GetLG_Zone();
+            if (zone == null) return null;
+            IntPtr test = TerminalStartingStateData.Pointer;
+            return zone.TerminalsSpawnedInZone.FirstOrDefault(t => t.StartStateData.Pointer == test);
+        }
     }
 
     // Attribute used to mark static functions which should autoregister to this processor
@@ -196,7 +234,7 @@ public static class Terminal
         /// </summary>
         public IEnumerable<IEnumerable<RegionInfo>> PlacementsToTerminalRegions(Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.List<TerminalZoneSelectionData>> placements)
             => placements.Select(ps => ps.Select(p => layerData.FindZoneByIndex(p.LocalIndex).GetTerminal(p.TerminalIndex))
-                .Select(t => new RegionInfo() { Region = layerData.LookupOrCreateRegion(t.TerminalName), IsBad = t.TerminalStartingStateData.PasswordProtected }));
+                .Select(t => new RegionInfo() { Region = t.Region_Terminal, IsBad = t.TerminalStartingStateData.PasswordProtected }));
 
         /// <summary>
         /// Convert a list of placement lists into terminal regions
@@ -229,7 +267,7 @@ public static class Terminal
         {
             return layerData.FindZoneByPlacement(placement).TerminalDatas.Select(t => new RegionInfo()
             {
-                Region = layerData.LookupOrCreateRegion(t.TerminalName),
+                Region = t.Region_Terminal,
                 IsBad = t.TerminalStartingStateData.PasswordProtected,
             });
         }

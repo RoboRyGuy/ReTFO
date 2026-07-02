@@ -16,8 +16,31 @@ public static class FreeCheckpointsHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_FreeCheckpoints
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Free Checkpoint Items", "Items which trigger an immediate checkpoint when used", gd.Tag_FloatingItems));
+        /// <summary>
+        /// Parent tag of all checkpoint items
+        /// </summary>
+        public ItemID Item_Checkpoints
+            => ItemID.From(data, "Checkpoint Items", data => new("Items which trigger a checkpoint", data.Item_All));
+
+        /// <summary>
+        /// Parent tag of all floating checkpoitn items
+        /// </summary>
+        public ItemID Item_FreeCheckpoints
+            => ItemID.From(data, "Free Checkpoint Items", data => new("Items which trigger an immediate checkpoint when used", data.Item_Checkpoints));
+    }
+
+    extension (Expedition.Data data)
+    {
+        /// <summary>
+        /// A free checkpoint item for a particular expedition
+        /// </summary>
+        public ItemID Item_FreeCheckpoint_ByExpedition
+            => ItemID.From(
+                data,
+                $"{data.ExpeditionName} Free Checkpoint",
+                data => new("Item for a particular expedition which triggers an immediate checkpoint when used", data.Item_FreeCheckpoints),
+                new FreeCheckpointsHandler.FreeCheckpointItem(data.Region_Expedition)
+            );
     }
 }
 
@@ -36,36 +59,21 @@ public class FreeCheckpointsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
     
-    private class FreeCheckpointItem : Item
+    public class FreeCheckpointItem : TerminalItem
     {
-        public FreeCheckpointItem(Expedition.Data expedition)
-            : base(MakeTag(expedition), MakeRandData())
+        public FreeCheckpointItem(RegionID expedition)
+            : base(MakeRandData())
         {
-            ExpeditionData = expedition;
+            ExpeditionRegion = expedition;
         }
-
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Free Checkpoint", "Item which triggers a checkpoint when used", gd.Tag_FreeCheckpoints));
 
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true };
 
-        public Expedition.Data ExpeditionData { get; set; }
+        public RegionID ExpeditionRegion { get; private set; }
 
-        public override Expedition.Data? RequiredExpedition => ExpeditionData;
+        public override RegionID TargetRegion => ExpeditionRegion;
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
-        {
-            if (ExpeditionData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ExpeditionData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             yield return () =>
             {
@@ -82,20 +90,10 @@ public class FreeCheckpointsHandler : ArchipelagoFeature
         }
     }
 
-    public static KeyedItem GetCheckpointItem(Expedition.Data data)
-    {
-        if (data.TryLookupItem(FreeCheckpointItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new FreeCheckpointItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
     [Expedition.Callback]
     public void AddExpeditionUnlock(Expedition.Data data)
     {
-        KeyedItem reqItem = GetCheckpointItem(data);
-        data.AddFloatingItem(reqItem.ID);
+        data.AddFloatingItem(data.Region_Expedition, data.Item_FreeCheckpoint_ByExpedition);
     }
 
 }

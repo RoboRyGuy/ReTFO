@@ -2,8 +2,11 @@
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -11,19 +14,21 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
 
-using CullingSystem;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Buffers.Binary;
-using System.Security.Cryptography;
-using System.Text;
 
 public static class APCommandExtractHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_TerminalExtractLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Terminal Extract Locations", "Empty locations checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_EmptyLocations));
+        public LocationID Location_TerminalExtractions
+            => LocationID.From(data, "Terminal Extraction Locations", data => new("Locations checked by performing the extract and release commands on terminals", data.Location_Empty));
+    }
+
+    extension (Terminal.Data data)
+    {
+        public LocationID Location_TerminalExtraction_Instance(int count)
+            => LocationID.From(data, $"{data.TerminalName} Extraction Location #{count}", data => new("A particular terminal extraction location", data.Location_TerminalExtractions));
     }
 }
 
@@ -64,20 +69,12 @@ public class APCommandExtractHandler : ArchipelagoFeature
         APCommandHandler.UnregisterCommand(m_trashCommand ??= new());
     }
 
-    private static class TerminalExtractReleaseLocation
-    {
-        public static TagResolver MakeTag(Terminal.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Extract Location #{count}", "A location checked by running the EXTRACT and RELEASE commands on terminals", gd.Tag_TerminalExtractLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsEmpty = true };
-    }
-
     // Make the item codes used for extract / release
-    private static IEnumerable<Tuple<string, KeyedLocation>> MakeItemCodes(StateTracker stateTracker, LG_ComputerTerminal terminal)
+    private static IEnumerable<(string, LocationID)> MakeItemCodes(StateTracker stateTracker, LG_ComputerTerminal terminal)
     {
         Terminal.Data? terminalData = Terminal.Data.FromTerminal(terminal).Data;
         if (terminalData == null)
-            return Enumerable.Empty<Tuple<string, KeyedLocation>>();
+            return Enumerable.Empty<(string, LocationID)>();
 
         // Creating a deterministic hash based on the terminal name and the root seed
         // This gives use a unique random seed and ensures the same codes are generated for all players
@@ -101,20 +98,18 @@ public class APCommandExtractHandler : ArchipelagoFeature
         }
 
         Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-        Tuple<string, KeyedLocation>[] results = new Tuple<string, KeyedLocation>[ItemsPerTerminal];
+        (string, LocationID)[] results = new (string, LocationID)[ItemsPerTerminal];
         for (int i = 0; i < ItemsPerTerminal; i++)
-        {
-            RandomizationTag tag = TerminalExtractReleaseLocation.MakeTag(terminalData, i + 1);
-            if (!gameData.TryLookupLocation(tag, out var loc))
-                FeatureLogger.Error($"Failed to lookup terminal extraction location: {gameData.LookupTagDef(tag).Name}");
-            results[i] = Tuple.Create($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", loc);
-        }
+            results[i] = ($"{r()}{r()}{r()}{r()}-{r()}{r()}-{r()}{r()}{r()}{r()}", terminalData.Location_TerminalExtraction_Instance(i + 1));
 
         return results;
     }
 
-    private static bool IsEmpty(StateTracker stateTracker, Tuple<string, KeyedLocation> pair)
-        => pair.Item2.IsNull || pair.Item2.Location.ItemID.IsNull || stateTracker.HasLocation(pair.Item2.ID, false);
+    private static bool IsEmpty(StateTracker stateTracker, LocationID id)
+        => IsEmpty(stateTracker, id, stateTracker.GameData.Locations.LookUpValueChecked(id));
+
+    private static bool IsEmpty(StateTracker stateTracker, LocationID id, Location loc)
+        => id.IsNull || loc.ItemID.IsNull || stateTracker.HasLocation(id, false);
 
     /// <summary>
     /// Handles the EXTRACT command
@@ -141,10 +136,10 @@ public class APCommandExtractHandler : ArchipelagoFeature
             bool printedSomething = false;
             foreach (var pair in codes)
             {
-                bool isEmpty = IsEmpty(stateTracker, pair);
+                Location location = gameData.Locations.LookUpValueChecked(pair.Item2);
+                bool isEmpty = IsEmpty(stateTracker, pair.Item2, location);
 
-                Location location = pair.Item2.Location;
-                string itemName()   => location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(location.ItemID).NameTag).Name;
+                string itemName() => location.ScoutedItemName ?? gameData.Items.LookUpName(location.ItemID);
                 string itemGame()   => location.ScoutedGameName ?? "DEBUG";
                 string itemPlayer() => location.ScoutedPlayerName ?? StateTracker.Config.Username;
                 
@@ -155,7 +150,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
             }
             if (printedSomething)
             {
-                stateTracker.ScoutLocations(codes.Select(pair => pair.Item2.ID));
+                stateTracker.ScoutLocations(codes.Select(pair => pair.Item2));
                 terminal.AddLine($"\n   -- END OF LIST --", true);
             }    
             else
@@ -180,10 +175,10 @@ public class APCommandExtractHandler : ArchipelagoFeature
         public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
         {
             StateTracker stateTracker = StateTracker.Get();
-            var pair = MakeItemCodes(stateTracker, terminal).FirstOrDefault(p => string.Compare(p.Item1, param2, StringComparison.OrdinalIgnoreCase) == 0);
+            var pair = MakeItemCodes(stateTracker, terminal).FirstOrDefault(p => string.Compare(p.Item1, param2, StringComparison.OrdinalIgnoreCase) == 0, (string.Empty, new LocationID()));
             Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
 
-            if (pair == null)
+            if (pair.Item2.IsNull)
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitNoDone, "Releasing item " + param2.ToUpper(), ReleaseDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Negative);
                 terminal.AddLine("<#F00>Incorrect item code!</color>");
@@ -191,15 +186,16 @@ public class APCommandExtractHandler : ArchipelagoFeature
             else
             {
                 terminal.m_command.AddOutput(TerminalLineType.SpinningWaitDone, $"Releasing item {param2.ToUpper()}", ReleaseDelay, TerminalSoundType.LineTypeDefault, TerminalSoundType.Positive);
+                Location loc = stateTracker.GameData.Locations.LookUpValueChecked(pair.Item2);
 
-                if (pair.Item2.Location.ItemID.IsNull)
+                if (loc.ItemID.IsNull)
                 {
                     terminal.AddLine("No item to release.");
                 }
                 else
                 {
-                    terminal.AddLine("Item released successfully: " + pair.Item2.Location.ScoutedItemName ?? gameData.LookupTagDef(gameData.LookupItem(pair.Item2.Location.ItemID).NameTag).Name);
-                    terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(pair.Item2.ID, terminal.m_syncedInteractionSource));
+                    terminal.AddLine("Item released successfully: " + loc.ScoutedItemName ?? gameData.Items.LookUpName(loc.ItemID));
+                    terminal.m_command.OnEndOfQueue += new Il2CppAction(() => StateTracker.Get().NotifyFoundLocation(pair.Item2, terminal.m_syncedInteractionSource));
                 }
             }
         }
@@ -223,8 +219,8 @@ public class APCommandExtractHandler : ArchipelagoFeature
         {
             StateTracker stateTracker = StateTracker.Get();
             var codes = MakeItemCodes(stateTracker, terminal)
-                .Where(pair => !IsEmpty(stateTracker, pair))
-                .Select(pair => pair.Item2.ID)
+                .Where(pair => !IsEmpty(stateTracker, pair.Item2))
+                .Select(pair => pair.Item2)
                 .ToList();
             stateTracker.MarkAsTrash(codes, terminal.m_syncedInteractionSource);
             terminal.m_command.AddOutput($"You have marked {codes.Count} item{(codes.Count == 1 ? "" : "s")} as <i><#F00>TRASH</i></color>");
@@ -240,10 +236,11 @@ public class APCommandExtractHandler : ArchipelagoFeature
     {
         for (int i = 1; i <= ItemsPerTerminal; i++)
         {
-            data.AddLocation(
-                TerminalExtractReleaseLocation.MakeTag(data, i), 
-                data.LookupOrCreateRegion(data.TerminalName), 
-                TerminalExtractReleaseLocation.MakeRandData()
+            data.Locations.CreateValue(
+                data.Location_TerminalExtraction_Instance(i),
+                data.Region_Terminal,
+                new LocationData() { IsEmpty = true },
+                new ItemID()
             );
         }
     }
@@ -276,10 +273,9 @@ public class APCommandExtractHandler : ArchipelagoFeature
             int count = 0;
             for (int i = 0; i < ItemsPerTerminal; i++)
             {
-                RandomizationTag tag = TerminalExtractReleaseLocation.MakeTag(data, i + 1);
-                if (!gameData.TryLookupLocation(tag, out var loc))
-                    FeatureLogger.Error($"Failed to lookup terminal extraction location: {gameData.LookupTagDef(tag).Name}");
-                else if (!loc.Location.ItemID.IsNull && !stateTracker.HasLocation(loc.ID)) ++count;
+                LocationID id = data.Location_TerminalExtraction_Instance(i + 1);
+                Location loc = data.Locations.LookUpValueChecked(id);
+                if (!loc.ItemID.IsNull && !stateTracker.HasLocation(id)) ++count;
             }
 
             // Add our new item to the output queue
@@ -313,29 +309,28 @@ public class APCommandExtractHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_ComputerTerminal __instance, Il2CppSystem.Collections.Generic.List<string> __result)
         {
-            var func = () =>
+            __result.Add(string.Empty);
+
+            int i = 1;
+            while (i < __result.Count && !__result[i].StartsWith("---------")) ++i;
+
+            StateTracker stateTracker = StateTracker.Get();
+            var codes = MakeItemCodes(stateTracker, __instance)
+                .Where(pair => !IsEmpty(stateTracker, pair.Item2));
+
+            __result.Insert(i++, "AVAILABLE EXTRACTIONS:");
+            if (!codes.Any())
+                __result.Insert(i++, $"  -- NO EXTRACTIONS FOUND --");
+            else
             {
-                __result.Add(string.Empty);
-
-                int i = 1;
-                while (i < __result.Count && !__result[i].StartsWith("---------")) ++i;
-
-                StateTracker stateTracker = StateTracker.Get();
-                var codes = MakeItemCodes(stateTracker, __instance)
-                    .Where(pair => !IsEmpty(stateTracker, pair));
-
-                __result.Insert(i++, "AVAILABLE EXTRACTIONS:");
-                if (!codes.Any())
-                    __result.Insert(i++, $"  -- NO EXTRACTIONS FOUND --");
-                else
+                foreach (var code in codes)
                 {
-                    foreach (var code in codes)
-                        __result.Insert(i++, $"  ({code.Item2.Location.ScoutedPlayerName}) {code.Item2.Location.ScoutedItemName}");
-                    __result.Insert(i++, "   -- END OF LIST --");
-                    stateTracker.ScoutLocations(codes.Select(pair => pair.Item2.ID));
+                    Location loc = stateTracker.GameData.Locations.LookUpValueChecked(code.Item2);
+                    __result.Insert(i++, $"  ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
                 }
-            };
-            func();
+                __result.Insert(i++, "   -- END OF LIST --");
+                stateTracker.ScoutLocations(codes.Select(pair => pair.Item2));
+            }
         }
     }
 

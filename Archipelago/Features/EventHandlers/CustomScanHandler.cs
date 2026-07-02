@@ -1,6 +1,5 @@
 ﻿using GameData;
 using LevelGeneration;
-using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
@@ -11,7 +10,6 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.EventHandlers;
 
-using ReTFO.Archipelago.Features.ZoneHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -20,12 +18,24 @@ public static class CustomScanHandler_Tags
     extension (Game.Data gameData)
     {
         /// <summary>
-        /// Scans triggering custom scans based on world event objects
+        /// Events triggering custom scans based on world event objects
         /// </summary>
-        public TagResolver Tag_EventScanItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Event Scan Items", "Scans triggered by starting a custom event", gd.Tag_ScanItems));
+        public ItemID Item_EventScans
+            => ItemID.From(gameData, "Event Scan Items", data => new("Scans triggered by starting a custom event", data.Item_Scans));
     }
 
+    extension (Expedition.Data data)
+    {
+        /// <summary>
+        /// A particular event-triggered scan
+        /// </summary>
+        public ItemID Item_EventScan_Instance(string worldEventObjectFilter)
+            => ItemID.From(data,
+                $"{data.ExpeditionName} Event Scan \"{worldEventObjectFilter}\"",
+                data => new("A particular event-triggered scan", data.Item_Scans),
+                new CustomScanHandler.StartCustomScanItem(data.Region_Expedition, worldEventObjectFilter)
+            );
+    }
 }
 
 [EnableFeatureByDefault, AutomatedFeature]
@@ -43,45 +53,31 @@ public class CustomScanHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    public class StartCustomScanItem : Item
+    /// <summary>
+    /// Class representing an item used to start custom event scans
+    /// </summary>
+    public class StartCustomScanItem : TerminalItem
     {
-        public StartCustomScanItem(Expedition.Data data, string worldEventObjectFilter)
-            : base(MakeTag(data, worldEventObjectFilter), MakeRandData())
+        public StartCustomScanItem(RegionID region, string worldEventObjectFilter)
+            : base(new ItemData() { IsProgression = true })
         {
-            Data = data;
+            Expedition = region;
             WorldEventObjectFilter = worldEventObjectFilter;
         }
 
-        public static TagResolver MakeTag(Expedition.Data data, string worldEventObjectFilter)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Event Scan \"{worldEventObjectFilter}\"", "A particular event-triggered scan", gd.Tag_EventScanItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
         /// <summary>
-        /// The expedition this scan occurs in
+        /// The expedition this scan appears in
         /// </summary>
-        public Expedition.Data Data { get; set; }
+        public RegionID Expedition { get; private init; }
 
         /// <summary>
         /// The world event object filter used to initiate this scan
         /// </summary>
-        public string WorldEventObjectFilter { get; set; }
+        public string WorldEventObjectFilter { get; private init; }
 
-        public override Expedition.Data? RequiredExpedition => Data;
+        public override RegionID TargetRegion => Expedition;
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (Data.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (Data.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             yield return () =>
             {
@@ -99,15 +95,6 @@ public class CustomScanHandler : ArchipelagoFeature
                 });
             };
         }
-    }
-
-    public static KeyedItem GetCustomScanStartItem(Expedition.Data data, string worldEventObjectFilter)
-    {
-        if (data.TryLookupItem(StartCustomScanItem.MakeTag(data, worldEventObjectFilter), out var item))
-            return item;
-
-        Item newItem = new StartCustomScanItem(data, worldEventObjectFilter);
-        return new KeyedItem(data.AddItem(newItem), newItem);
     }
 
     // Replace custom scan events with check location events for that scan location
@@ -132,8 +119,8 @@ public class CustomScanHandler : ArchipelagoFeature
             if ((e.WorldEventObjectFilter?.Length ?? 0) == 0)
                 continue;
 
-            KeyedItem item = GetCustomScanStartItem(data, e.WorldEventObjectFilter!);
-            EventHelper.ConvertToCheckLocationEvent(data, e, count, item.ID);
+            ItemID item = data.Item_EventScan_Instance(e.WorldEventObjectFilter!);
+            EventHelper.CreateEventLocation(data, e, count, item);
         }
     }
 
@@ -146,7 +133,7 @@ public class CustomScanHandler : ArchipelagoFeature
         foreach (var scan in data.Zone.WorldEventChainedPuzzleDatas.Iter())
         {
             var eventWrapper = data.WrapEvents(scan.EventsOnScanDone ??= new(1));
-            var item = GetCustomScanStartItem(data, scan.WorldEventObjectFilter);
+            ItemID item = data.Item_EventScan_Instance(scan.WorldEventObjectFilter!);
 
             uint count = 0;
             while (!eventWrapper.IsDone)
@@ -154,20 +141,18 @@ public class CustomScanHandler : ArchipelagoFeature
                 ++count;
                 Zone.Data scanZone = data; // It may be worth searching for the scan, if I can find a good method
                 string scanName = $"{scanZone.ZoneName} Custom Scan ({scan.WorldEventObjectFilter}) (Completion #{count})";
-                RegionID scanRegion = data.LookupOrCreateRegion(scanName);
+                RegionID scanRegion = data.Regions.Create(scanName, new("A custom scan's region", data.Region_Expedition));
 
                 data.AddPath(new Path()
                 {
-                    StartingRegion = data.LookupOrCreateRegion(scanZone.ZoneName),
+                    StartingRegion = data.Region_Zone,
                     EndingRegion = scanRegion,
-                    ReqItem = item.Item.PathReqs,
+                    ReqItem = new(Path.RequiredItem.eType.Item, item),
                     ReqCount = count,
-                    AlternateItem = new(),
                 });
 
-                eventWrapper.Process(scanRegion, scanName);
+                eventWrapper.Process(scanRegion);
             }
         }
     }
-
 }

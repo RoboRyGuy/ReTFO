@@ -4,6 +4,7 @@ using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
@@ -26,20 +27,31 @@ public static class TerminalPasswordHandler_Tags
 { 
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_TerminalPasswordLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Terminal Password Part Locations", "Locations checked by opening logs containing terminal password parts", gd.Tag_TerminalLogLocations));
+        public LocationID Location_TerminalPasswords
+            => LocationID.From(gameData, "Terminal Password Part Locations", data => new("Locations checked by opening logs containing terminal password parts", data.Location_TerminalLogs));
 
-        public TagResolver Tag_TerminalPasswordItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Terminal Password Part Item", "A part of a terminal password", gd.Tag_TerminalLogItems));
+        public ItemID Item_TerminalPasswords
+            => ItemID.From(gameData, "Terminal Password Part Item", data => new("A part of a terminal password", data.Item_Codes));
     }
 
     extension (Terminal.Data data)
     {
-        public TagResolver Tag_TerminalPasswordLocations_ByTerminal
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Password Locations", "Password part locations for a specific terminal", gd.Tag_TerminalPasswordLocations));
+        public LocationID Location_TerminalPasswords_ByTerminal
+            => LocationID.From(data, $"{data.TerminalName} Password Locations", data => new("Password part locations for a specific terminal", data.Location_TerminalPasswords));
 
-        public TagResolver Tag_TerminalPasswordItems_ByTerminal
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Password Parts", "Password parts for a specific terminal", gd.Tag_TerminalPasswordItems));
+        public ItemID Item_TerminalPasswords_ByTerminal
+            => ItemID.From(data, $"{data.TerminalName} Password Parts", data => new("Password parts for a specific terminal", data.Item_TerminalPasswords));
+
+        public LocationID Location_TerminalPasswords_Instance(int count)
+            => LocationID.From(data, $"{data.TerminalName} Password Location #{count}", data => new("A particular password part's location", data.Location_TerminalPasswords_ByTerminal));
+
+        public ItemID Item_TerminalPasswords_Instance(int count)
+            => ItemID.From(
+                data, 
+                $"{data.TerminalName} Password Part #{count}", 
+                data => new("A particular password part", data.Item_TerminalPasswords_ByTerminal),
+                new TerminalPasswordHandler.TerminalPasswordPartItem(data.Region_Terminal, count)
+            );
     }
 }
 
@@ -60,77 +72,53 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Password part location
-    private static class TerminalPasswordPartLocation
-    {
-        public static TagResolver MakeTag(Terminal.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Password Part #{count} Location", $"Location containng a part of a terminal password", data.Tag_TerminalPasswordLocations_ByTerminal));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
     // Password part item
-    private class TerminalPasswordPartItem : Item
+    public class TerminalPasswordPartItem : TerminalItem
     {
-        public TerminalPasswordPartItem(Terminal.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
+        public TerminalPasswordPartItem(RegionID terminal, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            TerminalData = data;
+            TerminalRegion = terminal;
             PartNumber = count;
         }
 
-        public static TagResolver MakeTag(Terminal.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.TerminalName} Password Part #{count}", $"A part of a terminal password", data.Tag_TerminalPasswordItems_ByTerminal));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
         // The terminal this password part is associated with
-        public Terminal.Data TerminalData { get; set; }
+        public RegionID TerminalRegion { get; private init; }
 
         // 1-indexed part number
-        public int PartNumber { get; set; }
+        public int PartNumber { get; private init; }
 
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, TerminalData.Tag_TerminalPasswordItems_ByTerminal);
+        public override RegionID TargetRegion => TerminalRegion;
 
-        public override Expedition.Data? RequiredExpedition => TerminalData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
-            if (TerminalData.IsCurrentlyInExpedition())
-                OnStartExpeditionWithItem(stateTracker, TerminalData);
-        }
+            base.OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
 
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (!TerminalData.IsSameExpedition(data))
-                return;
-
-            LG_ComputerTerminal? terminal = TerminalData.GetLG_Terminal();
+            Terminal.Data data = new(stateTracker.GameData, TerminalRegion);
+            LG_ComputerTerminal? terminal = data.GetLG_Terminal();
             if (terminal == null)
-            {
                 FeatureLogger.Error("Failed to identify spawned terminal while giving password part!");
-                return;
-            }
-
-            ProgressionObjective_TerminalPassword.Update(TerminalData, terminal);
+            else
+                ProgressionObjective_TerminalPassword.NotifyFoundCode(terminal, PartNumber);
         }
 
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             // Note that there's no need to split this into two actions, since the output will already be delayed
-            LG_ComputerTerminal? passwordTerminal = TerminalData.GetLG_Terminal();
+            Terminal.Data data = new(stateTracker.GameData, TerminalRegion);
+            LG_ComputerTerminal? passwordTerminal = data.GetLG_Terminal();
             if (passwordTerminal == null)
                 FeatureLogger.Error("Failed to identify spawned terminal while giving password part!");
 
             yield return () =>
             {
-                stateTracker.AddItemToTerminal(this);
+                stateTracker.AddItemToTerminal(itemId);
                 terminal.AddLine(TerminalLineType.SpinningWaitDone, "Retrieving password", 2f);
                 if (passwordTerminal == null)
                     terminal.AddLine("<#F00>Failed to find password terminal instance! No password to grant.</color>");
                 else
                 {
-                    string password = ProgressionObjective_TerminalPassword.MakePasswordHint(TerminalData, passwordTerminal);
+                    string password = ProgressionObjective_TerminalPassword.MakePasswordHint(passwordTerminal);
                     terminal.AddLine(string.Format(ArchipelagoFeatureHelper.GetFeature<ArchipelagoFeature>().Localization.Get(1431221909), password));
                 }
             };
@@ -148,7 +136,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
                 FeatureLogger.Warning($"Terminal has no placement positions for password parts: {data.TerminalName}");
 
                 // This item is used at runtime to help display the password, even though no parts actually exist
-                KeyedItem passwordItem = GetTerminalPasswordPartItem(data, 1);
+                ItemID passwordItem = data.Item_TerminalPasswords_Instance(1);
                 return;
             }
 
@@ -161,25 +149,14 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             foreach (var set in regionSets)
             {
                 ++count;
-                KeyedItem passwordItem = GetTerminalPasswordPartItem(data, count);
-                data.AddLocation(
-                    TerminalPasswordPartLocation.MakeTag(data, count),
+                data.Locations.CreateValue(
+                    data.Location_TerminalPasswords_Instance(count),
                     set!,
-                    TerminalPasswordPartLocation.MakeRandData(),
-                    passwordItem.ID
+                    new LocationData(),
+                    data.Item_TerminalPasswords_Instance(count)
                 );
             }
         }
-    }
-
-    // Get a password part, 1-indexed. Use Categories[0] to count total parts obtained
-    public static KeyedItem GetTerminalPasswordPartItem(Terminal.Data data, int count = 1)
-    {
-        if (data.TryLookupItem(TerminalPasswordPartItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new TerminalPasswordPartItem(data, count);
-        return new(data.AddItem(newItem), newItem);
     }
 
     // Identify terminal logs on generation and associate them with the password locations
@@ -202,21 +179,16 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             for (int i = 0; i < __instance.m_terminalsWithPasswordParts.Count; i++)
             {
                 var terminal = __instance.m_terminalsWithPasswordParts[i];
-                RandomizationTag tag = TerminalPasswordPartLocation.MakeTag(data, i + 1);
-                if (!data.TryLookupLocation(tag, out var location))
-                {
-                    FeatureLogger.Error("Failed to lookup password part location during association!");
-                    return;
-                }
+                LocationID id = data.Location_TerminalPasswords_Instance(i + 1);
 
                 var logNames = terminal.m_localLogs.entries.Where(e => e?.value?.FileName?.StartsWith($"KEY", StringComparison.OrdinalIgnoreCase) ?? false).ToList();
                 if (logNames.Count == 0)
-                    FeatureLogger.Error($"Failed to find any logs for password part location: {data.LookupTagDef(location.Location.NameTag).Name}");
+                    FeatureLogger.Error($"Failed to find any logs for password part location: {data.Locations.LookUpName(id)}");
                 else
-                    TerminalLogHelper.AssociateLog(terminal, logNames[0].value.FileName, location.ID);
+                    TerminalLogHelper.AssociateLog(terminal, logNames[0].value.FileName, id);
 
                 if (logNames.Count > 1)
-                    FeatureLogger.Warning($"Found multiple possible logs for password part location, using first: {data.LookupTagDef(location.Location.NameTag).Name}");
+                    FeatureLogger.Warning($"Found multiple possible logs for password part location, using first: {data.Locations.LookUpName(id)}");
             }
         }
     }
@@ -244,7 +216,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
                 terminal.m_syncedInteractionSource
             );
 
-            ProgressionObjective_TerminalPassword.Update(terminalData, terminal);
+            ProgressionObjective_TerminalPassword.Update(terminal);
         }
     }
 
@@ -257,17 +229,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             // Note: This is often called on destroyed terminals, hence why we check for it
             // Of note, it's usually called on terminals which were part of the previous expedition
             if (!__instance || !__instance.IsPasswordProtected) return;
-            var result = Terminal.Data.FromTerminal(__instance);
-            Terminal.Data? data = result.Data;
-            if (data == null)
-            {
-                if (result.IsReactorTerminal)
-                    FeatureLogger.Error("A reactor terminal is password locked; Archipelago can't currently support this!");
-                else
-                    FeatureLogger.Error("Null terminal data for password link job!");
-                return;
-            }
-            ProgressionObjective_TerminalPassword.Setup(data, __instance);
+            ProgressionObjective_TerminalPassword.Setup(__instance);
         }
     }
 
@@ -279,17 +241,23 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         {
             if (!__instance.IsPasswordProtected) return;
 
+            // If it's not randomized, the password changes. So we can update that
             var result = Terminal.Data.FromTerminal(__instance);
-            Terminal.Data? data = result.Data;
-            if (data == null)
+            if (result.Data == null)
             {
-                if (!result.IsReactorTerminal)
-                    FeatureLogger.Error("Failed to identify locked terminal post recall!");
+                FeatureLogger.Error("Failed to update terminal UI post reload; failed to find terminal data!");
                 return;
             }
 
-            ProgressionObjective_TerminalPassword.Update(data, __instance);
-            StateTracker.Get().AddItemToTerminal(GetTerminalPasswordPartItem(data, 1).ID);
+            for (int i = 1; i <= __instance.m_passwordLinkerJob.m_passwordParts; i++)
+            {
+                LocationID id = result.Data.Location_TerminalPasswords_Instance(i);
+                Location loc = result.Data.Locations.LookUpValueChecked(id);
+                if (!loc.RandData.IsTreatedAsRandom)
+                    ProgressionObjective_TerminalPassword.ResetCode(__instance, i);
+            }
+
+            ProgressionObjective_TerminalPassword.Update(__instance);
         }
     }
 
@@ -301,20 +269,40 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         /// <summary>
         /// Make the string key used to find the progression objective
         /// </summary>
-        public static string MakeKey(Terminal.Data data, LG_ComputerTerminal _)
-            => data.TerminalName;
+        public static string MakeKey(LG_ComputerTerminal terminal)
+            => terminal.Pointer.ToString();
 
         /// <summary>
         /// Set up a progression objective for a particular terminal
         /// </summary>
-        public static void Setup(Terminal.Data data, LG_ComputerTerminal terminal)
-            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(data, terminal)).SetupWithData(data, terminal);
+        public static void Setup(LG_ComputerTerminal terminal)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(terminal)).SetupWithData(terminal);
 
         /// <summary>
         /// Update the text for a particular terminal progression objective
         /// </summary>
-        public static void Update(Terminal.Data data, LG_ComputerTerminal terminal)
-            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(data, terminal)).UpdateInternal(data, terminal);
+        public static void Update(LG_ComputerTerminal terminal)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(terminal)).UpdateInternal(terminal);
+
+        /// <summary>
+        /// Notify that a code part has been found for the specified terminal
+        /// </summary>
+        public static void NotifyFoundCode(LG_ComputerTerminal terminal, int count)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(terminal)).NotifyFoundCodeInternal(terminal, count);
+
+        /// <summary>
+        /// Reset password progress (typically because the password resets during checkpoints)
+        /// </summary>
+        public static void ResetCode(LG_ComputerTerminal terminal, int count)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(terminal)).ResetCodeInternal(terminal, count);
+
+        /// <summary>
+        /// Make a password hint for the provided terminal based on current found hints
+        /// </summary>
+        public static string MakePasswordHint(LG_ComputerTerminal terminal)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_TerminalPassword>(MakeKey(terminal)).MakePasswordHintInternal(terminal);
+
+        private BitArray? m_foundParts = null;
 
         public override void Setup()
         {
@@ -329,56 +317,84 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         /// <summary>
         /// Set up this progression objective to use the provided data
         /// </summary>
-        public void SetupWithData(Terminal.Data data, LG_ComputerTerminal terminal)
+        public void SetupWithData(LG_ComputerTerminal terminal)
         {
-            HeaderText = data.TerminalName;
+            m_foundParts = new(terminal.m_passwordLinkerJob.m_passwordParts);
+            HeaderText = $"{terminal.m_terminalItem.TerminalItemKey} Password";
             ScopeTarget = new(
                 terminal.SpawnNode.m_zone.DimensionIndex,
                 terminal.SpawnNode.LayerType,
                 terminal.SpawnNode.m_zone.LocalIndex
             );
-            SubText = $"Current known password: {MakePasswordHint(data, terminal)}";
-            Refresh();
+            UpdateInternal(terminal);
         }
 
         /// <summary>
         /// Update this progression status using the provided data and terminal.
         /// </summary>
-        /// <param name="data">The data for this terminal</param>
-        /// <param name="terminal">The terminal to update for</param>
-        public void UpdateInternal(Terminal.Data data, LG_ComputerTerminal terminal)
+        public void UpdateInternal(LG_ComputerTerminal terminal)
         {
             IsActive = terminal.IsPasswordProtected;
-            SubText = $"Current known password: {MakePasswordHint(data, terminal)}";
+            SubText = $"Current known password: {MakePasswordHintInternal(terminal)}";
             Refresh();
         }
 
         /// <summary>
+        /// Notify that a code part has been found
+        /// </summary>
+        /// <param name="terminal">The terminal for this progression objective</param>
+        /// <param name="count">The 1-indexed count of the code part</param>
+        public void NotifyFoundCodeInternal(LG_ComputerTerminal terminal, int count)
+        {
+            if (m_foundParts == null)
+                throw new NullReferenceException("Terminal UI was not properly set up");
+            else if (count < 1 || count > m_foundParts.Count)
+                throw new ArgumentOutOfRangeException("Terminal UI notified of a code which was out of bounds");
+
+            m_foundParts[count - 1] = true;
+            UpdateInternal(terminal);
+        }
+
+        /// <summary>
+        /// Reset a particular code part's progress
+        /// </summary>
+        public void ResetCodeInternal(LG_ComputerTerminal terminal, int count)
+        {
+            if (m_foundParts == null)
+                throw new NullReferenceException("Terminal UI was not properly set up");
+            else if (count < 1 || count > m_foundParts.Count)
+                throw new ArgumentOutOfRangeException("Terminal UI notified of a code which was out of bounds");
+
+            m_foundParts[count - 1] = false;
+            UpdateInternal(terminal);
+        }
+
+
+        /// <summary>
         /// Create the formatted text used to display this terminal's password
         /// </summary>
-        /// <param name="data">Terminal data for this terminal</param>
         /// <param name="terminal">The terminal text is being formatted for</param>
         /// <returns></returns>
-        public static string MakePasswordHint(Terminal.Data data, LG_ComputerTerminal terminal)
+        public string MakePasswordHintInternal(LG_ComputerTerminal terminal)
         {
-            StateTracker stateTracker = StateTracker.Get();
             string password = terminal.m_password;
 
-            if (data.TerminalStartingStateData.TerminalZoneSelectionDatas.Count == 0)
-                return password; // It's free!
+            int partCount = terminal.m_passwordLinkerJob.m_passwordParts;
+            if (partCount == 0) return password; // It's free!
 
-            int partCount = data.TerminalStartingStateData.PasswordPartCount;
             int perPartCount = password.Length / partCount;
             int remainingCount = password.Length % partCount;
 
-            bool isObtained(int i) => stateTracker.CollectedItemCounts.GetValueOrDefault(GetTerminalPasswordPartItem(data, i).ID, 0) > 0;
+            if (m_foundParts == null || m_foundParts.Length < partCount)
+                throw new InvalidOperationException("Attempted to generate password hint before being set up!");
+
             int start(int i) => perPartCount * i + Math.Min(remainingCount, i);     // Starting position of 0-indexed part i
             int len(int i) => i < remainingCount ? perPartCount + 1 : perPartCount; // Len of 0-indexed part i
             string hide(int i) => new string('–', len(i));                          // Get hidden portion of password for part i
             string reveal(int i) => password.Substring(start(i), len(i));           // Get actual portion of password for part i
 
             IEnumerable<string> passwordParts = Enumerable.Range(1, partCount)
-                .Select(isObtained)
+                .Select(i => m_foundParts[i - 1])
                 .Select((o, i) => o ? reveal(i) : hide(i));
 
             return string.Join("", passwordParts);

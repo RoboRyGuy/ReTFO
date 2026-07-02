@@ -1,10 +1,8 @@
 ﻿using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
@@ -24,69 +22,24 @@ using ReTFO.Archipelago.ModdedInstanceData.Processors;
 [DataContract]
 public class Item
 {
-    /// <summary>
-    /// Construct an abstract item from a name and categories
-    /// </summary>
-    /// <param name="nameTag">The main tag for the item. Must be unique</param>
-    /// <param name="randData">Data used by this item for randomization</param>
-    public Item(RandomizationTag nameTag, ItemData randData)
+    public Item(ItemData randData)
     {
-        NameTag = nameTag;
         RandData = randData;
     }
-
-    /// <summary>
-    /// Identifying tag used by this item
-    /// </summary>
-    [DataMember(Name = "name_tag")]
-    public RandomizationTag NameTag { get; init; }
-
-    /// <summary>
-    /// Optional secondary tag for this item.
-    /// </summary>
-    [DataMember(Name = "tag2")]
-    public RandomizationTag Tag2 { get; init; } = new();
-
-    /// <summary>
-    /// Optional tertiary tag for this item.
-    /// </summary>
-    [DataMember(Name = "tag3")]
-    public RandomizationTag Tag3 { get; init; } = new();
 
     /// <summary>
     /// Randomization data associated with this item.
     /// </summary>
     [DataMember(Name = "rand_data")]
-    public ItemData RandData { get; set; }
+    public ItemData RandData { get; private set; }
 
     /// <summary>
-    /// Optional; if not null, this item can only be randomized if the supplied expedition 
-    /// is randomized. Typically used by floating items to help ensure only relevant floating
-    /// items are randomized.
+    /// Update this item's RandData
     /// </summary>
-    public virtual Expedition.Data? RequiredExpedition => null;
-
-    /// <summary>
-    /// Property used purely to assist with serialization, since Expedition.Data is not serializable
-    /// </summary>
-    [DataMember(Name = "required_expedition")]
-    private string? RequiredExpeditionName
-    {
-        get => RequiredExpedition?.ExpeditionName ?? null;
-        set { } // Discard
-    }
-
-    /// <summary>
-    /// How this item should be represented when a path uses it as a requirement.
-    /// Override this if you need the item to use a category instead.
-    /// </summary>
-    [DataMember(Name = "path_reqs")]
-    public virtual Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Item, NameTag);
-
-    /// <summary>
-    /// Implicit conversion helper using PathReqs virtual property to perform the conversion
-    /// </summary>
-    public static implicit operator Path.RequiredItem(Item self) => self.PathReqs;
+    /// <param name="isWhitelisted"></param>
+    /// <param name="isBlacklisted"></param>
+    public void UpdateRandomization(bool isWhitelisted, bool isBlacklisted)
+        => RandData = new(RandData) { IsWhitelisted = isWhitelisted, IsBlacklisted = isBlacklisted };
 
     // === Virtuals for handling randomization events =============================================
 
@@ -97,30 +50,34 @@ public class Item
     /// <param name="stateTracker">The stateTracker for this session</param>
     /// <param name="sourceLocationId">The ID of the location this was found in if found in this lobby.</param>
     /// <param name="player">The player who found the item, if that player is in this lobby (for randomlike items)</param>
+    /// <param name="itemId">The item ID used to look up this item</param>
     /// <remarks>
     /// The sourceLocationId is supplied during <see cref="StateTracker.eState.FakeConnect"/>, where it can be used for debug.
     /// Otherwise, it is supplied when the item is not randomized but is randomlike.
     /// </remarks>
-    public virtual void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player) { }
+    public virtual void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId) { }
 
     /// <summary>
     /// Called immediately when the item is lost - Items can only be lost by a call to "uncollect".
     /// </summary>
     /// <param name="stateTracker">The stateTracker for this session</param>
-    public virtual void OnItemLost(StateTracker stateTracker) { }
+    /// <param name="itemId">The item ID used to look up this item</param>
+    public virtual void OnItemLost(StateTracker stateTracker, ItemID itemId) { }
 
     /// <summary>
     /// Called just after loading into an expedition if this item has been previously obtained
     /// </summary>
     /// <param name="stateTracker">The stateTracker for this session</param>
     /// <param name="data">The expedition being started</param>
-    public virtual void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data) { }
+    /// <param name="itemId">The item ID used to look up this item</param>
+    public virtual void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data, ItemID itemId) { }
 
     /// <summary>
     /// Called when the player retrieves the item from the terminal item system (only if placed in the system)
     /// </summary>
     /// <param name="stateTracker">Current StateTracker</param>
     /// <param name="terminal">The terminal the item was claimed from. Useful for custom textual output</param>
+    /// <param name="itemId">The item ID used to look up this item</param>
     /// <returns>
     /// Expected to return an enumerable of actions. The enumerable will be immediately enumerated and placed in a list.
     /// Each action in the enumerable will be executed in order, pausing when the terminal is processing.
@@ -131,69 +88,89 @@ public class Item
     ///  terminal to "do work" (lingers near it), and only gives the item once the terminal is done.
     /// Also of note, items are removed from the terminal system immdiately after all queued items provide their actions.
     /// </remarks>
-    public virtual IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+    public virtual IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         => throw new NotImplementedException();
 }
 
 /// <summary>
-/// Simple wrapper around a long to help identify it as an ItemID, usable
-///  for looking up an Item instance in GameData.
+/// A variation of Item which simplifies its callbacks into a single callback invoked either when the relevant expedition
+///  is entered or when the item is obtained while in the relevant expeidtion.
 /// </summary>
-[DataContract]
-public struct ItemID : INullable, IId, IIndex, IComparable<ItemID>, IEquatable<ItemID>
+public abstract class ExpeditionItem : Item
 {
-    public ItemID() { }
-    [DataMember(Name = "value")] 
-    private readonly long m_value = 0;
+    public ExpeditionItem(ItemData randData) : base(randData) { }
 
-    public bool IsNull => m_value == 0;
-    public long AsId { get => m_value; init => m_value = value; }
-    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
-    public int CompareTo(ItemID other) => m_value.CompareTo(other.m_value);
-    public bool Equals(ItemID other) => m_value.Equals(other.m_value);
-    public override bool Equals([NotNullWhen(true)] object? obj) => obj is ItemID id && Equals(id);
-    public override int GetHashCode() => m_value.GetHashCode();
-    public override string ToString() => $"ItemID: {m_value}";
+    /// <summary>
+    /// The region to check when determining if this item should be added to the terminal
+    /// </summary>
+    public abstract RegionID TargetRegion { get; }
+
+    /// <summary>
+    /// Check if in the correct expedition
+    /// </summary>
+    protected bool CheckExpedition(StateTracker stateTracker)
+        => stateTracker.GameData.IsInCurrentExpedition(TargetRegion);
+
+    /// <summary>
+    /// Check if in the provided expedition. Slightly more efficient than the StateTracker variant.
+    /// </summary>
+    protected bool CheckExpedition(Expedition.Data data)
+        => data.Regions.IsChild(TargetRegion, data.Region_Expedition);
+
+    public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
+    {
+        if (CheckExpedition(stateTracker))
+            OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
+    }
+
+    public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data, ItemID itemId)
+    {
+        if (CheckExpedition(data))
+            OnEnteredExpedition(stateTracker, new(), null, itemId);
+    }
+
+    /// <summary>
+    /// Called when entering an expedition containing TargetRegion or when collecting the item
+    ///  while in such an expedition.
+    /// </summary>
+    /// <param name="stateTracker">The active state tracker invoking this event</param>
+    /// <param name="sourceLocationId">ID of location this item was collected from, if known</param>
+    /// <param name="player">The player who collected it, if known</param>
+    /// <param name="itemId">The ID this item was registered under</param>
+    public abstract void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId);
 }
 
 /// <summary>
-/// A Item with an ID associated with it
+/// A variation of Item which automatically registers itself in the terminal system
+///  when dropping in to its expedition
+/// </summary>
+public abstract class TerminalItem : ExpeditionItem
+{
+    public TerminalItem(ItemData randData) : base(randData) { }
+    public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
+        => stateTracker.AddItemToTerminal(itemId);
+}
+
+/// <summary>
+/// Simple wrapper used to identify an ID for specifically an item
 /// </summary>
 [DataContract]
-public struct KeyedItem : INullable
+public struct ItemID : ITagID, IEquatable<ItemID>, IComparable<ItemID>
 {
-    /// <summary>
-    /// Create a deafult, null KeyedItem
-    /// </summary>
-    public KeyedItem()
-    {
-        ID = new();
-        Item = null!; // Todo: Class default item?
-    }
+    [DataMember(Name = "id")]
+    public uint ID { get; init; }
 
-    /// <summary>
-    /// Create a keyed item with the given item and ID
-    /// </summary>
-    public KeyedItem(ItemID id, Item item)
-    {
-        ID = id;
-        Item = item;
-    }
+    public bool IsNull => ID == 0;
+    public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+    public bool Equals(ItemID other) => ID == other.ID;
+    public int CompareTo(ItemID other) => ID.CompareTo(other.ID);
+    public override string ToString() => $"ItemID {ID}";
 
-    /// <summary>
-    /// Unique ID of the Item. IDs range from 1 to 2^53-1.
-    /// </summary>
-    [DataMember(Name = "id")] public readonly ItemID ID;
+    public static ItemID From(Game.Data data, string name, Func<TagDefinition<ItemID>> definitionFactory, Item? item = null)
+        => data.Items.LookUpOrCreate(name, definitionFactory, item);
 
-    /// <summary>
-    /// The Item object with the given ID
-    /// </summary>
-    [DataMember(Name = "item")] public readonly Item Item;
-
-    /// <summary>
-    /// True if the item is null, false otherwise
-    /// </summary>
-    public bool IsNull => ID.IsNull;
+    public static ItemID From<TData>(TData data, string name, Func<TData, TagDefinition<ItemID>> definitionFactory, Item? item = null) where TData : Game.Data
+        => data.Items.LookUpOrCreate(data, name, definitionFactory, item);
 }
 
 /// <summary>
@@ -270,11 +247,6 @@ public struct ItemData
         /// This item is in the randomization blacklist
         /// </summary>
         IsBlacklisted = 1 << 9,
-
-        /// <summary>
-        /// This item is present / obtainable in the current expeditions list
-        /// </summary>
-        IsInRequiredExpeditions = 1 << 10,
     }
 
     /// <summary>
@@ -392,21 +364,13 @@ public struct ItemData
     }
 
     /// <summary>
-    /// Set or write the IsInRequiredExpeditions bit
+    /// Returns true if this item can, on its own merits, be randomized.
+    /// Note that this does not account region checks, which must be performed contextually.
     /// </summary>
-    public bool IsInRequiredExpeditions
-    {
-        get => (m_value & eType.IsInRequiredExpeditions) != 0;
-        init => m_value = value ? (m_value | eType.IsInRequiredExpeditions) : (m_value & ~eType.IsInRequiredExpeditions);
-    }
-
-    /// <summary>
-    /// Returns true if this item should, on its own merits, be randomized.
-    /// </summary>
-    public bool ShouldBeRandomized => IsInRequiredExpeditions && IsWhitelisted && !IsBlacklisted;
+    public bool CanBeRandomized => IsWhitelisted && !IsBlacklisted;
 
     /// <summary>
     /// Get a copy without randomization-specific data
     /// </summary>
-    public ItemData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsInRequiredExpeditions));
+    public ItemData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted));
 }

@@ -8,8 +8,7 @@ namespace ReTFO.Archipelago.Utilities;
 /// <summary>
 /// Wraps a readonly list to act as a readonly dictionary
 /// </summary>
-public class ReadOnlyListDict<I, T> : IReadOnlyDictionary<I, T>
-    where I : IIndex, new()
+public class ReadOnlyListDict<I, T> : IReadOnlyDictionary<I, T> where I : IIndex, new()
 {
     private readonly IReadOnlyList<T> m_list;
     public ReadOnlyListDict(IReadOnlyList<T> source) => m_list = source;
@@ -21,18 +20,6 @@ public class ReadOnlyListDict<I, T> : IReadOnlyDictionary<I, T>
     public bool IsReadOnly => true;
     public bool ContainsKey(I key) => key.AsIndex >=0 && key.AsIndex < m_list.Count;
     public IEnumerator<KeyValuePair<I, T>> GetEnumerator() => m_list.Select((v, i) =>  new KeyValuePair<I, T>(new I() { AsIndex = i }, v)).GetEnumerator();
-    public bool TryGetValue(I key, [MaybeNullWhen(false)] out T value)
-    {
-        if (!ContainsKey(key))
-        {
-            value = default;
-            return false;
-        }
-        else
-        {
-            value = m_list[key.AsIndex];
-            return true;
-        }
-    }
+    public bool TryGetValue(I key, [MaybeNullWhen(false)] out T value) => (ContainsKey(key) ? (value = m_list[key.AsIndex], true) : (value = default, false)).Item2;
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

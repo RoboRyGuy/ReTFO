@@ -129,9 +129,9 @@ public class ChatHandler : ArchipelagoFeature
         {
             if (Config.DoHideTrivialChecks)
             {
-                LocationID locId = new() { AsId = itemSendMessage.Item.LocationId };
+                LocationID locId = new() { ID = checked((uint)itemSendMessage.Item.LocationId) };
                 Game.Data data = StateTracker.Get().MidManager.GetProcessedGameData();
-                if (!data.LookupLocation(locId).RandData.IsRandomized) return;
+                if (!(data.Locations.LookUpValue(locId)?.RandData.IsRandomized ?? true)) return;
             }
 
             if (Config.DoShowOnlyMyRecievedItemMessages)

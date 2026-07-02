@@ -1,35 +1,43 @@
-﻿
-using GameData;
-using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.FeaturesAPI;
+﻿using GameData;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
-using System.Diagnostics.CodeAnalysis;
+using System.Collections;
 
 public static class Expedition
 {
+    private record class ScopeData
+    {
+        public ScopeData(RundownDataBlock rundown, eRundownTier expeditionTier, int expeditionIndex)
+        {
+            Rundown = rundown;
+            ExpeditionTier = expeditionTier;
+            ExpeditionIndex = expeditionIndex;
+        }
+
+        public RundownDataBlock Rundown { get; init; }
+        public eRundownTier ExpeditionTier { get; init; }
+        public int ExpeditionIndex { get; init; }
+    }
+
     // Data instance passed to processing giving access to necessary data
     public class Data : Game.Data
     {
         /// <summary>
-        /// The rundown data block containing this expedition
+        /// The custom data stored in the region object for this data
         /// </summary>
-        public RundownDataBlock Rundown { get; private init;}
+        private readonly ScopeData ExpeditionScopeData;
 
         /// <summary>
-        /// The tier of the expedition in the rundown
+        /// The region associated with this expedition
         /// </summary>
-        public eRundownTier ExpeditionTier { get; init;}
-
-        /// <summary>
-        /// The index of the rundown in the tier
-        /// </summary>
-        public int ExpeditionIndex { get; init;  }
+        public RegionID Region_Expedition { get; private init; }
 
         /// <summary>
         /// Construct a new Expedition.Data from a base gameData and expedition targetting info
@@ -41,21 +49,63 @@ public static class Expedition
         public Data(Game.Data data, RundownDataBlock rundown, eRundownTier expeditionTier, int expeditionIndex)
             : base(data)
         {
-            Rundown = rundown;
-            ExpeditionTier = expeditionTier;
-            ExpeditionIndex = expeditionIndex;
+            string name = $"{GetExpeditionFromRundown(rundown, expeditionTier, expeditionIndex).GetShortName(expeditionIndex)}";
+            Region_Expedition = Regions.LookUpOrCreate(
+                data, name,
+                data => new("A region for a particular expedition", data.Region_Menu)
+            );
+
+            if (!data.Regions.GetDataAllowNull(Region_Expedition, out ExpeditionScopeData!))
+                data.Regions.SetData(Region_Expedition, ExpeditionScopeData = new ScopeData(rundown, expeditionTier, expeditionIndex));
+            else if (Rundown.Pointer != rundown.Pointer || ExpeditionTier != expeditionTier || ExpeditionIndex != expeditionIndex)
+                FeatureLogger.Warning($"Two expeditions share the same short name: {name}");
         }
-        
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid expedition region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data)
+        {
+            Region_Expedition = region;
+            ExpeditionScopeData = data.Regions.GetData<ScopeData>(region);
+        }
+
+        /// <summary>
+        /// Private constructor which bypasses data lookup
+        /// </summary>
+        private Data(Game.Data data, RegionID region, ScopeData scope)
+            : base(data)
+        {
+            Region_Expedition = region;
+            ExpeditionScopeData = scope;
+        }
+
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Expedition.Data other)
             : base(other as Game.Data)
         {
-            Rundown = other.Rundown;
-            ExpeditionTier = other.ExpeditionTier ;
-            ExpeditionIndex = other.ExpeditionIndex;
+            Region_Expedition = other.Region_Expedition;
+            ExpeditionScopeData = other.ExpeditionScopeData;
         }
+
+        /// <summary>
+        /// The rundown data block containing this expedition
+        /// </summary>
+        public RundownDataBlock Rundown => ExpeditionScopeData.Rundown;
+
+        /// <summary>
+        /// The tier of the expedition in the rundown
+        /// </summary>
+        public eRundownTier ExpeditionTier => ExpeditionScopeData.ExpeditionTier;
+
+        /// <summary>
+        /// The index of the rundown in the tier
+        /// </summary>
+        public int ExpeditionIndex => ExpeditionScopeData.ExpeditionIndex;
 
         /// <summary>
         /// Helper class for comparing two expeditions to see if they refer to the same expedition
@@ -63,121 +113,88 @@ public static class Expedition
         public class Comparer : EqualityComparer<Expedition.Data>
         {
             public override bool Equals(Expedition.Data? x, Expedition.Data? y)
-                => x != null ? y?.IsSameExpedition(x) ?? false : y == null;
+                => x?.Region_Expedition.Equals(y?.Region_Expedition) ?? y == null;
 
             public override int GetHashCode([DisallowNull] Expedition.Data obj)
-                => Tuple.Create(obj.Rundown.Pointer, obj.ExpeditionTier, obj.ExpeditionIndex).GetHashCode();
+                => (obj.Rundown.Pointer, obj.ExpeditionTier, obj.ExpeditionIndex).GetHashCode();
         }
+
+        /// <summary>
+        /// Helper which gets an expedition from a rundown using its tier and index
+        /// </summary>
+        public static ExpeditionInTierData GetExpeditionFromRundown(RundownDataBlock rundown, eRundownTier tier, int index)
+            => tier switch
+            {
+                eRundownTier.TierA => rundown.TierA[index],
+                eRundownTier.TierB => rundown.TierB[index],
+                eRundownTier.TierC => rundown.TierC[index],
+                eRundownTier.TierD => rundown.TierD[index],
+                eRundownTier.TierE => rundown.TierE[index],
+                _ => throw new NotSupportedException($"Unrecognized expedition tier: {tier}")
+            };
 
         /// <summary>
         /// Shortcut to retrieve the ExpeditionInTierData for this expedition
         /// </summary>
-        public virtual ExpeditionInTierData Expedition => ExpeditionTier switch
-        {
-            eRundownTier.TierA => Rundown.TierA[ExpeditionIndex],
-            eRundownTier.TierB => Rundown.TierB[ExpeditionIndex],
-            eRundownTier.TierC => Rundown.TierC[ExpeditionIndex],
-            eRundownTier.TierD => Rundown.TierD[ExpeditionIndex],
-            eRundownTier.TierE => Rundown.TierE[ExpeditionIndex],
-            _ => throw new NotSupportedException($"Unrecognized expedition tier: {ExpeditionTier}")
-        };
+        public virtual ExpeditionInTierData Expedition => GetExpeditionFromRundown(Rundown, ExpeditionTier, ExpeditionIndex);
 
         /// <summary>
         /// The name of this expedition
         /// </summary>
-        public string ExpeditionName => Expedition.GetShortName(ExpeditionIndex);
+        public string ExpeditionName => Regions.LookUpName(Region_Expedition);
 
         /// <summary>
-        /// Parent tag for unlock items for this expedition. Typically only parents the expedition unlock item.
+        /// Checks if a region contains expedition data which can be used to construct an expedition
         /// </summary>
-        public TagResolver UnlockItemsTag 
-            => new TagResolver(this, gd => gd.LookupOrCreateTag($"{ExpeditionName} Unlock Items", $"Floating items required to start / progress expedition {ExpeditionName}", gd.Tag_UnlockItems));
+        public static bool IsRegion(Game.Data data, RegionID region)
+            => data.Regions.TryGetData<ScopeData>(region, out _);
 
         /// <summary>
-        /// Parent tag for clear items for this expedition. Typically is just the sector clears.
+        /// Attempts to construct an Expedition.Data from the provided region.
         /// </summary>
-        public TagResolver GoalItemsTag
-            => new TagResolver(this, gd => gd.LookupOrCreateTag($"{ExpeditionName} Goal Items", $"Items indicating a successful full clear of {ExpeditionName}", gd.Tag_GoalItems));
-
-        /// <summary>
-        /// Name of the objective start region for the expedition. This is used by all objectives for all layers
-        /// </summary>
-        public string ObjectiveStartRegionName => $"{ExpeditionName} Elevator Landed";
-
-        /// <summary>
-        /// RegionID for the objective start region for the expedition. This is used by all objectives for all layers
-        /// </summary>
-        public RegionID ObjectiveStartRegion => LookupOrCreateRegion(ObjectiveStartRegionName);
-
-        /// <summary>
-        /// Get expedition data for the currently loaded expedition. Throws if not in an expedition
-        /// </summary>
-        public static Data FromCurrentExpedition()
-            => Data.FromExpedition(RundownManager.ActiveExpedition);
-
-        /// <summary>
-        /// Get expedition data for the currently loaded expedition. Returns null if there is no current expedition
-        /// </summary>
-        public static Data? TryFromCurrentExpedition() 
-            => Data.TryFromExpedition(RundownManager.Current?.m_actExp);
-
-        /// <summary>
-        /// Get expedition data for any given expedition
-        /// </summary>
-        /// <param name="expedition">The expedition data to fetch data for</param>
-        /// <returns>The expedition's data</returns>
-        /// <exception cref="ArgumentException">The expedition data is not registered / found</exception>
-        /// <remarks>
-        /// This method assumes the requested expedition is successfully processed and registered in Game.Data.
-        /// @TODO: Let this create Expedition.Data without processing? Identify expeditions which aren't registered?
-        /// </remarks>
-        public static Data FromExpedition(ExpeditionInTierData expedition)
+        public static bool TryFromRegion(Game.Data data, RegionID region, [MaybeNullWhen(false)] out Expedition.Data expedition)
         {
-            Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
-            string? expeditionName = expedition.Descriptive?.Prefix;
-            if (expeditionName == null || !gameData.TryLookupExpedition(expeditionName, out Expedition.Data? data))
+            if (data.Regions.TryGetData<ScopeData>(region, out var scope))
             {
-                string error = $"Failed to retrieve expedition: {expeditionName}";
-                FeatureLogger.Error(error);
-                throw new ArgumentException(error);
+                expedition = new(data, region, scope);
+                return true;
             }
-            return data;
+            else
+            {
+                expedition = null;
+                return false;
+            }
         }
 
         /// <summary>
-        /// Attempt to find registered expedition data for the requested expedition.
-        /// Returns null if it fails, but otherwise logs no errors.
-        public static Data? TryFromExpedition(ExpeditionInTierData? expedition)
-        {
-            Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
-            string? expeditionName = expedition?.Descriptive?.Prefix;
-            if (expeditionName == null || !gameData.TryLookupExpedition(expeditionName, out Expedition.Data? data))
-                return null;
-            else return data;
-        }
+        /// Get expedition data from the currently-selected expedition. Throws on fail.
+        /// </summary>
+        /// <returns>The expedition data</returns>
+        public static Expedition.Data GetFromCurrentExpedition()
+            => Plugin.Get().MidManager.GetProcessedGameData().GetCurrentExpeditionData();
 
         /// <summary>
-        /// Returns true if this expedition is the same expedition as the other expedition
+        /// Try to get expedition data from the currently-selected expedition.
         /// </summary>
-        /// <param name="other">The expedition to test against</param>
-        /// <returns>True if they're the same, false otherwise</returns>
-        public bool IsSameExpedition(Expedition.Data other)
-            => Rundown.Pointer == other.Rundown.Pointer
-            && ExpeditionTier == other.ExpeditionTier
-            && ExpeditionIndex == other.ExpeditionIndex;
+        /// <returns>The expedition data</returns>
+        public static bool TryGetFromCurrentExpedition([MaybeNullWhen(false)] out Expedition.Data result)
+            => Plugin.Get().MidManager.GetProcessedGameData().TryGetCurrentExpeditionData(out result);
 
         /// <summary>
-        /// Check if this expedition data is for the expedition currently selected
+        /// Get an expedition data from a specific expedition. Throws on fail
         /// </summary>
-        /// <returns>True if this is the currently-selected expedition, false otherwise.</returns>
-        public bool IsCurrentExepdition()
-            => RundownManager.ActiveExpedition != null && Data.FromCurrentExpedition().IsSameExpedition(this);
+        /// <returns>The expedition data</returns>
+        public static Expedition.Data GetFromExpedition(ExpeditionInTierData expedition)
+            => Plugin.Get().MidManager.GetProcessedGameData().GetExpeditionData(expedition);
 
         /// <summary>
-        /// Check if this expedition is both the selected expedition and that we are currently in-level.
+        /// Try to get expedition data from an existing expedition.
+        /// Fails if the expedition is not already registered.
         /// </summary>
-        public bool IsCurrentlyInExpedition()
-            => IsCurrentExepdition() && GameStateManager.IsInExpedition;
+        /// <param name="expedition">The expedition to get data for.</param>
+        /// <returns>The expedition data</returns>
+        public static bool TryGetFromExpedition(ExpeditionInTierData expedition, [MaybeNullWhen(false)] out Expedition.Data result)
+           => Plugin.Get().MidManager.GetProcessedGameData().TryGetExpeditionData(expedition, out result);
     }
 
     // Attribute used to mark static functions which should autoregister to this processor
@@ -208,63 +225,200 @@ public static class Expedition
         // Callback to initiate processing when processing an expedition
         protected void OnProcessGame(Game.Data data)
         {
-            Plugin plugin = Plugin.Get();
-
-            IEnumerable<Expedition.Data> UnpackExpeditions(RundownDataBlock rundown)
+            IEnumerable<(RundownDataBlock Rundown, eRundownTier ExpeditionTier, int ExpeditionIndex)> UnpackExpeditions(RundownDataBlock rundown)
             {
                 int i;
-                for (i = 0; i < rundown.TierA.Count; i++) yield return new Expedition.Data(data, rundown, eRundownTier.TierA, i);
-                for (i = 0; i < rundown.TierB.Count; i++) yield return new Expedition.Data(data, rundown, eRundownTier.TierB, i);
-                for (i = 0; i < rundown.TierC.Count; i++) yield return new Expedition.Data(data, rundown, eRundownTier.TierC, i);
-                for (i = 0; i < rundown.TierD.Count; i++) yield return new Expedition.Data(data, rundown, eRundownTier.TierD, i);
-                for (i = 0; i < rundown.TierE.Count; i++) yield return new Expedition.Data(data, rundown, eRundownTier.TierE, i);
+                for (i = 0; i < rundown.TierA.Count; i++) yield return (Rundown: rundown, ExpeditionTier: eRundownTier.TierA, ExpeditionIndex: i);
+                for (i = 0; i < rundown.TierB.Count; i++) yield return (Rundown: rundown, ExpeditionTier: eRundownTier.TierB, ExpeditionIndex: i);
+                for (i = 0; i < rundown.TierC.Count; i++) yield return (Rundown: rundown, ExpeditionTier: eRundownTier.TierC, ExpeditionIndex: i);
+                for (i = 0; i < rundown.TierD.Count; i++) yield return (Rundown: rundown, ExpeditionTier: eRundownTier.TierD, ExpeditionIndex: i);
+                for (i = 0; i < rundown.TierE.Count; i++) yield return (Rundown: rundown, ExpeditionTier: eRundownTier.TierE, ExpeditionIndex: i);
             }
-            var expeditionsToProcess = RundownDataBlock.GetAllBlocks().SelectMany(UnpackExpeditions);
-
-            using var enumerator = expeditionsToProcess.GetEnumerator();
-            while (enumerator.MoveNext())
+            foreach (var expeditionData in RundownDataBlock.GetAllBlocks().SelectMany(UnpackExpeditions))
             {
-                var expeditionData = enumerator.Current;
-
                 // Filter out invalid expeditions (ie test expeditions, filler expeditions, etc)
                 if (!expeditionData.Rundown.internalEnabled) continue;
-                if (!expeditionData.Expedition.Enabled) continue;
-                if ((LevelLayoutDataBlock.GetBlock(expeditionData.Expedition.LevelLayoutData)?.Zones?.Count ?? 0) == 0) continue;
+                ExpeditionInTierData expedition = Expedition.Data.GetExpeditionFromRundown(expeditionData.Rundown, expeditionData.ExpeditionTier, expeditionData.ExpeditionIndex);
+                if (!expedition.Enabled) continue;
+                if ((LevelLayoutDataBlock.GetBlock(expedition.LevelLayoutData)?.Zones?.Count ?? 0) == 0) continue;
 
                 // List of expeditions which are technically valid but impossible to win
                 // Trying to make this filter really precise so there isn't problems with modded expeditions having the same name
-                SortedList<string, Tuple<uint, string, string>> invalidExpeditions = new()
+                SortedList<string, (uint, string, string)> invalidExpeditions = new()
                 {
-                    { "A3", Tuple.Create(27u, "Geomorph Tester", "Geo Test - VS") },
-                    { "A5", Tuple.Create(27u, "Geomorph Tester", "Geo Test - LF") },
+                    { "A3", (27u, "Geomorph Tester", "Geo Test - VS") },
+                    { "A5", (27u, "Geomorph Tester", "Geo Test - LF") },
                 };
-                if (invalidExpeditions.TryGetValue(expeditionData.ExpeditionName, out var tuple)
+                string shortName = expedition.GetShortName(expeditionData.ExpeditionIndex);
+                if (invalidExpeditions.TryGetValue(shortName, out var tuple)
                     && expeditionData.Rundown.persistentID == tuple.Item1
                     && expeditionData.Rundown.name == tuple.Item2
-                    && expeditionData.Expedition.Descriptive.PublicName == tuple.Item3
+                    && expedition.Descriptive.PublicName == tuple.Item3
                 ) continue;
 
                 // Overwrite the naming mode of this expedition to simplify lookups
                 // Basically, now we don't need to know the expedition index in order to look it up - and the name remains the same :)
-                expeditionData.Expedition.Descriptive.Prefix = expeditionData.ExpeditionName;
-                expeditionData.Expedition.Descriptive.SkipExpNumberInName = true;
-
-                // Try and register the expediton - make sure the namespace is clear
-                if (!data.TryRegisterExpedition(expeditionData.ExpeditionName, expeditionData))
-                {
-                    FeatureLogger.Error($"Skipping processing for expedition due to duplicate naming: {expeditionData.ExpeditionName}");
-                    continue;
-                }
+                expedition.Descriptive.Prefix = shortName;
+                expedition.Descriptive.SkipExpNumberInName = true;
 
                 // Processing!
-                data.ExpeditionProcessor.Process(expeditionData);
+                data.ExpeditionProcessor.Process(new Expedition.Data(data, expeditionData.Rundown, expeditionData.ExpeditionTier, expeditionData.ExpeditionIndex));
             }
         }
     }
 
     extension(Game.Data gameData)
     {
+        /// <summary>
+        /// The expedition processor stored in this game data
+        /// </summary>
         public Processor ExpeditionProcessor
             => (Processor)gameData.Manager.GetProcessor<Data>();
+
+        /// <summary>
+        /// Returns true if the provided region ID is the current expedition's region
+        /// </summary>
+        public bool IsCurrentExpedition(RegionID region)
+        {
+            if (!gameData.TryGetCurrentExpeditionID(out RegionID id))
+                return false;
+            return region.Equals(id);
+        }
+
+        /// <summary>
+        /// Returns true if the provided region ID is or is the child of the current expedition
+        /// </summary>
+        public bool IsInCurrentExpedition(RegionID region)
+        {
+            if (!gameData.TryGetCurrentExpeditionID(out RegionID id))
+                return false;
+            return gameData.Regions.IsChild(region, id);
+        }
+
+        /// <summary>
+        /// Get the current expedition's data
+        /// </summary>
+        public Expedition.Data GetCurrentExpeditionData()
+            => gameData.GetExpeditionData(RundownManager.ActiveExpedition ?? throw new NullReferenceException("Cannot get current expedition; no expedition is active!"));
+
+        /// <summary>
+        /// Try to get the current expedition's data
+        /// </summary>
+        public bool TryGetCurrentExpeditionData([MaybeNullWhen(false)] out Expedition.Data result)
+        {
+            if (RundownManager.ActiveExpedition == null)
+            {
+                result = null;
+                return false;
+            }
+            return gameData.TryGetExpeditionData(RundownManager.ActiveExpedition, out result);
+        }
+
+        /// <summary>
+        /// Find an existing instance of expedition data from the provided game data
+        /// </summary>
+        /// <param name="expedition">The expedition to try and create data for</param>
+        /// <returns>The found expedtiion data</returns>
+        public Expedition.Data GetExpeditionData(ExpeditionInTierData expedition)
+        {
+            if (!gameData.TryGetExpeditionData(expedition, out var result))
+                throw new KeyNotFoundException($"Failed to find expedition data from game data. Expedition: {expedition.Descriptive.Prefix}");
+            return result;
+        }
+
+        /// <summary>
+        /// Attempts to find an existing instance of expedition data from the provided game data
+        /// </summary>
+        /// <param name="expedition">The expedition to try and create data for</param>
+        /// <param name="result">The found expedition data, if any</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public bool TryGetExpeditionData(ExpeditionInTierData expedition, [MaybeNullWhen(false)] out Expedition.Data result)
+        {
+            if (gameData.TryGetExpeditionID(expedition, out RegionID id))
+            {
+                result = new(gameData, id);
+                return true;
+            }
+            else
+            {
+                result = null;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Attempts to find the expedition ID for the active expedition
+        /// </summary>
+        public bool TryGetCurrentExpeditionID(out RegionID id)
+        {
+            if (RundownManager.ActiveExpedition == null)
+            {
+                id = default;
+                return false;
+            }
+            return gameData.TryGetExpeditionID(RundownManager.ActiveExpedition, out id);
+        }
+
+        /// <summary>
+        /// Attempts to find the region ID of a particular expedition
+        /// </summary>
+        public bool TryGetExpeditionID(ExpeditionInTierData expedition, out RegionID id)
+            => gameData.Regions.TryLookUpID(expedition.Descriptive.Prefix, out id);
+
+        /// <summary>
+        /// Enumerable for all expeditions registered in this game data
+        /// </summary>
+        public IEnumerable<Expedition.Data> GetAllExpeditions() => new GetAllExpeditionsEnumerable(gameData);
     }
+
+    /// <summary>
+    /// Allows enumeration of a game data for its expedition regions
+    /// </summary>
+    private class GetAllExpeditionsEnumerable : IEnumerable<Expedition.Data>
+    {
+        readonly Game.Data m_data;
+
+        public GetAllExpeditionsEnumerable(Game.Data data) => m_data = data;
+        public IEnumerator<Data> GetEnumerator() => new GetAllExpeditionsEnumerator(m_data);
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        /// <summary>
+        /// Actual enumerator for this enumerable
+        /// </summary>
+        private class GetAllExpeditionsEnumerator : IEnumerator<Expedition.Data>
+        {
+            public GetAllExpeditionsEnumerator(Game.Data data)
+            {
+                m_data = data;
+                m_regions = null!;
+                Reset();
+            }
+
+            readonly Game.Data m_data;
+            IEnumerator<RegionID> m_regions;
+            Expedition.Data? m_current = null;
+
+            public Data Current => m_current ?? throw new NullReferenceException("GetAllExpeditionsEnumerator was not enumerated correctly!");
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                while (m_regions.MoveNext())
+                {
+                    RegionID id = m_regions.Current;
+                    if (Expedition.Data.TryFromRegion(m_data, id, out var exp))
+                    {
+                        m_current = exp;
+                        return true;
+                    }
+                }
+                m_current = null;
+                return false;
+            }
+
+            public void Reset() => m_regions = m_data.Regions.GetAllIDs().GetEnumerator();
+            public void Dispose() { }
+        }
+    }
+
 }

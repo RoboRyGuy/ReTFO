@@ -1,22 +1,34 @@
 ﻿
 using GameData;
+using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 public static class Objective
 {
+    private record class ScopeData
+    {
+        public ScopeData(int objectiveIndex) => ObjectiveIndex = objectiveIndex;
+        public int ObjectiveIndex { get; init; }
+    }
+
     // Interface class passed to processing giving access to necessary data
     public class Data : Layer.Data
     {
         /// <summary>
-        /// Index of the objective in its layer; same as ChainIndex internally, with 0
-        ///  being the first objective, 1 is the first in the "ChainedObjectives" list, etc
+        /// The custom data stored in the region object for this data
         /// </summary>
-        public int ObjectiveIndex { get; private init; }
+        private readonly ScopeData ObjectiveScopeData;
+
+        /// <summary>
+        /// The region associated with this objective
+        /// </summary>
+        public RegionID Region_Objective { get; private init; }
 
         /// <summary>
         /// Create a new data for the provided objective in the provided layer
@@ -24,17 +36,46 @@ public static class Objective
         public Data(Layer.Data data, int objectiveIndex)
             : base(data)
         {
-            ObjectiveIndex = objectiveIndex;
+            string name = $"{LayerName} Objective #{objectiveIndex + 1}";
+            Region_Objective = Regions.LookUpOrCreate(
+                data, name,
+                data => new("A region for a particular objective in a layer", data.Region_Layer)
+            );
+            if (!Regions.GetDataAllowNull(Region_Objective, out ObjectiveScopeData!))
+                Regions.SetData(Region_Objective, ObjectiveScopeData = new(objectiveIndex));
+        }
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid objective region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data, data.Regions.LookUpDefinition(region).Parent)
+        {
+            Region_Objective = region;
+            ObjectiveScopeData = Regions.GetData<ScopeData>(Region_Objective);
         }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Objective.Data other)
-            : base(other as Layer.Data)
+            : base(other)
         {
-            ObjectiveIndex = other.ObjectiveIndex;
+            Region_Objective = other.Region_Objective;
+            ObjectiveScopeData = other.ObjectiveScopeData;
         }
+
+        /// <summary>
+        /// Index of the objective in its layer; same as ChainIndex internally, with 0
+        ///  being the first objective, 1 is the first in the "ChainedObjectives" list, etc
+        /// </summary>
+        public int ObjectiveIndex => ObjectiveScopeData.ObjectiveIndex;
+
+        /// <summary>
+        /// The unique name of the objective
+        /// </summary>
+        public string ObjectiveName => Regions.LookUpName(Region_Objective);
 
         /// <summary>
         /// Layer objective data for this objective.
@@ -51,13 +92,6 @@ public static class Objective
         public virtual WardenObjectiveDataBlock Objective
             => WardenObjectiveDataBlock.GetBlock(ObjectiveData.DataBlockId)
             ?? throw new NullReferenceException($"Failed to find objective datablock for layer: {LayerName}");
-
-        /// <summary>
-        /// Helper to construct a unique, user-friendly name for this objective.
-        /// </summary>
-        /// <param name="objectiveTypeSummary">A brief summary of what the objective is</param>
-        public string ObjectiveName(string? objectiveTypeSummary = null)
-            => $"{LayerName} Objective #{ObjectiveIndex + 1}{(objectiveTypeSummary == null ? "" : $" ({objectiveTypeSummary})")}";
 
         /// <summary>
         /// Get the warden objective instance assuming we're loaded into the correct level AND that this objective type

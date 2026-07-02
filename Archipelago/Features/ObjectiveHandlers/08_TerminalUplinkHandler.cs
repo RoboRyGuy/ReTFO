@@ -8,8 +8,6 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
-using GameData;
-using InControl;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -17,32 +15,70 @@ public static class TerminalUplinkHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_TerminalUplinkTerminalLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Standard Uplink Terminal Locations", "Locations checked by finding an uplink terminal", gd.Tag_Never));
+        public LocationID Location_TerminalUplinkTerminals
+            => LocationID.From(data, "Standard Uplink Terminal Locations", data => new("Locations checked by finding an uplink terminal", data.Location_Never));
 
-        public TagResolver Tag_TerminalUplinkCompletionLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Standard Uplink Locations", "Locations checked by completing a standard uplink", gd.Tag_Never));
+        public LocationID Location_TerminalUplinkCompletions
+            => LocationID.From(data, "Standard Uplink Locations", data => new("Locations checked by completing a standard uplink", data.Location_Never));
 
-        public TagResolver Tag_TerminalUplinkTerminalItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Standard Uplink Terminal Items", "Items indicating an uplink terminal is reachable", gd.Tag_Never));
+        public ItemID Item_TerminalUplinkTerminals
+            => ItemID.From(data, "Standard Uplink Terminal Items", data => new("Items indicating an uplink terminal is reachable", data.Item_Never));
 
-        public TagResolver Tag_TerminalUplinkCompletionItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Standard Uplink Completion Items", "Items indicating an uplink is completed", gd.Tag_Never));
+        public ItemID Item_TerminalUplinkCompletions
+            => ItemID.From(data, "Standard Uplink Completion Items", data => new("Items indicating an uplink is completed", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.TerminalUplink;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension(Objective.Data data)
     {
-        public TagResolver Tag_TerminalUplinkTerminalLocations_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Standard Uplink Terminal Locations", "Locations checked by finding an uplink terminal for a particular objective", gd.Tag_TerminalUplinkTerminalLocations));
+        public RegionID Region_StandardUplinkTerminalFound(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Found {count} Terminal{(count == 1 ? "" : "s")}", data => new("Region entered by finding a number of uplink terminals", data.Region_Objective));
 
-        public TagResolver Tag_TerminalUplinkCompletionLocations_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Standard Uplink Locations", "Locations checked by completing a standard uplink for a particular objective", gd.Tag_TerminalUplinkCompletionLocations));
+        public RegionID Region_StandardUplinkCompleted(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Completed {count} Uplink{(count == 1 ? "" : "s")}", data => new("Region entered by completing a number of terminal uplinks", data.Region_Objective));
 
-        public TagResolver Tag_TerminalUplinkTerminalItems_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Standard Uplink Terminal Items", "Items indicating an uplink terminal is reachable for a particular objective", gd.Tag_TerminalUplinkTerminalItems));
 
-        public TagResolver Tag_TerminalUplinkCompletionItems_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Standard Uplink Completion Items", "Items indicating an uplink is completed for a particular objective", gd.Tag_TerminalUplinkCompletionItems));
+        public LocationID Location_TerminalUplinkTerminals_ByObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Terminal Locations", data => new("Locations checked by finding an uplink terminal for a particular objective", data.Location_TerminalUplinkTerminals));
+
+        public LocationID Location_TerminalUplinkCompletions_ByObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Locations", data => new("Locations checked by completing a standard uplink for a particular objective", data.Location_TerminalUplinkCompletions));
+
+        public ItemID Item_TerminalUplinkTerminals_ByObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Terminal Items", data => new("Items indicating an uplink terminal is reachable for a particular objective", data.Item_TerminalUplinkTerminals));
+
+        public ItemID Item_TerminalUplinkCompletions_ByObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Completion Items", data => new("Items indicating an uplink is completed for a particular objective", data.Item_TerminalUplinkCompletions));
+
+
+        public LocationID Location_TerminalUplinkTerminal_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Terminal Location #{count}", data => new("Locations checked by finding an uplink terminal for a particular objective", data.Location_TerminalUplinkTerminals_ByObjective));
+
+        public LocationID Location_TerminalUplinkCompletion_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Standard Uplink Location #{count}", data => new("Locations checked by completing a standard uplink for a particular objective", data.Location_TerminalUplinkCompletions_ByObjective));
+
+        public ItemID Item_TerminalUplinkTerminal_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Standard Uplink Terminal #{count}", 
+                data => new("Items indicating an uplink terminal is reachable for a particular objective", data.Item_TerminalUplinkTerminals_ByObjective),
+                new TerminalUplinkHandler.TerminalUplink_TerminalItem(data.Region_Objective, count)
+            );
+
+        public ItemID Item_TerminalUplinkCompletion_Instance(int count)
+            => ItemID.From(
+                Checked(data),
+                $"{data.ObjectiveName} Standard Uplink Completion #{count}", 
+                data => new("Items indicating an uplink is completed for a particular objective", data.Item_TerminalUplinkCompletions_ByObjective),
+                new TerminalUplinkHandler.TerminalUplink_CompletionItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -62,171 +98,82 @@ public class TerminalUplinkHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    public class TerminalUplink_TerminalItem : Item
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.TerminalUplink;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public TerminalUplink_TerminalItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            CheckIsCorrectObjective(data);
-            return $"Complete {data.Objective.Uplink_NumberOfTerminals} Uplinks";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached when an uplink terminal is found
-        public static string TerminalFound(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Found {count} Terminal{(count == 1 ? "" : "s")}";
-
-        // Region reached when an uplink is completed
-        public static string UplinkCompleted(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Completed {count} Uplink{(count == 1 ? "" : "s")}";
-    }
-
-    private static class TerminalUplink_TerminalLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Terminal Location {count}", "A particular standard uplink terminal location", data.Tag_TerminalUplinkTerminalLocations_ByObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private static class TerminalUplink_CompletionLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Completion Location {count}", "A particular standard uplink completion location", data.Tag_TerminalUplinkCompletionLocations_ByObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private class TerminalUplink_TerminalItem : Item
-    {
-        public TerminalUplink_TerminalItem(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
-        {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
             Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Terminal Item {count}", "A particular standard uplink terminal", data.Tag_TerminalUplinkTerminalItems_ByObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public int Count { get; set; }
-
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TerminalUplinkTerminalItems_ByObjective);
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
+        public int Count { get; private init; }
     }
 
-    private class TerminalUplink_CompletionItem : Item
+    public class TerminalUplink_CompletionItem : Item
     {
-        public TerminalUplink_CompletionItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public TerminalUplink_CompletionItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Uplink Completion Item", "A particular standard uplink completion", data.Tag_TerminalUplinkCompletionItems_ByObjective));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_TerminalUplinkCompletionItems_ByObjective);
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetTerminalItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(TerminalUplink_TerminalItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new TerminalUplink_TerminalItem(data, count);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static KeyedItem GetCompletionItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(TerminalUplink_CompletionItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new TerminalUplink_CompletionItem(data);
-        return new(data.AddItem(newItem), newItem);
+        public RegionID ObjectiveRegion { get; private init; }
+        
+        public int Count { get; private init; }
     }
 
     // Objective requiring one or more standard uplinks to be completed
     [Objective.Callback]
     public void HandleTerminalUplinkObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.TerminalUplink)
             return;
 
         // Very similar to big pickups, but with terminal regions instead
         List<List<RegionID>> regionSets = data.ObjectiveToTerminalRegionSets(data.Objective.Uplink_NumberOfTerminals).ToList();
+        ItemID terminalCategory = data.Item_TerminalUplinkTerminals_ByObjective;
+        ItemID completionCategory = data.Item_TerminalUplinkCompletions_ByObjective;
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
-        KeyedItem completionItem = GetCompletionItem(data);
-        RegionID last = data.ObjectiveStartRegion;
+        RegionID last = data.Region_Objective;
         for (int i = 1; i <= data.Objective.Uplink_NumberOfTerminals; i++)
         {
-            KeyedItem terminalItem = GetTerminalItem(data, i);
-            data.AddLocation(
-                TerminalUplink_TerminalLocation.MakeTag(data, i),
+            data.Locations.CreateValue(
+                data.Location_TerminalUplinkTerminal_Instance(i),
                 regionSets[i - 1],
-                TerminalUplink_TerminalLocation.MakeRandData(),
-                terminalItem.ID
+                new LocationData() { IsAutoDiscovered = true },
+                data.Item_TerminalUplinkTerminal_Instance(i)
             );
 
-            string foundTerminalRegionName = ThisRegions.TerminalFound(data, i);
-            RegionID foundTerminalRegion = data.LookupOrCreateRegion(foundTerminalRegionName);
+            RegionID foundTerminalRegion = data.Region_StandardUplinkTerminalFound(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = foundTerminalRegion,
-                ReqItem = terminalItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.Category, terminalCategory),
                 ReqCount = 1u,
             });
 
-            data.AddLocation(
-                TerminalUplink_CompletionLocation.MakeTag(data, i),
+            data.Locations.CreateValue(
+                data.Location_TerminalUplinkCompletion_Instance(i),
                 foundTerminalRegion,
-                TerminalUplink_CompletionLocation.MakeRandData(),
-                completionItem.ID
+                new LocationData() { IsAutoDiscovered = true },
+                data.Item_TerminalUplinkCompletion_Instance(i)
             );
 
-            string completionRegionName = ThisRegions.UplinkCompleted(data, i);
-            RegionID completionRegion = data.LookupOrCreateRegion(completionRegionName);
+            RegionID completionRegion = data.Region_StandardUplinkCompleted(i);
             data.AddPath(new Path()
             {
                 StartingRegion = foundTerminalRegion,
                 EndingRegion = completionRegion,
-                ReqItem = completionItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.Category, completionCategory),
                 ReqCount = 1u,
             });
             last = completionRegion;
-            eventWrapper.Process(completionRegion, completionRegionName);
+            eventWrapper.Process(completionRegion);
         }
 
         // Place objective complete item in last region

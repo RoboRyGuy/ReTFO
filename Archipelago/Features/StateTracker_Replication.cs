@@ -39,19 +39,46 @@ public partial class StateTracker : ArchipelagoFeature
         public long RootSeed;
 
         /// <summary>
-        /// Names of expeditions being run
-        /// </summary>
-        public string[] ExpeditionNames;
-
-        /// <summary>
         /// Whitelist tags
         /// </summary>
-        public long[] WhitelistTags;
+        public uint[] RegionWhitelist;
 
         /// <summary>
         /// Blacklist tags
         /// </summary>
-        public long[] BlacklistTags;
+        public uint[] RegionBlacklist;
+
+        /// <summary>
+        /// Blacklist tags
+        /// </summary>
+        public uint[] LocationWhitelist;
+
+        /// <summary>
+        /// Blacklist tags
+        /// </summary>
+        public uint[] LocationBlacklist;
+
+        /// <summary>
+        /// Blacklist tags
+        /// </summary>
+        public uint[] ItemWhitelist;
+
+        /// <summary>
+        /// Blacklist tags
+        /// </summary>
+        public uint[] ItemBlacklist;
+
+        /// <summary>
+        /// Helper to access all int arrays for serialization
+        /// </summary>
+        private uint[][] MultiArray => [
+            RegionWhitelist,
+            RegionBlacklist,
+            LocationWhitelist,
+            LocationBlacklist,
+            ItemWhitelist,
+            ItemBlacklist,
+        ];
 
         /// <summary>
         /// Calculate the size of this struct, when serialized, in bytes
@@ -60,8 +87,7 @@ public partial class StateTracker : ArchipelagoFeature
         public int CalcByteSize()
             => SerializationHelpers.CalcStringSize(GameName)
             + SerializationHelpers.Calc7BitEncodedSize(RootSeed == 0 ? 1 : RootSeed)
-            + SerializationHelpers.CalcStringArraySize(ExpeditionNames)
-            + SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[2][] { WhitelistTags, BlacklistTags });
+            + SerializationHelpers.Calc7BitEncodedMultiArraySize(MultiArray);
 
         /// <summary>
         /// Convert this struct to bytes
@@ -84,8 +110,7 @@ public partial class StateTracker : ArchipelagoFeature
         {
             SerializationHelpers.WriteString(bytes, ref index, GameName);
             SerializationHelpers.Write7BitEncodedLong(bytes, ref index, RootSeed);
-            SerializationHelpers.WriteStringArray(bytes, ref index, ExpeditionNames);
-            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, new long[2][] { WhitelistTags, BlacklistTags }, WhitelistTags.Length + BlacklistTags.Length);
+            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, MultiArray);
         }
 
         /// <summary>
@@ -98,16 +123,19 @@ public partial class StateTracker : ArchipelagoFeature
         {
             pArchipelagoInitState result = new();
             result.GameName = SerializationHelpers.ReadString(bytes, ref index);
-            result.GameName = null;
             result.RootSeed = SerializationHelpers.Read7BitEncodedLong(bytes, ref index);
-            result.ExpeditionNames = SerializationHelpers.ReadStringArray(bytes, ref index);
             
-            var spans = SerializationHelpers.Read7BitEncodedMultiArray(bytes, ref index);
-            result.WhitelistTags = new long[spans[0].Length];
-            spans[0].AsSpan().CopyTo(result.WhitelistTags.AsSpan());
-            result.BlacklistTags = new long[spans[1].Length];
-            spans[1].AsSpan().CopyTo(result.BlacklistTags.AsSpan());
-            
+            var spans = SerializationHelpers.Read7BitEncodedMultiUIntArray(bytes, ref index);
+            if (spans.Length != result.MultiArray.Length)
+                throw new NotSupportedException("Received incorrect number of int arrays for AP State from network");
+
+            result.RegionWhitelist =   new uint[spans[0].Length]; spans[0].CopyTo(result.RegionWhitelist);
+            result.RegionBlacklist =   new uint[spans[1].Length]; spans[1].CopyTo(result.RegionBlacklist);
+            result.LocationWhitelist = new uint[spans[0].Length]; spans[2].CopyTo(result.LocationWhitelist);
+            result.LocationBlacklist = new uint[spans[1].Length]; spans[3].CopyTo(result.LocationBlacklist);
+            result.ItemWhitelist =     new uint[spans[0].Length]; spans[4].CopyTo(result.ItemWhitelist);
+            result.ItemBlacklist =     new uint[spans[1].Length]; spans[5].CopyTo(result.ItemBlacklist);
+
             return result;
         }
 
@@ -134,12 +162,12 @@ public partial class StateTracker : ArchipelagoFeature
         /// <summary>
         /// List of the locations scouted
         /// </summary>
-        public long[] LocationIDs;
+        public uint[] LocationIDs;
 
         /// <summary>
         /// The index of the item's slot in the lookup contained in this struct
         /// </summary>
-        public long[] SlotIds;
+        public uint[] SlotIds;
 
         /// <summary>
         /// The display name for the item in each location
@@ -147,12 +175,17 @@ public partial class StateTracker : ArchipelagoFeature
         public string[] ItemDisplayNames;
 
         /// <summary>
+        /// Helper to get multi array for networking
+        /// </summary>
+        private uint[][] MultiArray => [ LocationIDs, SlotIds ];
+
+        /// <summary>
         /// Calculate the size of this struct, when serialized, in bytes
         /// </summary>
         /// <returns>The size of this struct, when serialized, in bytes</returns>
         public int CalcByteSize()
             => SerializationHelpers.CalcStringArraySize(SlotLookup)
-            + SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[2][] { LocationIDs, SlotIds })
+            + SerializationHelpers.Calc7BitEncodedMultiArraySize(MultiArray)
             + SerializationHelpers.CalcStringArraySize(ItemDisplayNames);
 
         /// <summary>
@@ -175,8 +208,7 @@ public partial class StateTracker : ArchipelagoFeature
         public void WriteToBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
             SerializationHelpers.WriteStringArray(bytes, ref index, SlotLookup);
-            long[][] arrs = new long[2][] { LocationIDs, SlotIds };
-            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, arrs, arrs.Sum(i => i.Length));
+            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, MultiArray);
             SerializationHelpers.WriteStringArray(bytes, ref index, ItemDisplayNames);
         }
 
@@ -191,11 +223,9 @@ public partial class StateTracker : ArchipelagoFeature
             pArchipelagoScoutingUpdate result;
             result.SlotLookup = SerializationHelpers.ReadStringArray(bytes, ref index);
             
-            var arrs = SerializationHelpers.Read7BitEncodedMultiArray(bytes, ref index);
-            result.LocationIDs = new long[arrs[0].Length];
-            arrs[0].AsSpan().CopyTo(result.LocationIDs.AsSpan());
-            result.SlotIds = new long[arrs[1].Length];
-            arrs[1].AsSpan().CopyTo(result.SlotIds.AsSpan());
+            var spans = SerializationHelpers.Read7BitEncodedMultiUIntArray(bytes, ref index);
+            result.LocationIDs = new uint[spans[0].Length]; spans[0].CopyTo(result.LocationIDs);
+            result.SlotIds = new uint[spans[1].Length]; spans[1].CopyTo(result.SlotIds);
 
             result.ItemDisplayNames = SerializationHelpers.ReadStringArray(bytes, ref index);
             return result;
@@ -218,29 +248,34 @@ public partial class StateTracker : ArchipelagoFeature
         /// <summary>
         /// List of all locations checked
         /// </summary>
-        public long[] LocationsChecked;
+        public uint[] FoundLocations;
 
         /// <summary>
         /// List of all locations marked as trash
         /// </summary>
-        public long[] TrashedLocations;
+        public uint[] TrashedLocations;
 
         /// <summary>
         /// List of all items collected
         /// </summary>
-        public long[] ItemIds;
+        public uint[] ItemIds;
 
         /// <summary>
         /// List of items stored in the terminal system (not including their code names)
         /// </summary>
-        public long[] ItemsInTerminalSystem;
+        public uint[] ItemsInTerminalSystem;
+
+        /// <summary>
+        /// Helper to get multi array for networking
+        /// </summary>
+        private uint[][] MultiArray => [ FoundLocations, TrashedLocations, ItemIds, ItemsInTerminalSystem ];
 
         /// <summary>
         /// Calculate the size of this struct, when serialized, in bytes
         /// </summary>
         /// <returns>The size of this struct, when serialized, in bytes</returns>
         public int CalcByteSize()
-            => SerializationHelpers.Calc7BitEncodedMultiArraySize(new long[4][] { LocationsChecked, TrashedLocations, ItemIds, ItemsInTerminalSystem });
+            => SerializationHelpers.Calc7BitEncodedMultiArraySize(MultiArray);
 
         /// <summary>
         /// Convert this state to a byte array
@@ -261,8 +296,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <param name="index">The index to write to. This will be moved to the next unwritten byte</param>
         public void WriteToBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
-            long[][] arrs = new long[4][] { LocationsChecked, TrashedLocations, ItemIds, ItemsInTerminalSystem };
-            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, arrs, arrs.Sum(i => i.Length));
+            SerializationHelpers.Write7BitEncodedMultiArray(bytes, ref index, MultiArray);
         }
 
         /// <summary>
@@ -273,19 +307,14 @@ public partial class StateTracker : ArchipelagoFeature
         /// <returns>The deserialized struct</returns>
         public static pArchipelagoGeneralState FromBytes(Il2CppStructArray<byte> bytes, ref int index)
         {
-            var arrs = SerializationHelpers.Read7BitEncodedMultiArray(bytes, ref index);
-            var result = new pArchipelagoGeneralState()
-            {
-                LocationsChecked = new long[arrs[0].Length],
-                TrashedLocations = new long[arrs[1].Length],
-                ItemIds = new long[arrs[2].Length],
-                ItemsInTerminalSystem = new long[arrs[3].Length],
-            };
+            var arrs = SerializationHelpers.Read7BitEncodedMultiUIntArray(bytes, ref index);
+            var result = new pArchipelagoGeneralState();
 
-            arrs[0].AsSpan().CopyTo(result.LocationsChecked.AsSpan());
-            arrs[1].AsSpan().CopyTo(result.TrashedLocations.AsSpan());
-            arrs[2].AsSpan().CopyTo(result.ItemIds.AsSpan());
-            arrs[3].AsSpan().CopyTo(result.ItemsInTerminalSystem.AsSpan());
+            result.FoundLocations        = new uint[arrs[0].Length]; arrs[0].CopyTo(result.FoundLocations);
+            result.TrashedLocations      = new uint[arrs[1].Length]; arrs[1].CopyTo(result.TrashedLocations);
+            result.ItemIds               = new uint[arrs[2].Length]; arrs[2].CopyTo(result.ItemIds);
+            result.ItemsInTerminalSystem = new uint[arrs[3].Length]; arrs[3].CopyTo(result.ItemsInTerminalSystem);
+
             return result;
         }
 
@@ -301,7 +330,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// Struct used to send/receive interactions, IE locations being checked or items being received.
     /// Intentionally the same size as pArtifactInventoryState
     /// </summary>
-    [StructLayout(LayoutKind.Explicit)]
+    [StructLayout(LayoutKind.Explicit, Size = 3 * sizeof(int))]
     public struct pArchipelagoInteraction
     {
         public enum eType : ushort
@@ -317,7 +346,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// <summary>
         /// Create new pArchipelagoInteraction with the provided values
         /// </summary>
-        public pArchipelagoInteraction(eType type, long value = 0, ushort count = 0)
+        public pArchipelagoInteraction(eType type, uint value = 0, ushort count = 0)
         {
             Type = type;
             Value = value;
@@ -340,7 +369,7 @@ public partial class StateTracker : ArchipelagoFeature
         /// A singular long value associated with the interaction, if applicable
         /// </summary>
         [FieldOffset(2 * sizeof(ushort))]
-        public long Value;
+        public uint Value;
 
         public pArtifactInventoryState ToBytes()
         {
@@ -362,7 +391,7 @@ public partial class StateTracker : ArchipelagoFeature
             var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref input, 1)).ToArray();
             result.Type = (eType)BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(0, sizeof(ushort)));
             result.Count = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(sizeof(ushort), sizeof(ushort)));
-            result.Value = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(2 * sizeof(ushort), sizeof(long)));
+            result.Value = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(2 * sizeof(ushort), sizeof(long)));
             return result;
         }
     }
@@ -719,22 +748,15 @@ public partial class StateTracker : ArchipelagoFeature
         {
             GameName = MidManager.GetProcessedGameData().Name,
             RootSeed = RootSeed,
-            ExpeditionNames = new string[Expeditions.Count],
-            WhitelistTags = new long[WhitelistTags.Count],
-            BlacklistTags = new long[BlacklistTags.Count],
         };
 
-        int count = 0;
-        foreach (var exp in Expeditions)
-            result.ExpeditionNames[count++] = exp.ExpeditionName;
-
-        count = 0;
-        foreach (var tag in WhitelistTags)
-            result.WhitelistTags[count++] = tag.AsId;
-
-        count = 0;
-        foreach (var tag in BlacklistTags)
-            result.BlacklistTags[count++] = tag.AsId;
+        int i;
+        i = 0; result.RegionWhitelist   = new uint[RegionWhitelist.Count];   foreach (var id in RegionWhitelist)   result.RegionWhitelist[i++]   = id.ID;
+        i = 0; result.RegionBlacklist   = new uint[RegionBlacklist.Count];   foreach (var id in RegionBlacklist)   result.RegionBlacklist[i++]   = id.ID;
+        i = 0; result.LocationWhitelist = new uint[LocationWhitelist.Count]; foreach (var id in LocationWhitelist) result.LocationWhitelist[i++] = id.ID;
+        i = 0; result.LocationBlacklist = new uint[LocationBlacklist.Count]; foreach (var id in LocationBlacklist) result.LocationBlacklist[i++] = id.ID;
+        i = 0; result.ItemWhitelist     = new uint[ItemWhitelist.Count];     foreach (var id in ItemWhitelist)     result.ItemWhitelist[i++]     = id.ID;
+        i = 0; result.ItemBlacklist     = new uint[ItemBlacklist.Count];     foreach (var id in ItemBlacklist)     result.ItemBlacklist[i++]     = id.ID;
 
         return result;
     }
@@ -745,20 +767,29 @@ public partial class StateTracker : ArchipelagoFeature
     public pArchipelagoGeneralState MakeGeneralState()
     {
         // Might optimize this later
-        return new pArchipelagoGeneralState()
+        pArchipelagoGeneralState result;
+
+        int i, j;
+        i = 0; result.FoundLocations        = new uint[FoundLocations.Count];        foreach (var id in FoundLocations)        result.FoundLocations[i++]        = id.ID;
+        i = 0; result.TrashedLocations      = new uint[TrashedLocations.Count];      foreach (var id in TrashedLocations)      result.TrashedLocations[i++]      = id.ID;
+        i = 0; result.ItemsInTerminalSystem = new uint[ItemsInTerminalSystem.Count]; foreach (var id in ItemsInTerminalSystem) result.ItemsInTerminalSystem[i++] = id.Item1.ID;
+        
+        i = 0; 
+        result.ItemIds = new uint[CollectedItemCounts.Sum(pair => pair.Value)];
+        foreach (var pair in CollectedItemCounts)
         {
-            LocationsChecked = FoundLocations.Select(id => id.AsId).ToArray(),
-            TrashedLocations = TrashedLocations.Select(id => id.AsId).ToArray(),
-            ItemIds = ActualItemCounts.SelectMany(pair => Enumerable.Repeat(pair.Key.AsId, pair.Value)).ToArray(),
-            ItemsInTerminalSystem = ItemsInTerminalSystem.Select(pair => pair.Item1.AsId).ToArray(),
+            for (j = 0; j < pair.Value; j++)
+                result.ItemIds[i++] = pair.Key.ID;
         };
+
+        return result;
     }
 
     /// <summary>
     /// Make a scouting update for all scouted items
     /// </summary>
     public pArchipelagoScoutingUpdate MakeScoutingUpdate()
-        => FormatScoutingUpdate(MidManager.GetProcessedGameData().GetAllLocations().Where(l => l.Value.ScoutedItemName != null).Select(i => i.Key));
+        => FormatScoutingUpdate(MidManager.GetProcessedGameData().Locations.GetAllEntries().Where(l => l.Value.Value?.ScoutedItemName != null).Select(i => i.Key));
 
     /// <summary>
     /// Make a scouting update for a particular collection of items
@@ -766,7 +797,8 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="locations">The locations to create a scouting update for</param>
     public pArchipelagoScoutingUpdate FormatScoutingUpdate(IEnumerable<LocationID> locations)
     {
-        if (ApSession == null) throw new NullReferenceException();
+        if (ApSession == null) 
+            throw new NullReferenceException("Cannot format scouting update; no AP session");
         pArchipelagoScoutingUpdate result;
 
         Dictionary<string, int> playerIdToLookup = new();
@@ -781,16 +813,17 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         Game.Data data = MidManager.GetProcessedGameData();
-        result.LocationIDs = locations.Select(id => id.AsId).ToArray();
-        result.SlotIds = new long[result.LocationIDs.Length];
+        result.LocationIDs = locations.Select(id => id.ID).ToArray();
+        result.SlotIds = new uint[result.LocationIDs.Length];
         result.ItemDisplayNames = new string[result.LocationIDs.Length];
 
         for (int i = 0; i < result.LocationIDs.Length; i++)
         {
-            LocationID id = new() { AsId = result.LocationIDs[i] };
-            Location location = data.LookupLocation(id);
-            result.SlotIds[i] = playerIdToLookup[location.ScoutedPlayerName ?? throw new NullReferenceException()];
-            result.ItemDisplayNames[i] = location.ScoutedItemName ?? throw new NullReferenceException();
+            LocationID id = new() { ID = result.LocationIDs[i] };
+            Location location = data.Locations.LookUpValueChecked(id);
+            result.SlotIds[i] = checked((uint)playerIdToLookup[location.ScoutedPlayerName!]);
+            result.ItemDisplayNames[i] = location.ScoutedItemName 
+                ?? throw new NullReferenceException("Expected scouted item name, got null!");
         }
 
         return result;
@@ -801,7 +834,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="type">The type of interaction to send</param>
     /// <param name="value">An optional value associated with the interaction type</param>
-    protected void SendInteraction(pArchipelagoInteraction.eType type, long value = 0, ushort count = 0)
+    protected void SendInteraction(pArchipelagoInteraction.eType type, uint value = 0, ushort count = 0)
     {
         // If recalling, we'll redo several interactions (ie adding items to terminal)
         if (SNet.Capture.IsRecalling) return;
@@ -832,8 +865,8 @@ public partial class StateTracker : ArchipelagoFeature
 
         for (int i = 0; i < update.LocationIDs.Length; i++)
         {
-            LocationID id = new() { AsId = update.LocationIDs[i] };
-            Location loc = data.LookupLocation(id);
+            LocationID id = new() { ID = update.LocationIDs[i] };
+            Location loc = data.Locations.LookUpValueChecked(id);
             long slot = update.SlotIds[i];
             loc.ScoutedItemName = update.ItemDisplayNames[i];
             loc.ScoutedPlayerName = update.SlotLookup[2 * slot];
@@ -866,16 +899,16 @@ public partial class StateTracker : ArchipelagoFeature
         var gameData = MidManager.GetProcessedGameData();
 
         // We only add to checked locations - no need to notify
-        FoundLocations.UnionWith(state.LocationsChecked.Select(id => new LocationID() { AsId = id }));
-        TrashedLocations.UnionWith(state.TrashedLocations.Select(id => new LocationID() { AsId = id }));
+        FoundLocations.UnionWith(state.FoundLocations.Select(id => new LocationID() { ID = id }));
+        TrashedLocations.UnionWith(state.TrashedLocations.Select(id => new LocationID() { ID = id }));
 
         // Reset terminal items
         ItemsInTerminalSystem.Clear();
         foreach (var id in state.ItemsInTerminalSystem)
-            AddItemToTerminal(new ItemID() { AsId = id });
+            AddItemToTerminal(new ItemID() { ID = id });
 
         var newItemCounts = state.ItemIds.GroupBy(i => i)
-            .ToDictionary(g => new ItemID() { AsId = g.Key }, g => g.Count());
+            .ToDictionary(g => new ItemID() { ID = g.Key }, g => g.Count());
 
         // Sync item counts
         foreach (var key in ActualItemCounts.Keys.Union(newItemCounts.Keys)) 
@@ -886,7 +919,7 @@ public partial class StateTracker : ArchipelagoFeature
             if (isRecall)
             {   // Re-do OnObtained item events since items persist past checkpoints
                 for (int i = newCount; i < count; i++)
-                    gameData.LookupItem(key).OnItemObtained(this, new LocationID(), null);
+                    gameData.Items.LookUpValueChecked(key).OnItemObtained(this, new LocationID(), null, key);
             }
             else
             {   // Check for items we're missing and try to obtain them
@@ -914,24 +947,24 @@ public partial class StateTracker : ArchipelagoFeature
                 if (CurrentState == eState.FakeConnect) return;
 
                 // Note we intentionally truncate the actual item count as a form of lazy rollover support
-                ItemID itemId = new() { AsId = interaction.Value };
+                ItemID itemId = new() { ID = interaction.Value };
                 int actualItemCount = (ushort)ActualItemCounts.GetValueOrDefault(itemId, 0);
                 while (actualItemCount++ < interaction.Count)
                     CollectItem(itemId, skipInteraction: true);
                 break;
 
             case pArchipelagoInteraction.eType.CheckLocation:
-                LocationID locationId = new() { AsId = interaction.Value };
+                LocationID locationId = new() { ID = interaction.Value };
                 NotifyFoundLocation(locationId, sendingAgent, skipInteraction: true);
                 break;
 
             case pArchipelagoInteraction.eType.ScoutLocation:
-                LocationID scoutId = new() { AsId = interaction.Value };
+                LocationID scoutId = new() { ID = interaction.Value };
                 ScoutLocations(Enumerable.Repeat(scoutId, 1));
                 break;
 
             case pArchipelagoInteraction.eType.MarkTrash:
-                LocationID trashId = new() { AsId = interaction.Value };
+                LocationID trashId = new() { ID = interaction.Value };
                 MarkAsTrash([ trashId ], sendingAgent, skipInteraction: true);
                 break;
 
@@ -940,7 +973,7 @@ public partial class StateTracker : ArchipelagoFeature
                 break;
 
             case pArchipelagoInteraction.eType.CheckRegion:
-                RegionID regionId = new() { AsId = interaction.Value };
+                RegionID regionId = new() { ID = interaction.Value };
                 NotifyFoundRegion(regionId, sendingAgent, skipInteraction: true);
                 break;
 

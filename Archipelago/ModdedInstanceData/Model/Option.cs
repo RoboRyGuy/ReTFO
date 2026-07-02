@@ -2,10 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
+
+using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 /// <summary>
 /// Helper namespace for common option values, consts, etc
@@ -20,222 +23,81 @@ public static class Option
         // ====================================================================
         // Inputs
 
-        /// <summary>
-        /// An input which is a toggle
-        /// </summary>
         Toggle,
-
-        /// <summary>
-        /// An input which is a selection of one or more values
-        /// </summary>
         Choice,
-
-        /// <summary>
-        /// An input which is a value range with a custom min/max value
-        /// </summary>
         Range,
 
         // ====================================================================
         // Operations
 
-        /// <summary>
-        /// Operation which outputs either 1 if the input is nonzero else zero
-        /// </summary>
         ToBool,
-
-        /// <summary>
-        /// Treats the input as either False (zero) or True (not zero), and flips it.
-        /// The output is either 1 for true or 0 for false.
-        /// </summary>
         Not,
-
-        /// <summary>
-        /// Treats the inputs as either False (zero) or True (not zero) and ORs them together.
-        /// The output is LParam if LParam is true, otherwise the output is RParam
-        /// </summary>
         Or,
-
-        /// <summary>
-        /// Treats the inputs as either False (zero) or True (not zero) and ANDs them together.
-        /// The output is RParam if true, 0 otherwise.
-        /// </summary>
         And,
-
-        /// <summary>
-        /// Tests whether LParam is exactly equivalent to RParam.
-        /// Outputs 1 if it is, outputs 0 otherwise.
-        /// </summary>
         Equals,
-
-        /// <summary>
-        /// Tests whether LParam is exactly equivalent to RParam
-        /// Outputs 0 if it is, outputs 1 otherwise.
-        /// </summary>
         DoesNotEqual,
-
-        /// <summary>
-        /// Tests whether LParam is less than RParam
-        /// Outputs 1 if it is, outputs 0 otherwise.
-        /// </summary>
         LessThan,
-
-        /// <summary>
-        /// Tests whether LParam is less than or equal to RParam
-        /// Outputs 1 if it is, outputs 0 otherwise.
-        /// </summary>
         LessThanOrEqual,
-
-        /// <summary>
-        /// Tests whether LParam is greater than to RParam
-        /// Outputs 1 if it is, outputs 0 otherwise.
-        /// </summary>
         GreaterThan,
-
-        /// <summary>
-        /// Tests whether LParam is greater than or equal to RParam
-        /// Outputs 1 if it is, outputs 0 otherwise.
-        /// </summary>
         GreaterThanOrEqual,
-
-        /// <summary>
-        /// With inputs A, B, C; treats input A as either False (zero) or True (not zero).
-        /// The outputs is B if A is True, otherwise C.
-        /// </summary>
         Conditional,
-
-        /// <summary>
-        /// Operation which produces the negation of one input (-x)
-        /// </summary>
         Negate,
-
-        /// <summary>
-        /// Operation which produces the reciprocal of one input (1/x)
-        /// </summary>
         Reciprocal,
-
-        /// <summary>
-        /// An operator which adds two numbers together
-        /// </summary>
         Add,
-
-        /// <summary>
-        /// An operator which subtracts RParam from LParam
-        /// </summary>
         Subtract,
-
-        /// <summary>
-        /// An operator which multiplies two numbers together
-        /// </summary>
         Multiply,
-
-        /// <summary>
-        /// An operator which divides LParam by RParam
-        /// </summary>
         Divide,
-
-        /// <summary>
-        /// With inputs A, B, C; outputs the result of linear mapping (output = a * b + c).
-        /// This is equivalent to the `mad` function in HLSL
-        /// </summary>
         LinearMap,
 
         // ====================================================================
         // Effects
 
-        /// <summary>
-        /// Adds a single tag to a specified set
-        /// </summary>
         AddToSet,
-
-        /// <summary>
-        /// Adds a count to a tag count for a particular tag
-        /// </summary>
-        AddCount,
+        AddCountToDict,
+        AddAllToDict,
 
         // ====================================================================
         // Special
 
-        /// <summary>
-        /// Creates a simple choice input field allowing users to whitelist, blacklist,
-        ///  or ignore a specific tag. 
-        /// </summary>
-        WhiteOrBlacklist,
+        RegionTagOption,
+        LocationTagOption,
+        ItemTagOption,
     }
 
     /// <summary>
-    /// The set or count to target in a tag effect
+    /// Target of a 'set' operation (ie HashSet, not the verb 'set')
     /// </summary>
-    public enum eTarget
+    public enum eSetTarget
+    { 
+        RegionWhitelist,
+        RegionBlacklist,
+        LocationWhitelist,
+        LocationBlacklist,
+        ItemWhitelist,
+        ItemBlacklist
+    }
+
+    /// <summary>
+    /// Target of a `dict` operation
+    /// </summary>
+    public enum eDictTarget
     {
-        /// <summary>
-        /// Add tags to the whitelist set, enabling randomization for items and locations
-        /// </summary>
-        Whitelist,
-
-        /// <summary>
-        /// Add tags to the blacklist set, blocking randomization for items and locations
-        /// </summary>
-        Blacklist,
-
-        /// <summary>
-        /// Add tags to the start inventory dict.
-        /// </summary>
+        GoalItems,
         StartInventory,
-
-        /// <summary>
-        /// Add tags to the start vouchers dict.
-        /// </summary>
         StartVouchers,
-
-        /// <summary>
-        /// Add tags to the early item dict.
-        /// Note that only randomized items can be declared as early items.
-        /// </summary>
         EarlyItems,
-
-        /// <summary>
-        /// Add a tag to the local item set, forcing all instances of that tag
-        ///  and its children to be local items.
-        /// </summary>
         LocalItems,
-
-        /// <summary>
-        /// Add a tag to the non-local item set, forcing all instances of that
-        ///  tag and its children to be non-local items
-        /// </summary>
         NonLocalItems,
-
-        /// <summary>
-        /// Add a tag to the start hints dict, granting a hint for one child 
-        ///  tag (item or location) for each entry in the dict
-        /// </summary>
-        StartHints,
-
-        /// <summary>
-        /// Add a location to the exclude locations override list,
-        ///  setting all child locations as excluded locations
-        /// </summary>
-        CustomExcludeLocations,
-
-        /// <summary>
-        /// Add tags to the priority location tag set, setting all
-        ///  child locations as priority locations.
-        /// </summary>
-        CustomPriorityLocations,
-
-        /// <summary>
-        /// Add a tag to the goal items blacklist tag set, allowing players to 
-        ///  skip particular goal items
-        /// </summary>
-        GoalBlacklist,
-
-        // TODO: Item links and plando
+        ItemHints,
+        LocationHints,
+        PriorityLocations,
+        ExcludeLocations,
     }
 
     /// <summary>
     /// A default category for options you may use
     /// </summary>
-    public const string DEFAULT_OPTION_CATEGORY = "Miscellaneous Options";
+    public const string DEFAULT_OPTION_CATEGORY = "Game Options";
 
     /// <summary>
     /// A warning message which should be appended to the description of any input
@@ -284,6 +146,36 @@ public static class Option
 
         return output.ToString();
     }
+
+    /// <summary>
+    /// Make a sort key for a specific ID
+    /// </summary>
+    /// <param name="data">The game data used to create the ID</param>
+    /// <param name="id">The ID to make a sort key for</param>
+    /// <returns>The sort key</returns>
+    public static uint[] MakeSortKey(Game.Data data, RegionID id)
+        => IdToUint(data.Regions.MakeChain(id));
+
+    /// <inheritdoc cref="MakeSortKey(Game.Data, RegionID)"/>
+    public static uint[] MakeSortKey(Game.Data data, LocationID id)
+        => IdToUint(data.Locations.MakeChain(id));
+
+    /// <inheritdoc cref="MakeSortKey(Game.Data, RegionID)"/>
+    public static uint[] MakeSortKey(Game.Data data, ItemID id)
+        => IdToUint(data.Items.MakeChain(id));
+
+    /// <summary>
+    /// Helper which converts an array of IDs to their plain uint values
+    /// </summary>
+    /// <typeparam name="TID">The type of ID to convert</typeparam>
+    /// <param name="ids">The array of IDs</param>
+    /// <returns>A new array with the IDs as uints</returns>
+    private static uint[] IdToUint<TID>(TID[] ids) where TID : struct, ITagID
+    {
+        uint[] result = new uint[ids.Length];
+        MemoryMarshal.Cast<TID, uint>(ids.AsSpan()).CopyTo(result);
+        return result;
+    }
 }
 
 /// <summary>
@@ -291,57 +183,16 @@ public static class Option
 ///  for looking up an OptionID instance in GameData.
 /// </summary>
 [DataContract]
-public struct OptionID : INullable, IId, IIndex, IComparable<OptionID>, IEquatable<OptionID>
+public struct OptionID : ITagID, IEquatable<OptionID>, IComparable<OptionID>
 {
-    public OptionID() { }
-    [DataMember(Name = "value")]
-    private readonly long m_value = 0;
+    [DataMember(Name = "id")]
+    public uint ID { get; init; }
 
-    public bool IsNull => m_value == 0;
-    public long AsId { get => m_value; init => m_value = value; }
-    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
-    public int CompareTo(OptionID other) => m_value.CompareTo(other.m_value);
-    public bool Equals(OptionID other) => m_value.Equals(other.m_value);
-    public override bool Equals([NotNullWhen(true)] object? obj) => obj is ItemID id && Equals(id);
-    public override int GetHashCode() => m_value.GetHashCode();
-    public override string ToString() => $"OptionID: {m_value}";
-}
-
-/// <summary>
-/// An option with an ID associated with it
-/// </summary>
-[DataContract]
-public struct KeyedOption : INullable
-{
-    /// <summary>
-    /// Create a default, null KeyedOption
-    /// </summary>
-    public KeyedOption()
-    {
-        ID = new();
-        Option = null!;
-    }
-
-    /// <summary>
-    /// Create a keyed option with the given option and ID
-    /// </summary>
-    public KeyedOption(OptionID id, OptionBase option)
-    {
-        ID = id;
-        Option = option;
-    }
-
-    /// <summary>
-    /// Unique ID of the OptionBase
-    /// </summary>
-    [DataMember(Name = "id")] public readonly OptionID ID;
-
-    /// <summary>
-    /// The OptionBase object with the given ID
-    /// </summary>
-    [DataMember(Name = "option")] public readonly OptionBase Option;
-
-    public bool IsNull => ID.IsNull;
+    public bool IsNull => ID == 0;
+    public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+    public bool Equals(OptionID other) => ID == other.ID;
+    public int CompareTo(OptionID other) => ID.CompareTo(other.ID);
+    public override string ToString() => $"OptionID {ID}";
 }
 
 /// <summary>
@@ -361,9 +212,24 @@ public struct OptionParameter
         Constant,
 
         /// <summary>
+        /// Specifies this is a constant and that constant comes from a RegionID
+        /// </summary>
+        RegionID,
+
+        /// <summary>
+        /// Specifies this is a constant and that constant comes from a LocationID
+        /// </summary>
+        LocationID,
+
+        /// <summary>
+        /// Specifies this is a constant and that constant comes from a ItemID
+        /// </summary>
+        ItemID,
+
+        /// <summary>
         /// Specifies the contained value is an OptionID, and to use the output from that option as the value
         /// </summary>
-        Option,
+        OptionID,
     }
 
     /// <summary>
@@ -385,22 +251,28 @@ public struct OptionParameter
         => new OptionParameter() { Type = eType.Constant, Value = value };
 
     /// <summary>
-    /// Create a new option parameter targeting a tag. This is internally the same as a constant
+    /// Create a new option parameter targeting a RegionID
     /// </summary>
-    public static implicit operator OptionParameter(RandomizationTag tag)
-        => new OptionParameter() { Type = eType.Constant, Value = tag.AsId };
+    public static implicit operator OptionParameter(RegionID id)
+        => new OptionParameter() { Type = eType.RegionID, Value = id.ID };
 
     /// <summary>
-    /// Create a new option parameter targeting a tag. This is internally the same as a constant
+    /// Create a new option parameter targeting a LocationID
     /// </summary>
-    public static implicit operator OptionParameter(TagResolver tag)
-        => tag.SelfResolve();
+    public static implicit operator OptionParameter(LocationID id)
+        => new OptionParameter() { Type = eType.LocationID, Value = id.ID };
+
+    /// <summary>
+    /// Create a new option parameter targeting an ItemID
+    /// </summary>
+    public static implicit operator OptionParameter(ItemID id)
+        => new OptionParameter() { Type = eType.ItemID, Value = id.ID };
 
     /// <summary>
     /// Create a new option parameter targeting an option by ID
     /// </summary>
     public static implicit operator OptionParameter(OptionID id)
-        => new OptionParameter() { Type = eType.Option, Value = id.AsId, };
+        => new OptionParameter() { Type = eType.OptionID, Value = id.ID, };
 }
 
 /// <summary>
@@ -422,17 +294,29 @@ public abstract class OptionBase
 [DataContract]
 public abstract class OptionInput : OptionBase
 {
+    public OptionInput(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition
+    ) {
+        DisplayName = displayName;
+        Description = description;
+        Category = category;
+        CategorySort = categorySort;
+        DefaultValue = defaultValue;
+        Condition = condition;
+    }
+
     /// <summary>
     /// The name to present to the user for this input
     /// </summary>
     [DataMember(Name = "display_name")]
-    public required string DisplayName { get; init; }
+    public string DisplayName { get; init; }
 
     /// <summary>
     /// The string name to use for this input
     /// </summary>
     [DataMember(Name = "description")]
-    public required string Description { 
+    public string Description { 
         get => m_description; 
         init => m_description = Option.AddLineBreaks(value); 
     }
@@ -442,13 +326,23 @@ public abstract class OptionInput : OptionBase
     /// The category to sort this input under
     /// </summary>
     [DataMember(Name = "category")]
-    public required string Category { get; init; }
+    public string Category { get; init; }
+
+    /// <summary>
+    /// A set of integers used to sort in a category.
+    /// This sorts similar to strings: 
+    ///  1. The first int is checked, and the lower of the two goes first.
+    ///  2. If both match, the second int is checked, and the lower of those two goes first.
+    ///  3. If all ints match, sorts based on insertion order (the sort is stable).
+    /// </summary>
+    [DataMember(Name = "category_sort")]
+    public uint[] CategorySort { get; init; }
 
     /// <summary>
     /// The default value to use for this input
     /// </summary>
     [DataMember(Name = "default_value")]
-    public required long DefaultValue { get; init; }
+    public long DefaultValue { get; init; }
 
     /// <summary>
     /// If non-null, specifies an option which must evaluate to non-zero for this input to be visible.
@@ -456,7 +350,7 @@ public abstract class OptionInput : OptionBase
     ///  not prevent this input from being used in any way.
     /// </summary>
     [DataMember(Name = "condition")]
-    public required OptionID Condition { get; init; }
+    public OptionID Condition { get; init; }
 }
 
 /// <summary>
@@ -466,6 +360,11 @@ public abstract class OptionInput : OptionBase
 [DataContract]
 public class OptionToggle : OptionInput
 {
+    public OptionToggle(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition
+    ) : base(displayName, description, category, categorySort, defaultValue, condition) { }
+
     public override Option.eType Type => Option.eType.Toggle;
 }
 
@@ -475,6 +374,16 @@ public class OptionToggle : OptionInput
 [DataContract]
 public class OptionChoice : OptionInput
 {
+    public OptionChoice(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        List<string> choiceNames, List<long> choiceValues
+    ) : base(displayName, description, category, categorySort, defaultValue, condition) 
+    {
+        ChoiceNames = choiceNames;
+        ChoiceValues = choiceValues;
+    }
+
     public override Option.eType Type => Option.eType.Choice;
 
     /// <summary>
@@ -496,19 +405,29 @@ public class OptionChoice : OptionInput
 [DataContract]
 public class OptionRange : OptionInput
 {
+    public OptionRange(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        float min, float max
+    ) : base(displayName, description, category, categorySort, defaultValue, condition) 
+    {
+        Min = min;
+        Max = max;
+    }
+
     public override Option.eType Type => Option.eType.Range;
 
     /// <summary>
     /// The min value of the range
     /// </summary>
     [DataMember(Name = "min")]
-    public required float Min { get; init; }
+    public float Min { get; init; }
 
     /// <summary>
     /// The max value of the range
     /// </summary>
     [DataMember(Name = "max")]
-    public required float Max { get; init; }
+    public float Max { get; init; }
 }
 
 /// <summary>
@@ -524,12 +443,15 @@ public abstract class OptionOperation : OptionBase { }
 [DataContract]
 public abstract class OptionEffect : OptionBase 
 {
+    public OptionEffect(OptionID condition)
+        => Condition = condition;
+
     /// <summary>
     /// If non-null, specifies an option which must evaluate to non-zero for this effect to apply.
     /// If the effect evaluates to zero, the effect is ignored/discarded.
     /// </summary>
     [DataMember(Name = "condition")]
-    public required OptionID Condition { get; init; } = new();
+    public OptionID Condition { get; init; } = new();
 }
 
 /// <summary>
@@ -538,20 +460,26 @@ public abstract class OptionEffect : OptionBase
 [DataContract]
 public class OptionAddToSet : OptionEffect
 {
+    public OptionAddToSet(OptionID condition, Option.eSetTarget target, OptionParameter tag)
+        :   base(condition)
+    {
+        Target = target;
+        Tag = tag;
+    }
+
     public override Option.eType Type => Option.eType.AddToSet;
 
     /// <summary>
-    /// The target which is affected; read the enum for details.
-    /// Note that attempting to target a non-set target will throw an error.
+    /// The set to add a tag to
     /// </summary>
     [DataMember(Name = "target")]
-    public required Option.eTarget Target { get; init; }
+    public Option.eSetTarget Target { get; init; }
 
     /// <summary>
-    /// This option parameter will be interpretted as a tag ID and added to the target set
+    /// The ID to add to the set; if an option ID, its output will be converted to the relevant ID type
     /// </summary>
     [DataMember(Name = "tag")]
-    public required OptionParameter Tag { get; init; }
+    public OptionParameter Tag { get; init; }
 }
 
 /// <summary>
@@ -560,46 +488,130 @@ public class OptionAddToSet : OptionEffect
 [DataContract]
 public class OptionAddCount : OptionEffect
 {
-    public override Option.eType Type => Option.eType.AddCount;
+    public OptionAddCount(OptionID condition, Option.eDictTarget target, OptionParameter tag, OptionParameter count)
+        : base(condition)
+    {
+        Target = target;
+        Tag = tag;
+        Count = count;
+    }
+
+    public override Option.eType Type => Option.eType.AddCountToDict;
 
     /// <summary>
-    /// The target which is affected; read the enum for details.
-    /// Note that attempting to target a non-dict target will throw an error.
+    /// The dict to add to
     /// </summary>
     [DataMember(Name = "target")]
-    public required Option.eTarget Target { get; init; }
+    public Option.eDictTarget Target { get; init; }
 
     /// <summary>
-    /// This option parametere will be interpretted as a tag ID and used as the key for the target count
+    /// The ID to use as a key; if an option ID, its output will be converted to the relevant ID type
     /// </summary>
     [DataMember(Name = "tag")]
-    public required OptionParameter Tag { get; init; }
+    public OptionParameter Tag { get; init; }
 
     /// <summary>
-    /// The count to add to the key in the specified target
+    /// The count to add to the ID in the specified target
     /// </summary>
     [DataMember(Name = "count")]
-    public required OptionParameter Count { get; init; }
+    public OptionParameter Count { get; init; }
 }
 
 /// <summary>
-/// A special option which creates an input field allowing users to whitelist,
+/// An option effect which sets a dict key's value to a special value indicating 'all'
+/// </summary>
+[DataContract]
+public class OptionAddAll : OptionEffect
+{
+    public OptionAddAll(OptionID condition, Option.eDictTarget target, OptionParameter tag)
+        : base(condition)
+    {
+        Target = target;
+        Tag = tag;
+    }
+
+    public override Option.eType Type => Option.eType.AddAllToDict;
+
+    /// <summary>
+    /// The dict to add to
+    /// </summary>
+    [DataMember(Name = "target")]
+    public Option.eDictTarget Target { get; init; }
+
+    /// <summary>
+    /// The ID to use as a key; if an option ID, its output will be converted to the relevant ID type
+    /// </summary>
+    [DataMember(Name = "tag")]
+    public OptionParameter Tag { get; init; }
+}
+
+/// <summary>
+/// A special option which creates a choice field allowing users to whitelist,
 ///  blacklist, or ignore a tag. This also applies the effect.
 /// Option values: 0 = Whitelisted, 1 = None, 2 = Blacklist
 /// </summary>
 [DataContract]
-public class OptionWhiteOrBlacklist : OptionInput
+public abstract class OptionTagOption : OptionInput
 {
-    public override Option.eType Type => Option.eType.WhiteOrBlacklist;
+    public OptionTagOption(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        OptionParameter tag
+    ) : base(displayName, description, category, categorySort, defaultValue, condition)
+    {
+        Tag = tag;
+    }
 
+    /// <summary>
+    /// Suffix which should be placed on descriptions for this option which explains the choices
+    /// </summary>
     public const string DESC_SUFFIX = ""
-        + "\nWhitelist: Enables for all unless blacklisted elsewhere"
+        + "\nWhitelist: Enables for all unless blacklisted elsewhere."
         + "\nBlacklist: Disables for all."
-        + "\nNone: Defer to other settings. If no other setting is relevant, defaults to blacklisted.";
+        + "\nNone: Defer to other relevant setting(s). If no other relevant setting is set, defaults to blacklisted.";
 
     /// <summary>
     /// The tag to add to either the whitelist or the blacklist.
     /// </summary>
     [DataMember(Name = "tag")]
-    public required OptionParameter Tag { get; init; }
+    public OptionParameter Tag { get; init; }
+}
+
+/// <inheritdoc cref="OptionTagOption"/>
+[DataContract]
+public class OptionRegionTagOption : OptionTagOption
+{
+    public OptionRegionTagOption(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        OptionParameter tag
+    ) : base(displayName, description, category, categorySort, defaultValue, condition, tag) { }
+
+    public override Option.eType Type => Option.eType.RegionTagOption;
+}
+
+/// <inheritdoc cref="OptionTagOption"/>
+[DataContract]
+public class OptionLocationTagOption : OptionTagOption
+{
+    public OptionLocationTagOption(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        OptionParameter tag
+    ) : base(displayName, description, category, categorySort, defaultValue, condition, tag) { }
+
+    public override Option.eType Type => Option.eType.LocationTagOption;
+}
+
+/// <inheritdoc cref="OptionTagOption"/>
+[DataContract]
+public class OptionItemTagOption : OptionTagOption
+{
+    public OptionItemTagOption(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        OptionParameter tag
+    ) : base(displayName, description, category, categorySort, defaultValue, condition, tag) { }
+
+    public override Option.eType Type => Option.eType.ItemTagOption;
 }

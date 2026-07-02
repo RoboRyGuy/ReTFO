@@ -15,11 +15,25 @@ public static class ExtractionHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_ExtractionLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Extraction Locations", "Locations checked by reaching extraction on an expedition", gd.Tag_Never));
+        public LocationID Location_Extractions
+            => LocationID.From(data, "Extraction Locations", data => new("Parent tag of all extraction locations", data.Location_Never));
 
-        public TagResolver Tag_ExtractionItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Extraction Items", "Items indicating extraction is reachable on a particular level", gd.Tag_Never));
+        public ItemID Item_Extractions
+            => ItemID.From(data, "Extractions", data => new("Items indicating extraction is reachable on a particular level", data.Item_Never));
+    }
+
+    extension (Expedition.Data data)
+    {
+        public LocationID Location_Extraction_Instance
+            => LocationID.From(data, $"{data.ExpeditionName} Extraction Location", data => new("An extraction location for a particular expedition", data.Location_Extractions));
+
+        public ItemID Item_Extraction_Instance
+            => ItemID.From(
+                data,
+                $"{data.ExpeditionName} Extraction",
+                data => new("An item indicating extraction is reachable for a particular expedition", data.Item_Extractions),
+                new ExtractionHandler.ExtractionReachableItem(data.Region_Expedition)
+            );
     }
 }
 
@@ -38,42 +52,18 @@ public class ExtractionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    private static class ExtractionReachableLocation
-    {
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Extraction Location", "The locaiton of extraction for a particular expedition", gd.Tag_ExtractionLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
     /// <summary>
     /// A purely event item used to identify when extraction is reachable
     /// </summary>
-    private class ExtractionReachableItem : Item
+    public class ExtractionReachableItem : Item
     {
-        public ExtractionReachableItem(Expedition.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public ExtractionReachableItem(RegionID expedition)
+            : base(new ItemData() { IsProgression = true })
         {
-            ExpeditionData = data;
+            ExpeditionRegion = expedition;
         }
 
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Extraction Reachable", "Indiciates extraction is reachable for a particular expedition", gd.Tag_ExtractionItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        Expedition.Data ExpeditionData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ExpeditionData;
-    }
-
-    public static KeyedItem GetExtractionReachableItem(Expedition.Data data)
-    {
-        if (data.TryLookupItem(ExtractionReachableItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new ExtractionReachableItem(data);
-        return new(data.AddItem(newItem), newItem);
+        public RegionID ExpeditionRegion { get; private init; }
     }
 
     [Expedition.Callback]
@@ -104,12 +94,11 @@ public class ExtractionHandler : ArchipelagoFeature
             return;
         }
 
-        KeyedItem item = GetExtractionReachableItem(data);
-        data.AddLocation(
-            ExtractionReachableLocation.MakeTag(data),
-            data.LookupOrCreateRegion(zone.ZoneName),
-            ExtractionReachableLocation.MakeRandData(),
-            item.ID
+        data.Locations.CreateValue(
+            data.Location_Extraction_Instance,
+            zone.Region_Zone,
+            new LocationData() { IsAutoDiscovered = true },
+            data.Item_Extraction_Instance
         );
     }
 

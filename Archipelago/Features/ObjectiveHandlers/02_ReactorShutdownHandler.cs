@@ -14,11 +14,44 @@ public static class ReactorShutdownHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_ReactorShutdownReactorLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Shutdown Reactor Locations", "Locations checked by finding a reactor shutdown reactor", gd.Tag_Never));
+        public LocationID Location_ReactorShutdownReactors
+            => LocationID.From(data, "Reactor Shutdown Reactor Locations", data => new("Locations checked by finding a reactor shutdown reactor", data.Location_Never));
 
-        public TagResolver Tag_ReactorShutdownReactorItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Shutdown Reactors", "Items representing a reactor used for a reactor shutdown objective", gd.Tag_Never));
+        public ItemID Item_ReactorShutdownReactors
+            => ItemID.From(data, "Reactor Shutdown Reactor Items", data => new("Items representing a reactor used for a reactor shutdown objective", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.Reactor_Shutdown;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
+    }
+
+    extension (Objective.Data data)
+    {
+        public RegionID Region_CompletedShutdown(int count)
+            => RegionID.From(data, $"{data.ObjectiveName} Completed {count} Reactor Startup", data => new("Region entered when a certain count of reactor shutdowns are completed", data.Region_Objective));
+
+
+        public LocationID Location_ReactorShutdownReactors_PerObjective
+            => LocationID.From(data, $"{data.ObjectiveName} Reactor Shutdown Reactor Locations", data => new("Locations checked by finding a reactor shutdown reactor for a particular objective", data.Location_ReactorShutdownReactors));
+
+        public ItemID Item_ReactorShutdownReactors_PerObjective
+            => ItemID.From(data, $"{data.ObjectiveName} Reactor Shutdown Reactor Items", data => new("Items representing a reactor used for a particular reactor shutdown objective", data.Item_ReactorShutdownReactors));
+
+
+        public LocationID Location_ReactorShutdownReactor_Instance(int count)
+            => LocationID.From(data, $"{data.ObjectiveName} Reactor Shutdown Reactor Locations #{count}", data => new("A particular reactor shutdown reactor location", data.Location_ReactorShutdownReactors_PerObjective));
+
+        public ItemID Item_ReactorShutdownReactor_Instance(int count)
+            => ItemID.From(
+                data, 
+                $"{data.ObjectiveName} Reactor Shutdown Reactor Items #{count}", 
+                data => new("A particular reactor shutdown reactor", data.Item_ReactorShutdownReactors_PerObjective),
+                new ReactorShutdownHandler.ReactorShutdownReactorItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -63,46 +96,18 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         }
     }
 
-    private static class ThisRegions
+    public class ReactorShutdownReactorItem : Item
     {
-        // Region reached when a shutdown is successfully completed
-        public static string CompletedShutdown(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Completed {count} Reactor Startup";
-    }
-
-    private static class ReactorShutdownReactorLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor #{count} Location", "A particular reactor location", gd.Tag_ReactorShutdownReactorLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private class ReactorShutdownReactorItem : Item
-    {
-        public ReactorShutdownReactorItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public ReactorShutdownReactorItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor", "A particular reactor", gd.Tag_ReactorShutdownReactorItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetReactorItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(ReactorShutdownReactorItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new ReactorShutdownReactorItem(data);
-        return new(data.AddItem(newItem), newItem);
+        public RegionID ObjectiveRegion { get; private init; }
+        
+        public int Count { get; private init; }
     }
 
     // Objective requiring a single reactor be shut down
@@ -115,15 +120,14 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         // Reactor region pickup
         // The shutdown can be initiated from any reachable reactor in the list (for some reason)
         int count = 0;
-        KeyedItem reactorItem = GetReactorItem(data);
         void addReactor(Zone.Data zone)
         {
             ++count;
-            data.AddLocation(
-                ReactorShutdownReactorLocation.MakeTag(data, count),
-                data.LookupOrCreateRegion(zone.ZoneName),
-                ReactorShutdownReactorLocation.MakeRandData(),
-                reactorItem.ID
+            data.Locations.CreateValue(
+                data.Location_ReactorShutdownReactor_Instance(count),
+                zone.Region_Zone,
+                new LocationData() { IsAutoDiscovered = true },
+                data.Item_ReactorShutdownReactor_Instance(count)
             );
         }
 
@@ -132,7 +136,7 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             var targetZone = data.FindZoneByPlacement(placement);
             if (targetZone == null)
             {
-                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName()}");
+                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName}");
                 continue;
             }
             addReactor(targetZone);
@@ -145,13 +149,13 @@ public class ReactorShutdownHandler : ArchipelagoFeature
             {
                 if (zone.CustomGeo?.Contains("_reactor_", StringComparison.OrdinalIgnoreCase) ?? false)
                 {
-                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName()}");
+                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName}");
                     addReactor(zone);
                     break;
                 }
             }
             if (count == 0)
-                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName()}");
+                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName}");
         }
 
         // OnActivateOnSolveItem
@@ -162,26 +166,26 @@ public class ReactorShutdownHandler : ArchipelagoFeature
         }
 
         // If we can reach multiple reactors, then we can perform OnActivateOnSolve multiple times
+        ItemID category = data.Item_ReactorShutdownReactors_PerObjective;
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
         count = 0;
         while (!eventWrapper.IsDone)
         {
             ++count;
-            string eventName = ThisRegions.CompletedShutdown(data, count);
-            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            RegionID eventRegion = data.Region_CompletedShutdown(count);
             data.AddPath(new Path()
             {
-                StartingRegion = data.ObjectiveStartRegion,
+                StartingRegion = data.Region_Objective,
                 EndingRegion = eventRegion,
-                ReqItem = reactorItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.Category, category),
                 ReqCount = (uint)count
             });
-            eventWrapper.Process(eventRegion, eventName);
+            eventWrapper.Process(eventRegion);
         }
 
         // Objective can be completed after the first reactor
         if (!data.Objective.DoNotSolveObjectiveOnReactorComplete)
-            SharedObjectiveHandler.AddObjectiveCompleteItem(data, data.LookupOrCreateRegion(ThisRegions.CompletedShutdown(data, 1)));
+            SharedObjectiveHandler.AddObjectiveCompleteItem(data, data.Region_CompletedShutdown(1));
     }
 
 }

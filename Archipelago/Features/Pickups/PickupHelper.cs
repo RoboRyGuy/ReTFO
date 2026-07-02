@@ -23,42 +23,42 @@ public static class PickupHelper_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_PickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Pickup Locations", "Locations checked when items are picked up (keys, cells, artifacts, etc)", gd.Tag_AllLocations));
+        public LocationID Location_Pickups
+            => LocationID.From(gameData, "Pickup Locations", data => new("Locations checked when items are picked up (keys, cells, artifacts, etc)", data.Location_All));
 
-        public TagResolver Tag_SmallPickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Small Pickup Locations", "Location checked when small items are picked up (keys, IDs, GLPS, etc)", gd.Tag_PickupLocations));
+        public LocationID Location_SmallPickups
+            => LocationID.From(gameData, "Small Pickup Locations", data => new("Location checked when small items are picked up (keys, IDs, GLPS, etc)", data.Location_Pickups));
 
-        public TagResolver Tag_BigPickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Big Pickup Locations", "Location checked when big items are picked up (cells, fog turbines, babies, etc)", gd.Tag_PickupLocations));
+        public LocationID Location_BigPickups
+            => LocationID.From(gameData, "Big Pickup Locations", data => new("Location checked when big items are picked up (cells, fog turbines, babies, etc)", data.Location_Pickups));
 
-        public TagResolver Tag_ResourcePickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Resource Pickup Locations", "Location checked when resources are picked up (ammo, med, tool, disinfect)", gd.Tag_PickupLocations));
+        public LocationID Location_ResourcePickups
+            => LocationID.From(gameData, "Resource Pickup Locations", data => new("Location checked when resources are picked up (ammo, med, tool, disinfect)", data.Location_Pickups));
 
-        public TagResolver Tag_ConsumablePickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Consumable Pickup Locations", "Location checked when consumables are picked up (glowsticks, flashlights, c-foam grenades, etc)", gd.Tag_PickupLocations));
+        public LocationID Location_ConsumablePickups
+            => LocationID.From(gameData, "Consumable Pickup Locations", data => new("Location checked when consumables are picked up (glowsticks, flashlights, c-foam grenades, etc)", data.Location_Pickups));
 
-        public TagResolver Tag_ArtifactPickupLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Artifact Pickup Locations", "Location checked when artifacts are picked up (muted, bold, aggressive)", gd.Tag_PickupLocations));
+        public LocationID Location_ArtifactPickups
+            => LocationID.From(gameData, "Artifact Pickup Locations", data => new("Location checked when artifacts are picked up (muted, bold, aggressive)", data.Location_Pickups));
 
 
-        public TagResolver Tag_PickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Pickup Items", "All items which are picked up (keys, cells, artifacts, etc)", gd.Tag_AllItems));
+        public ItemID Item_Pickups
+            => ItemID.From(gameData, "Pickup Items", data => new("All items which are picked up (keys, cells, artifacts, etc)", data.Item_All));
 
-        public TagResolver Tag_SmallPickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Small Pickup Items", "All small pickup items which end up in the left-side menu (keys, IDs, GLPS, etc)", gd.Tag_PickupItems));
+        public ItemID Item_SmallPickups
+            => ItemID.From(gameData, "Small Pickup Items", data => new("All small pickup items which end up in the left-side menu (keys, IDs, GLPS, etc)", data.Item_Pickups));
 
-        public TagResolver Tag_BigPickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Big Pickup Items", "All big pickup items (cells, fog turbines, babies, etc)", gd.Tag_PickupItems));
+        public ItemID Item_BigPickups
+            => ItemID.From(gameData, "Big Pickup Items", data => new("All big pickup items (cells, fog turbines, babies, etc)", data.Item_Pickups));
 
-        public TagResolver Tag_ResourcePickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Resource Pickup Items", "All resource pickups (ammo, med, tool, disinfect)", gd.Tag_PickupItems));
+        public ItemID Item_ResourcePickups
+            => ItemID.From(gameData, "Resource Pickup Items", data => new("All resource pickups (ammo, med, tool, disinfect)", data.Item_Pickups));
 
-        public TagResolver Tag_ConsumablePickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Consumable Pickup Items", "All consumable pickups (glowsticks, flashlights, c-foam grenades, etc)", gd.Tag_PickupItems));
+        public ItemID Item_ConsumablePickups
+            => ItemID.From(gameData, "Consumable Pickup Items", data => new("All consumable pickups (glowsticks, flashlights, c-foam grenades, etc)", data.Item_Pickups));
 
-        public TagResolver Tag_ArtifactPickupItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Artifact Pickup Items", "All artifact picksup (muted, bold, aggressive)", gd.Tag_PickupItems));
+        public ItemID Item_ArtifactPickups
+            => ItemID.From(gameData, "Artifact Pickup Items", data => new("All artifact picksup (muted, bold, aggressive)", data.Item_Pickups));
     }
 }
 
@@ -84,15 +84,46 @@ public class PickupHelper : ArchipelagoFeature
     [Game.Callback]
     public void AddEventScanOptions(Game.Data data)
     {
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            DisplayName = "Randomize Small Pickups",
-            Description = "Randomize all supported small pickups. This includes colored keys, bulkhead keys, and objective pickups (ie IDs)",
-            Category = PICKUPS_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 0,
-            Tag = data.Tag_SmallPickupItems,
-        });
+        ItemID tag;
+
+        tag = data.Item_Pickups;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Randomize All Pickups",
+            description: "Randomize all supported pickups." + OptionTagOption.DESC_SUFFIX,
+            category: PICKUPS_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, tag),
+            condition: new(),
+            defaultValue: 0,
+            tag: tag
+        ));
+
+        tag = data.Item_SmallPickups;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Randomize Small Pickups",
+            description: 
+                "Randomize all supported small pickups. This includes colored keys, bulkhead keys, and"
+                + " objective pickups (ie IDs)." 
+                + OptionTagOption.DESC_SUFFIX,
+            category: PICKUPS_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, tag),
+            condition: new(),
+            defaultValue: 1,
+            tag: tag
+        ));
+
+        tag = data.Item_BigPickups;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Randomize Big Pickups",
+            description: 
+                "Randomize all supported big pickups. This includes normal spawns and objective spawns,"
+                + " but not in-level spawns (if there are any)." 
+                + OptionTagOption.DESC_SUFFIX,
+            category: PICKUPS_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, tag),
+            condition: new(),
+            defaultValue: 1,
+            tag: tag
+        ));
     }
 
     /// <summary>
@@ -163,38 +194,37 @@ public class PickupHelper : ArchipelagoFeature
     /// </remarks>
     public static void AssociateItem(ItemInLevel item, LocationID locationId, bool despawnIfFound=true)
     {
+        StateTracker stateTracker = StateTracker.Get();
+        Game.Data data = stateTracker.GameData;
+
         ContainsLocationPickupComp? comp = item.GetComponent<ContainsLocationPickupComp>();
         if (comp == null)
             comp = item.gameObject.AddComponent<ContainsLocationPickupComp>();
         else if (!comp.StoredLocation.IsNull)
         {
-            Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
-            int locLength = Math.Max(comp.StoredLocation.AsId.ToString().Length, locationId.AsId.ToString().Length);
+            int locLength = Math.Max(comp.StoredLocation.ID.ToString().Length, locationId.ID.ToString().Length);
             string formatString = new string('0', locLength);
             FeatureLogger.Error(
                 $"Overwriting location on pickup!\n"
-                + $"  Old Location: [{comp.StoredLocation.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(comp.StoredLocation).NameTag).Name}"
-                + $"  New Location: [{         locationId.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
+                + $"  Old Location: [{comp.StoredLocation.ID.ToString(formatString)}] {data.Locations.LookUpName(comp.StoredLocation)}"
+                + $"  New Location: [{locationId.ID.ToString(formatString)}] {data.Locations.LookUpName(locationId)}"
             );
         }
-
         comp.StoredLocation = locationId;
 
-        StateTracker stateTracker = StateTracker.Get();
-        Location loc = stateTracker.MidManager.GetProcessedGameData().LookupLocation(locationId);
-        if (despawnIfFound && stateTracker.HasLocation(locationId) && loc.RandData.IsTreatedAsRandom)
+        Location loc = data.Locations.LookUpValueChecked(locationId);
+        if (despawnIfFound && loc.RandData.IsTreatedAsRandom && stateTracker.HasLocation(locationId))
         {
             // Try to despawn the item
             if (item.ReplicationWrapper != null)
-            {
-                // We can despawn the item using its dynamic replicator, which is synced
+            {   // We can despawn the item using its dynamic replicator, which is synced
                 item.ReplicationWrapper?.Replicator.Despawn();
             }
-            else 
-            {
-                // The assumption is that this code is invoked by a synced command - ie during the level build.
-                // This is safe if and only if that is true
-                UnityEngine.Object.Destroy(item.gameObject);
+            else
+            {   // The assumption is that this code is invoked by a synced command - ie during the level build
+                // This destroys the object for the local client only
+                item.internalSync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, null);
+                if (item.CanWarp) Dimension.RemoveWarpable(item.Cast<IWarpableObject>());
             }
         }
         else if (loc.RandData.IsRandomized)
@@ -203,8 +233,7 @@ public class PickupHelper : ArchipelagoFeature
             Interact_Pickup_PickupItem? pickup = item.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
             if (pickup != null)
             {
-                Game.Data gameData = stateTracker.MidManager.GetProcessedGameData();
-                string backupName = gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name;
+                string backupName = data.Items.LookUpName(loc.ItemID);
                 pickup.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
                 pickup.add_OnInteractionSelected(Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<PlayerAgent, bool>>(new Action<PlayerAgent, bool>(
                     (_, _) => StateTracker.Get().ScoutLocation(locationId)
@@ -397,10 +426,10 @@ public class PickupHelper : ArchipelagoFeature
             if (interact == null) return;
             
             Game.Data data = StateTracker.Get().MidManager.GetProcessedGameData();
-            Location loc = data.LookupLocation(comp.StoredLocation);
+            Location loc = data.Locations.LookUpValueChecked(comp.StoredLocation);
             if (!loc.RandData.IsRandomized) return;
 
-            string backupName = data.LookupTagDef(data.LookupItem(loc.ItemID).NameTag).Name;
+            string backupName = data.Items.LookUpName(loc.ItemID);
             interact.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
         }
     }

@@ -16,8 +16,24 @@ public static class GenericItemInElevatorHandler_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_GenericBigInElevatorLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Generic Big In Elevator Locations", "Locations checked by picking up big items generically spawned in the elevator.", gd.Tag_BigPickupLocations));
+        /// <summary>
+        /// Parent of all generic-item-in-elevator locations
+        /// </summary>
+        public LocationID Location_GenericBigInElevator
+            => LocationID.From(gameData, "Generic Big in Elevator Locations", data => new("Location checked by picking up a special type of item spawned in the elevator cage", data.Location_BigPickups));
+    }
+
+    extension (Expedition.Data data)
+    {
+        /// <summary>
+        /// Generic big in elevator location for a particular expedition
+        /// </summary>
+        public LocationID Location_GenericBigInElevator_Instance
+            => LocationID.From(
+                data, 
+                $"{data.ExpeditionName} Generic Big in Elevator Location", 
+                data => new("The generic big in elevator location for a particular expedition", data.Location_GenericBigInElevator)
+            );
     }
 }
 
@@ -39,18 +55,6 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Location where you can find generic item in elevator items.
-    /// These are misc non-objective items the player can drop with; very rare.
-    /// </summary>
-    private static class GenericItemInElevatorLocation
-    {
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Generic Item-in-Elevator", "Item generically spawned in elevator", gd.Tag_GenericBigInElevatorLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    /// <summary>
     /// Register the generic item in elevator during modded instance data processing
     /// </summary>
     [Expedition.Callback]
@@ -59,12 +63,11 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
         var firstObjective = data.MainLayer.GetObjectiveDatas().First();
         if (firstObjective.Objective.GenericItemFromStart != 0)
         {
-            KeyedItem item = BigPickupHandler.GetBigPickupItem(data, firstObjective.Objective.GenericItemFromStart);
-            data.AddLocation(
-                GenericItemInElevatorLocation.MakeTag(data), 
-                data.StartingRegion, 
-                GenericItemInElevatorLocation.MakeRandData(),
-                item.ID
+            data.Locations.CreateValue(
+                data.Location_GenericBigInElevator_Instance,
+                data.StartingZone.Region_Zone,
+                new LocationData(),
+                data.Item_BigPickup_Instance(firstObjective.Objective.GenericItemFromStart)
             );
         }
     }
@@ -78,16 +81,12 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
     {
         public static void Postfix()
         {
-            var data = Expedition.Data.FromCurrentExpedition()
+            var data = Expedition.Data.GetFromCurrentExpedition()
                 .MainLayer.GetObjectiveDatas().First();
 
             if (data.Objective.GenericItemFromStart != 0)
             {
-                if (!data.TryLookupLocation(GenericItemInElevatorLocation.MakeTag(data), out var loc))
-                {
-                    FeatureLogger.Error("Failed to associate generic item in elevator!");
-                    return;
-                }
+                LocationID loc = data.Location_GenericBigInElevator_Instance;
                 
                 var comp = ElevatorCage.Current.m_cargoCage.m_itemsToMoveToCargo[0].GetComponentInChildren<CarryItemPickup_Core>();
                 if (comp == null)
@@ -98,7 +97,7 @@ public class GenericItemInElevatorHandler : ArchipelagoFeature
 
                 if (comp.ItemDataBlock.persistentID != data.Objective.GenericItemFromStart)
                     FeatureLogger.Warning("Associated incorrect item type with generic item from start!");
-                PickupHelper.AssociateItem(comp, loc.ID);
+                PickupHelper.AssociateItem(comp, loc);
             }
         }
     }

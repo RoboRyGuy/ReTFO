@@ -13,7 +13,7 @@ public static class ArchipelagoFeatureGroups
     public const string EventHandlersGroupName      = "Event Handlers";
     public const string ObjectiveHandlersGroupName  = "Objective Handlers";
 
-    extension(FeatureGroups)
+    extension (FeatureGroups)
     {
         public static FeatureGroup Archipelago
             => FeatureGroups.GetOrCreateTopLevelGroup(ArchipelagoFeatureGroupName);

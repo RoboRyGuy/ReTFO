@@ -1,17 +1,43 @@
-﻿using ReTFO.Archipelago.FeaturesAPI;
+﻿using GameData;
+using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Utilities;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
-using GameData;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using ReTFO.Archipelago.Utilities;
-using System.Collections.Generic;
-using System.Linq;
+
+public static class SurvivalHandler_Tags
+{
+    extension (Game.Data data)
+    {
+
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.Survival;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
+    }
+
+    extension (Objective.Data data)
+    {
+        public RegionID Region_SurvivalStarted
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Started", data => new("Region entered by starting the survival portion of a survival objective", data.Region_Objective));
+
+        public RegionID Region_SurvivalSurvived(float duration)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Survived {TimeSpan.FromSeconds(duration):c}", data => new("Region entered by surviving a specific duration of a survival objective", data.Region_Objective));
+    }
+
+}
 
 [EnableFeatureByDefault, AutomatedFeature]
 public class SurvivalHandler : ArchipelagoFeature
@@ -29,64 +55,28 @@ public class SurvivalHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
-    {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.Survival;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return $"Survive {TimeSpan.FromSeconds(data.Objective.Survival_TimeToSurvive):c}";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached by starting the survival timer
-        public static string Started(Objective.Data data)
-            => $"{data.ObjectiveName()} Started";
-
-        // Region reached by surviving the required duration
-        public static string Survived(Objective.Data data, float duration)
-            => $"{data.ObjectiveName()} Survived {TimeSpan.FromSeconds(duration):c}";
-    }
-
     // Objective requiring prisoners survive a certain amount of time and reach extract
     [Objective.Callback]
     public void HandleSurvivalObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.Survival)
             return;
 
-        string startedName = ThisRegions.Started(data);
-        RegionID startedRegion = data.LookupOrCreateRegion(startedName);
+        RegionID startedRegion = data.Region_SurvivalStarted;
         Path path = new()
         {
-            StartingRegion = data.ObjectiveStartRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = startedRegion,
         };
 
         // This is a rare case where we need to block access until we've completed the previous objectives
         if (data.ObjectiveIndex > 0)
         {
-            path.ReqItem = SharedObjectiveHandler.GetCompleteObjectiveItem(data).Item.PathReqs;
-            path.ReqCount = (uint)data.ObjectiveIndex;
+            path = new(path)
+            {
+                ReqItem = new(Path.RequiredItem.eType.Category, data.Item_CompleteObjective_Instance),
+                ReqCount = (uint)data.ObjectiveIndex,
+            };
         }
         data.AddPath(path);
 
@@ -108,15 +98,14 @@ public class SurvivalHandler : ArchipelagoFeature
         RegionID last = startedRegion;
         foreach (var pair in events)
         {
-            string survivedName = ThisRegions.Survived(data, pair.Key);
-            RegionID survivedRegion = data.LookupOrCreateRegion(survivedName);
+            RegionID survivedRegion = data.Region_SurvivalSurvived(pair.Key);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = survivedRegion,
             });
             last = survivedRegion;
-            data.ProcessEvents(survivedRegion, survivedName, pair.Value);
+            data.ProcessEvents(survivedRegion, pair.Value);
 
             // Some events will be added with no delay; we can fix that :)
             foreach (var e in pair.Value) 
@@ -129,17 +118,17 @@ public class SurvivalHandler : ArchipelagoFeature
             data.Objective.EventsOnActivate.Add(e);
 
         // Finally, we just need to add the final region and place the objective completion in it
-        RegionID finalSurvivedRegion = data.LookupOrCreateRegion(ThisRegions.Survived(data, data.Objective.Survival_TimeToSurvive));
+        RegionID finalSurvivedRegion = data.Region_SurvivalSurvived(data.Objective.Survival_TimeToSurvive);
 
         // If the key was processed earlier, a path will be defined; otherwise, we need to add one
         if (!events.ContainsKey(data.Objective.Survival_TimeToSurvive))
-        {   // Find the last region occurs before our required survival time
+        {   // Find the last region which occurs before our required survival time
             last = startedRegion;
             foreach (var pair in events.Reverse())
             {
                 if (pair.Key < data.Objective.Survival_TimeToSurvive)
                 {
-                    last = data.LookupOrCreateRegion(ThisRegions.Survived(data, pair.Key));
+                    last = data.Region_SurvivalSurvived(pair.Key);
                     break;
                 }
             }

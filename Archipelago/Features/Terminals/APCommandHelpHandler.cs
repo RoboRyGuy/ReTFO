@@ -35,10 +35,6 @@ public class APCommandHelpHandler : ArchipelagoFeature
         APCommandHandler.UnregisterCommand(m_helpCommand ??= new());
     }
 
-    // Name of releasable locations in archipelago
-    private static string ReleaseLocationName(Terminal.Data data, int count)
-        => $"{data.TerminalName} Generic Location #{count}";
-
     /// <summary>
     /// Handles the help command
     /// </summary>

@@ -16,49 +16,102 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Collections;
 
 public static class ReactorStartupHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_ReactorStartupReactorLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Reactor Locations", "Locations checked by entering zones with Reactor Startup reactors (as opposed to Reactor Shutdown reactors)", gd.Tag_Never));
+        public LocationID Location_ReactorStartupReactors
+            => LocationID.From(data, "Reactor Startup Reactor Locations", data => new("Locations checked by entering zones with Reactor Startup reactors (as opposed to Reactor Shutdown reactors)", data.Location_Never));
 
-        public TagResolver Tag_ReactorStartupCodeLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Code Locations", "Locations checked by finding Reactor Startup codes. Includes \"free\" codes", gd.Tag_TerminalLogLocations));
+        public LocationID Location_ReactorStartupCodes
+            => LocationID.From(data, "Reactor Startup Code Locations", data => new("Locations checked by finding Reactor Startup codes. Includes \"free\" codes", data.Location_TerminalLogs));
 
-        public TagResolver Tag_ReactorStartupSkipLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Skip Locations", "Location checked when a reactor wave is survived used to grant wave skip items", gd.Tag_Never));
+        public LocationID Location_ReactorStartupSkips
+            => LocationID.From(data, "Reactor Startup Skip Locations", data => new("Location checked when a reactor wave is survived used to grant wave skip items", data.Location_Never));
 
-        public TagResolver Tag_ReactorStartupReactorItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Reactor", "Reactor item indicating a reactor startup can be performed", gd.Tag_Never));
+        public ItemID Item_ReactorStartupReactors
+            => ItemID.From(data, "Reactor Startup Reactors", data => new("Reactor item indicating a reactor startup can be performed", data.Item_Never));
 
-        public TagResolver Tag_ReactorStartupCodeItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Code", "Reactor item indicating the player has found a reactor code", gd.Tag_TerminalLogItems));
+        public ItemID Item_ReactorStartupCodes
+            => ItemID.From(data, "Reactor Startup Codes", data => new("Reactor item indicating the player has found a reactor code", data.Item_Codes));
 
-        public TagResolver Tag_ReactorStartupSkipItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Reactor Startup Skip", "Reactor items allowing players to skip to a particular wave", gd.Tag_Never));
+        public ItemID Item_ReactorStartupSkips
+            => ItemID.From(data, "Reactor Startup Skips", data => new("Reactor items allowing players to skip to a particular wave", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.Reactor_Startup;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension (Objective.Data data)
     {
-        public TagResolver Tag_ReactorStartupReactorLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Reactor Locations", "Locations checked by entering zones iwth Reactor Startup reactors for a particular objective", gd.Tag_ReactorStartupReactorLocations));
+        public RegionID Region_ReactorStartupFoundReactor()
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Found Reactor", data => new("Region entered when at least one reactor startup reactor is found", data.Region_Objective));
 
-        public TagResolver Tag_ReactorStartupReactorItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Reactors", "Reactor item indicating a reactor startup can be performed for a particular objective", gd.Tag_ReactorStartupReactorItems));
+        public RegionID Region_ReactorStartupSurvivedWave(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Survived Wave #{count}", data => new("Region entered when a particular reactor startup wave is survived", data.Region_Objective));
 
-        public TagResolver Tag_ReactorStartupSkipLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Skip Locations", "Location checked when a reactor wave is survived used to grant wave skip items for a particular objective", gd.Tag_ReactorStartupSkipLocations));
+        public RegionID Region_ReactorStartupCompletedStartup(int count = 1)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Completed Reactor Startup #{count}", data => new("Region entered when a particular number of reactor startups are completed", data.Region_Objective));
 
-        public TagResolver Tag_ReactorStartupCodeLocations_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Codes", "Reactor code locations for a particular objective", gd.Tag_ReactorStartupCodeLocations));
 
-        public TagResolver Tag_ReactorStartupCodeItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Codes", "Reactor item indicating the player has found a reactor code for a particular objective", gd.Tag_ReactorStartupCodeItems));
+        public LocationID Location_ReactorStartupReactors_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Reactor Locations", data => new("Locations checked by entering zones iwth Reactor Startup reactors for a particular objective", data.Location_ReactorStartupReactors));
 
-        public TagResolver Tag_ReactorStartupSkipItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Reactor Startup Skip", "Reactor items allowing players to skip to a particular wave for a particular objective", gd.Tag_ReactorStartupSkipItems));
+        public LocationID Location_ReactorStartupSkips_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Skip Locations", data => new("Location checked when a reactor wave is survived used to grant wave skip items for a particular objective", data.Location_ReactorStartupSkips));
+
+        public LocationID Location_ReactorStartupCodes_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Codes", data => new("Reactor code locations for a particular objective", data.Location_ReactorStartupCodes));
+
+        public ItemID Item_ReactorStartupReactors_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Reactors", data => new("Reactor item indicating a reactor startup can be performed for a particular objective", data.Item_ReactorStartupReactors));
+
+        public ItemID Item_ReactorStartupCodes_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Codes", data => new("Reactor item indicating the player has found a reactor code for a particular objective", data.Item_ReactorStartupCodes));
+
+        public ItemID Item_ReactorStartupSkips_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Skip", data => new("Reactor items allowing players to skip to a particular wave for a particular objective", data.Item_ReactorStartupSkips));
+
+
+        public LocationID Location_ReactorStartupReactor_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Reactor Location #{count}", data => new("A particular reactor startup reactor location", data.Location_ReactorStartupReactors_PerObjective));
+
+        public LocationID Location_ReactorStartupCode_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Code #{count}", data => new("A particular reactor code's location", data.Location_ReactorStartupCodes_PerObjective));
+
+        public LocationID Location_ReactorStartupSkip_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Reactor Startup Skip Location #{count}", data => new("A particular reactor skip item's location", data.Location_ReactorStartupSkips_PerObjective));
+
+        public ItemID Item_ReactorStartupReactor_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Reactor Startup Reactor #{count}", 
+                data => new("A particular reactor startup reactor", data.Item_ReactorStartupReactors_PerObjective),
+                new ReactorStartupHandler.ReactorStartup_ReactorItem(data.Region_Objective, count)
+            );
+
+        public ItemID Item_ReactorStartupCode_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Reactor Startup Code #{count}", 
+                data => new("A particular reactor startup code", data.Item_ReactorStartupCodes_PerObjective),
+                new ReactorStartupHandler.ReactorStartup_CodeItem(data.Region_Objective, count)
+            );
+
+        public ItemID Item_ReactorStartupSkip_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Reactor Startup Skip #{count}", 
+                data => new("A particular reactor startup skip item", data.Item_ReactorStartupSkips_PerObjective),
+                new ReactorStartupHandler.ReactorStartup_SkipItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -91,115 +144,67 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
     private SkipToWaveSubcommand? m_skipToWaveCommand = null;
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    // Location class so the log helper can inform us when a log is found even if not randomized
+    public class ReactorStartup_CodeLocation : TerminalLogHelper.TerminalLogLocation
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.Reactor_Startup;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public ReactorStartup_CodeLocation(RegionList regions, LocationData randData, ItemID itemId, int codeCount) 
+            : base(regions, randData, itemId) 
         {
-            CheckIsCorrectObjective(data);
-            return "Reactor Startup";
+            CodeCount = codeCount;
         }
 
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
+        public LG_WardenObjective_Reactor? Reactor { get; set; } = null;
+        public int CodeCount { get; private init; }
 
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
+        public override void OnNotRandomized(StateTracker stateTracker, LG_ComputerTerminal terminal)
         {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
+            if (Reactor == null)
+                FeatureLogger.Warning("Failed to update reactor UI: Location was not associated with reactor");
+            else
+                ProgressionObjective_ReactorStartup.NotifyFoundCode(Reactor, CodeCount - 1);
         }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region for when the reactor zone is entered (found)
-        public static string FoundReactor(Objective.Data data)
-            => $"{data.ObjectiveName()} Found Reactor";
-
-        // Region entered when a reactor wave is survived (before code is entered)
-        public static string SurvivedWave(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Survived Wave #{count}";
-
-        // Region entered when a reactor is completed. Multiple reactors can theoretically be completed per objective
-        public static string CompletedStartup(Objective.Data data, int count = 1)
-            => $"{data.ObjectiveName()} Completed Reactor Startup #{count}";
-    }
-
-    // Location containing a reactor item. In-game this would be the terminal itself, but
-    //  reactor terminals can't be tracked via GameData so we just use the zone instead
-    private static class ReactorStartup_ReactorLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Location #{count}", "A reactor location for a particular reactor in an objective", data.Tag_ReactorStartupReactorLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
     }
 
     // Actual reactor item representing a reactor which can be completed
-    private class ReactorStartup_ReactorItem : Item
+    public class ReactorStartup_ReactorItem : Item
     {
-        public ReactorStartup_ReactorItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public ReactorStartup_ReactorItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor", "A particular reactor item", data.Tag_ReactorStartupReactorItems_PerObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    // Location containing a reactor code
-    private static class ReactorStartup_CodeLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Code #{count} Location", "A reactor code location for a particular reactor code", data.Tag_ReactorStartupCodeLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData();
+        public int Count { get; private init; }
     }
 
     // Item representing a reactor code for a particular wave
-    private class ReactorStartup_CodeItem : Item
+    public class ReactorStartup_CodeItem : TerminalItem
     {
-        public ReactorStartup_CodeItem(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
+        public ReactorStartup_CodeItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
             Index = count - 1;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Code #{count}", "A particular reactor code", data.Tag_ReactorStartupCodeItems_PerObjective));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
+        public RegionID ObjectiveRegion { get; private init; }
         
-        public int Index { get; set; }
+        public int Index { get; private init; }
 
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
+        public override RegionID TargetRegion => ObjectiveRegion;
 
-        private List<LG_WardenObjective_Reactor> GetReactors()
+        private List<LG_WardenObjective_Reactor> GetReactors(StateTracker stateTracker)
         {
             // Technically all valid reactors can be running in parallel... So we handle that, even if vanilla doesn't allow it
+            Objective.Data data = new Objective.Data(stateTracker.GameData, ObjectiveRegion);
             List<LG_WardenObjective_Reactor> reactors = UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<LG_WardenObjective_Reactor>())
                 .Select(r => r.Cast<LG_WardenObjective_Reactor>())
                 .Where(r => r.m_isWardenObjective)
-                .Where(r => r.OriginLayer == ObjectiveData.LayerType)
-                .Where(r => r.WardenObjectiveChainIndex == ObjectiveData.ObjectiveIndex)
+                .Where(r => r.OriginLayer == data.LayerType)
+                .Where(r => r.WardenObjectiveChainIndex == data.ObjectiveIndex)
                 .ToList();
 
             if (reactors.Count == 0)
@@ -208,40 +213,27 @@ public class ReactorStartupHandler : ArchipelagoFeature
             return reactors;
         }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
-            if (ObjectiveData.IsCurrentlyInExpedition())
-                OnStartExpeditionWithItem(stateTracker, ObjectiveData);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (!ObjectiveData.IsSameExpedition(data)) return;
-
-            var reactors = GetReactors();
-
-            // Restoring the correct code from the list, if necessary - this will automatically fix the vanilla reactor UI and terminal command too
-            foreach (var reactor in reactors)
+            stateTracker.AddItemToTerminal(itemId);
+            foreach (var reactor in GetReactors(stateTracker))
             {
                 if (reactor.m_stateReplicator.State.stateCount == (Index + 1))
                 {
                     reactor.CurrentStateOverrideCode = reactor.GetOverrideCodes()[Index];
-                    ProgressionObjective_ReactorStartup.Update(ObjectiveData, reactor);
+                    ProgressionObjective_ReactorStartup.Update(reactor);
                 }
             }
-
-            // In case the player wants to view it in the terminal for whatever reason
-            stateTracker.AddItemToTerminal(this);
         }
 
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             // We simply display this akin to displaying a normal log
-            LG_WardenObjective_Reactor? reactor = GetReactors().FirstOrDefault();
-            stateTracker.AddItemToTerminal(this);
+            LG_WardenObjective_Reactor? reactor = GetReactors(stateTracker).FirstOrDefault();
+            stateTracker.AddItemToTerminal(itemId);
             yield return () =>
             {
-                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving {NameTag}", 2f);
+                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving {StateTracker.Get().GameData.Items.LookUpName(itemId)}", 2f);
                 if (reactor != null)
                     terminal.AddLine(string.Format(ArchipelagoFeatureHelper.GetFeature<ReactorStartupHandler>().Localization.Get(182408469), reactor.GetOverrideCodes()[Index]));
                 else
@@ -250,80 +242,37 @@ public class ReactorStartupHandler : ArchipelagoFeature
         }
     }
 
-    // Location for an event item used to skip waves
-    private static class ReactorStartup_SkipLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Wave #{count} Skip Location", "A reactor skip location for a particular skip", data.Tag_ReactorStartupSkipLocations_PerObjective));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
     // Event item used to skip to waves
-    private class ReactorStartup_SkipItem : Item
+    public class ReactorStartup_SkipItem : Item
     {
-        public ReactorStartup_SkipItem(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
+        public ReactorStartup_SkipItem(RegionID objective, int count)
+            : base(new ItemData() { IsUseful = true, IsRandomLike = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Reactor Skip #{count}", "A particular reactor skip", data.Tag_ReactorStartupSkipItems_PerObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsRandomLike = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetReactorItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(ReactorStartup_ReactorItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new ReactorStartup_ReactorItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static KeyedItem GetCodeItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(ReactorStartup_CodeItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new ReactorStartup_CodeItem(data, count);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static KeyedItem GetSkipItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(ReactorStartup_SkipItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new ReactorStartup_SkipItem(data, count);
-        return new(data.AddItem(newItem), newItem);
+        public int Count { get; private init; }
     }
 
     [Objective.Callback]
     public void HandleReactorStartupObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
-            return;
+        if (data.Objective.Type != eWardenObjectiveType.Reactor_Startup) return;
 
         // Reactor region pickup
         // The startup can be initiated from any reachable reactor in the list (for some reason)
         int count = 0;
-        KeyedItem reactorItem = GetReactorItem(data);
         void addReactor(Zone.Data zone)
         {
             ++count;
-            RegionList regions = data.LookupOrCreateRegion(zone.ZoneName);
-            data.AddLocation(
-                ReactorStartup_ReactorLocation.MakeTag(data, count),
-                regions,
-                ReactorStartup_ReactorLocation.MakeRandData(),
-                reactorItem.ID
+            data.Locations.CreateValue(
+                data.Location_ReactorStartupReactor_Instance(count),
+                zone.Region_Zone,
+                new LocationData() { IsAutoDiscovered = true },
+                data.Item_ReactorStartupReactor_Instance(count)
             );
         }
 
@@ -332,7 +281,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             var targetZone = data.FindZoneByPlacement(placement);
             if (targetZone == null)
             {
-                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName()}");
+                FeatureLogger.Error($"Failed to find reactor zone by placement: {data.ObjectiveName}");
                 continue;
             }
             addReactor(targetZone);
@@ -346,26 +295,25 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 if (zone.CustomGeo.Contains("hall", StringComparison.OrdinalIgnoreCase)) continue;
                 if (zone.CustomGeo.Contains("reactor", StringComparison.OrdinalIgnoreCase))
                 {
-                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName()}");
+                    FeatureLogger.Debug($"Using geomorph for reactor objective: {data.ObjectiveName}");
                     addReactor(zone);
                     break;
                 }
             }
             if (count == 0)
-                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName()}");
+                FeatureLogger.Error($"No reactor placements: {data.ObjectiveName}");
         }
 
         // For each wave, there will be a "survive wave" region
-        RegionID last = data.ObjectiveStartRegion;
-        Path.RequiredItem reqItem = reactorItem.Item.PathReqs;
+        RegionID last = data.Region_Objective;
+        Path.RequiredItem reqItem = new(Path.RequiredItem.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
         count = 0;
         foreach (var wave in data.Objective.ReactorWaves.Iter())
         {
             ++count;
 
             // Use the queued required item to enter this region
-            string surviveName = ThisRegions.SurvivedWave(data, count);
-            RegionID surviveRegion = data.LookupOrCreateRegion(surviveName);
+            RegionID surviveRegion = data.Region_ReactorStartupSurvivedWave(count);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
@@ -376,35 +324,41 @@ public class ReactorStartupHandler : ArchipelagoFeature
             last = surviveRegion;
 
             // Rewards for surviving!
-            data.ProcessEvents(surviveRegion, surviveName, wave.Events ??= new(1));
-            KeyedItem skipItem = GetSkipItem(data, count);
-            data.AddLocation(
-                ReactorStartup_SkipLocation.MakeTag(data, count),
+            data.ProcessEvents(surviveRegion, wave.Events ??= new(1));
+            ItemID skipItem = data.Item_ReactorStartupSkip_Instance(count);
+            data.Locations.CreateValue(
+                data.Location_ReactorStartupSkip_Instance(count),
                 surviveRegion,
-                ReactorStartup_SkipLocation.MakeRandData(),
-                skipItem.ID
+                new LocationData(),
+                skipItem
             );
 
             // Verification (code and code placement)
-            KeyedItem codeItem = GetCodeItem(data, count);
-            reqItem = codeItem.Item.PathReqs; // Queue code as needed for next region
-            RegionList placement;
+            ItemID codeItem = data.Item_ReactorStartupCode_Instance(count);
+            reqItem = new(Path.RequiredItem.eType.Category, codeItem); // Queue code as needed for next region
             if (wave.VerifyInOtherZone)
             {
                 Zone.Data codeZone = data.FindZoneByIndex(wave.ZoneForVerification)
                     ?? throw new NullReferenceException($"Failed to find zone for reactor code placement!");
-                placement = codeZone.TerminalDatas.Select(t => data.LookupOrCreateRegion(t.TerminalName)).ToList();
+                data.Locations.SetValue(
+                    data.Location_ReactorStartupCode_Instance(count),
+                    new ReactorStartup_CodeLocation(
+                        codeZone.TerminalDatas.Select(t => t.Region_Terminal).ToArray(),
+                        new LocationData(),
+                        codeItem,
+                        count
+                    )
+                );
             }
             else
             {
-                placement = surviveRegion;
+                data.Locations.CreateValue(
+                    data.Location_ReactorStartupCode_Instance(count),
+                    surviveRegion,
+                    new LocationData(),
+                    data.Item_ReactorStartupCode_Instance(count)
+                );
             }
-            data.AddLocation(
-                ReactorStartup_CodeLocation.MakeTag(data, count),
-                placement,
-                ReactorStartup_CodeLocation.MakeRandData(),
-                codeItem.ID
-            );
         }
 
         // If we can reach multiple reactors, then we can (probably) perform OnActivateOnSolve multiple times
@@ -413,29 +367,28 @@ public class ReactorStartupHandler : ArchipelagoFeature
         while (!eventWrapper.IsDone) // By design, always runs at least once
         {
             ++count;
-            string completeStartupName = ThisRegions.CompletedStartup(data, count);
-            RegionID completeStartupRegion = data.LookupOrCreateRegion(completeStartupName);
+            RegionID completeStartupRegion = data.Region_ReactorStartupCompletedStartup(count);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = completeStartupRegion,
                 ReqItem = reqItem,
-                ReqCount = 1u
+                ReqCount = checked((uint)count)
             });
-            reqItem = reactorItem.Item.PathReqs; // All future events get associated with a different reactor
+            reqItem = new(Path.RequiredItem.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
             last = completeStartupRegion;
-            eventWrapper.Process(completeStartupRegion, completeStartupName);
+            eventWrapper.Process(completeStartupRegion);
         }
 
         // Objective can be completed after the first reactor
         if (!data.Objective.DoNotSolveObjectiveOnReactorComplete)
-            SharedObjectiveHandler.AddObjectiveCompleteItem(data, data.LookupOrCreateRegion(ThisRegions.CompletedStartup(data, 1)));
+            SharedObjectiveHandler.AddObjectiveCompleteItem(data, data.Region_ReactorStartupCompletedStartup(1));
     }
 
     /// <summary>
     /// The code is: EN dash, EN dash, dash, EN dash
-    /// Nothing actually prevents the user from entering this code (and it being right) other than that 
-    ///  they don't know that these are EN dashes and that they don't know / lack the hardware to type them.
+    /// Nothing actually prevents a player from entering this code (and it being right) other than that 
+    ///  they don't know that these are EN dashes and that they don't know how / lack the hardware to type them.
     /// EN Dash is typed with ALT+0150. Dash is just the standard minus-hyphen key.
     /// </summary>
     const string NotACode = "––-–";
@@ -450,12 +403,12 @@ public class ReactorStartupHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_WardenObjective_Reactor __instance)
         {
-            Objective.Data data = Expedition.Data.FromCurrentExpedition()
+            Objective.Data data = Expedition.Data.GetFromCurrentExpedition()
                 .GetLayer(__instance.OriginLayer)
                 .GetObjectiveDatas()
                 .ElementAt(__instance.WardenObjectiveChainIndex);
 
-            if (!This.IsCorrectObjective(data)) return;
+            if (data.Objective.Type != eWardenObjectiveType.Reactor_Startup) return;
 
             int count = 0;
             foreach (var wave in data.Objective.ReactorWaves)
@@ -463,11 +416,12 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 ++count;
                 if (!wave.HasVerificationTerminal) continue;
 
-                if (!data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, count), out var location))
-                {
-                    FeatureLogger.Error($"Failed to create association for reactor code: {data.ObjectiveName(null)} Code #{count}");
-                    continue;
-                }
+                LocationID location = data.Location_ReactorStartupCode_Instance(count);
+                ReactorStartup_CodeLocation? loc = data.Locations.LookUpValueChecked(location) as ReactorStartup_CodeLocation;
+                if (loc == null)
+                    FeatureLogger.Error("Failed to update reactor startup log location with reactor instance!");
+                else
+                    loc.Reactor = __instance;
 
                 int entry = LG_LevelInteractionManager.Current.m_terminalItemsByKeyString.FindEntry(wave.VerificationTerminalSerial);
                 if (entry == -1)
@@ -478,11 +432,10 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 var pair = LG_LevelInteractionManager.Current.m_terminalItemsByKeyString.entries[entry];
                 var comp = new UnityEngine.Component(pair.value.Pointer);
                 var terminal = comp.GetComponent<LG_ComputerTerminal>();
-                TerminalLogHelper.AssociateLog(terminal, wave.VerificationTerminalFileName, location.ID);
+                TerminalLogHelper.AssociateLog(terminal, wave.VerificationTerminalFileName, location);
             }
 
-            var po = CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(data.ObjectiveName());
-            ProgressionObjective_ReactorStartup.Setup(data, __instance);
+            ProgressionObjective_ReactorStartup.Setup(__instance);
         }
     }
 
@@ -495,25 +448,22 @@ public class ReactorStartupHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_WardenObjective_Reactor __instance, ref string overrideCode)
         {
-            Objective.Data data = Expedition.Data.FromCurrentExpedition()
+            Objective.Data data = Expedition.Data.GetFromCurrentExpedition()
                 .GetLayer(__instance.OriginLayer)
                 .GetObjectiveDatas()
                 .ElementAt(__instance.WardenObjectiveChainIndex);
 
-            if (!This.IsCorrectObjective(data)) return;
+            if (data.Objective.Type != eWardenObjectiveType.Reactor_Startup) return;
 
             int currentState = Math.Max(__instance.m_stateReplicator.State.stateCount, 1);
-            if (!data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, currentState), out var loc))
-            {
-                FeatureLogger.Error("Unknown error while checking if reactor code is obtained");
-                return;
-            }
+            LocationID id = data.Location_ReactorStartupCode_Instance(currentState);
+            Location loc = data.Locations.LookUpValueChecked(id);
 
             StateTracker stateTracker = StateTracker.Get();
-            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.Location.ItemID, 0) <= 0 && loc.Location.RandData.IsTreatedAsRandom)
+            if (stateTracker.CollectedItemCounts.GetValueOrDefault(loc.ItemID, 0) <= 0 && loc.RandData.IsTreatedAsRandom)
                 overrideCode = NotACode;
 
-            ProgressionObjective_ReactorStartup.Update(data, __instance);
+            ProgressionObjective_ReactorStartup.Update(__instance);
         }
     }
 
@@ -528,36 +478,27 @@ public class ReactorStartupHandler : ArchipelagoFeature
         {
             if (interaction.type == eReactorInteraction.WaitForVerify_startup)
             {
-                Objective.Data data = Expedition.Data.FromCurrentExpedition()
+                Objective.Data data = Expedition.Data.GetFromCurrentExpedition()
                     .GetLayer(__instance.OriginLayer)
                     .GetObjectiveDatas()
                     .ElementAt(__instance.WardenObjectiveChainIndex);
 
                 StateTracker stateTracker = StateTracker.Get();
                 int count = __instance.m_stateReplicator.State.stateCount;
-                stateTracker.NotifyFoundRegion(ThisRegions.SurvivedWave(data, count), null);
+                stateTracker.NotifyFoundRegion(data.Region_ReactorStartupSurvivedWave(count), null);
 
-                if (data.TryLookupLocation(ReactorStartup_SkipLocation.MakeTag(data, count), out var skipLocation))
-                    stateTracker.NotifyFoundLocation(skipLocation.ID, null);
-                else
-                    FeatureLogger.Error("Failed to find skip location while grant location check");
+                LocationID id = data.Location_ReactorStartupSkip_Instance(count);
+                stateTracker.NotifyFoundLocation(id, null);
 
                 if (!data.Objective.ReactorWaves[count - 1].VerifyInOtherZone)
                 {
-                    if (data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, count), out var codeLocation))
-                        stateTracker.NotifyFoundLocation(codeLocation.ID, null);
-                    else
-                        FeatureLogger.Error("Failed to find code location while grant free code location check");
+                    id = data.Location_ReactorStartupCode_Instance(count);
+                    stateTracker.NotifyFoundLocation(id, null);
+                    ProgressionObjective_ReactorStartup.NotifyFoundCode(__instance, count - 1);
                 }
             }
             else if (interaction.type == eReactorInteraction.Finish_startup)
-            {
-                Objective.Data data = Expedition.Data.FromCurrentExpedition()
-                    .GetLayer(__instance.OriginLayer)
-                    .GetObjectiveDatas()
-                    .ElementAt(__instance.WardenObjectiveChainIndex);
-                ProgressionObjective_ReactorStartup.Update(data, __instance);
-            }
+                ProgressionObjective_ReactorStartup.Update(__instance);
         }
     }
 
@@ -572,13 +513,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             if (__instance.ConnectedReactor == null) return;
             if (!__instance.ConnectedReactor.m_isWardenObjective) return;
 
-            Objective.Data data = Expedition.Data.FromCurrentExpedition()
-                .GetLayer(__instance.ConnectedReactor.OriginLayer)
-                .GetObjectiveDatas()
-                .ElementAt(__instance.ConnectedReactor.WardenObjectiveChainIndex);
-            if (!This.IsCorrectObjective(data)) return;
-
-            ProgressionObjective_ReactorStartup.Update(data, __instance.ConnectedReactor);
+            ProgressionObjective_ReactorStartup.Update(__instance.ConnectedReactor);
         }
     }
 
@@ -608,26 +543,24 @@ public class ReactorStartupHandler : ArchipelagoFeature
             }
 
             StateTracker stateTracker = StateTracker.Get();
-            Objective.Data data = Expedition.Data.FromCurrentExpedition()
+            Objective.Data data = Expedition.Data.GetFromCurrentExpedition()
                 .GetLayer(terminal.ConnectedReactor.OriginLayer)
                 .GetObjectiveDatas().ElementAt(terminal.ConnectedReactor.WardenObjectiveChainIndex);
-            bool hasWave(int count)
+
+            bool hasSkipForWave(int count)
             {
-                if (data.TryLookupItem(ReactorStartup_SkipItem.MakeTag(data, count), out var item))
-                    return stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0;
-
-                FeatureLogger.Error($"Failed to get reactor skip item for wave: {count}");
-                return false;
+                ItemID skipItem = data.Item_ReactorStartupSkip_Instance(count);
+                return StateTracker.Get().CollectedItemCounts.GetValueOrDefault(skipItem, 0) > 0;
             }
-            int currentCount = terminal.ConnectedReactor.m_stateReplicator.State.stateCount;
 
+            int currentCount = terminal.ConnectedReactor.m_stateReplicator.State.stateCount;
             do
             {
                 if ((param2?.Length ?? 0) == 0) break;
                 if (!int.TryParse(param2, out int desiredCount)) break;
-                if (desiredCount < 1)
+                if (desiredCount < 2)
                 {
-                    terminal.AddLine($"You cannot skip to a wave before wave #1");
+                    terminal.AddLine($"You cannot skip to a wave before wave #2");
                     break;
                 }
 
@@ -642,7 +575,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                     break;
                 }
 
-                if (!hasWave(desiredCount))
+                if (!hasSkipForWave(desiredCount))
                 {
                     terminal.AddLine($"Skipping to reactor wave #{desiredCount} has not been unlocked!");
                     break;
@@ -666,7 +599,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 return;
             } while (false);
 
-            var unlockedWaves = Enumerable.Range(currentCount + 1, terminal.ConnectedReactor.m_waveCountMax - currentCount).Where(hasWave);
+            var unlockedWaves = Enumerable.Range(currentCount + 1, terminal.ConnectedReactor.m_waveCountMax - currentCount).Where(hasSkipForWave);
             if (unlockedWaves.Any())
                 terminal.AddLine($"Waves you may currently skip to: {string.Join(", ", unlockedWaves)}");
             else
@@ -682,20 +615,28 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// <summary>
         /// Make the string key used to find the progression objective for a particular reactor objective
         /// </summary>
-        public static string MakeKey(Objective.Data data, LG_WardenObjective_Reactor reactor)
-            => data.ObjectiveName() + reactor.Pointer.ToString();
+        public static string MakeKey(LG_WardenObjective_Reactor reactor)
+            => reactor.Pointer.ToString();
 
         /// <summary>
         /// Set up a progression objective for a particular reactor objective
         /// </summary>
-        public static void Setup(Objective.Data data, LG_WardenObjective_Reactor reactor)
-            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(MakeKey(data, reactor)).SetupWithData(data, reactor);
+        public static void Setup(LG_WardenObjective_Reactor reactor)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(MakeKey(reactor)).SetupInternal(reactor);
 
         /// <summary>
         /// Update the text for a particular reactor progression objective
         /// </summary>
-        public static void Update(Objective.Data data, LG_WardenObjective_Reactor reactor)
-            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(MakeKey(data, reactor)).UpdateInternal(data, reactor);
+        public static void Update(LG_WardenObjective_Reactor reactor)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(MakeKey(reactor)).UpdateInternal(reactor);
+
+        /// <summary>
+        /// Notify that a reactor code was found
+        /// </summary>
+        public static void NotifyFoundCode(LG_WardenObjective_Reactor reactor, int codeIndex)
+            => CustomObjectiveHandler.GetObjectiveItem<ProgressionObjective_ReactorStartup>(MakeKey(reactor)).NotifyFoundCodeInternal(reactor, codeIndex);
+
+        private BitArray? m_obtainedCodes = null;
 
         public override void Setup()
         {
@@ -710,13 +651,17 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// <summary>
         /// Set up this progression objective to use the provided data and reactor
         /// </summary>
-        public void SetupWithData(Objective.Data data, LG_WardenObjective_Reactor reactor)
+        public void SetupInternal(LG_WardenObjective_Reactor reactor)
         {
-            HeaderText = data.ObjectiveName();
+            m_obtainedCodes = new(reactor.GetOverrideCodes().Count);
+            LayerType layer = reactor.OriginLayer; // Where the objective originated
+            int count = reactor.WardenObjectiveChainIndex + 1;
+
+            HeaderText = $"{layer.GetName()} Objective #{count} (Reactor Startup)";
             ScopeTarget = new(
-                data.LayerType,
-                data.LayerType,
-                GameData.eLocalZoneIndex.Zone_0
+                dimension: layer,
+                layer: layer,
+                zone: GameData.eLocalZoneIndex.Zone_0
             );
             Refresh();
         }
@@ -724,14 +669,25 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// <summary>
         /// Update this progression status using the provided data and reactor.
         /// </summary>
-        /// <param name="data">The objective data for this reactor's objective</param>
-        /// <param name="reactor">The reactor to update for</param>
-        public void UpdateInternal(Objective.Data data, LG_WardenObjective_Reactor reactor)
+        public void UpdateInternal(LG_WardenObjective_Reactor reactor)
         {
             IsActive = reactor.m_stateReplicator.State.status != eReactorStatus.Inactive_Idle
                 && reactor.m_stateReplicator.State.status != eReactorStatus.Startup_complete;
-            SubText = MakeFormattedText(data, reactor);
+            SubText = MakeFormattedText(reactor);
             Refresh();
+        }
+
+        /// <summary>
+        /// Notify this UI that a particular code has been found for a particular reactor
+        /// </summary>
+        public void NotifyFoundCodeInternal(LG_WardenObjective_Reactor reactor, int codeIndex)
+        {
+            if (m_obtainedCodes == null)
+                FeatureLogger.Error("Cannot update reactor startup UI; it is not yet set up!");
+            else if (codeIndex < 0 || codeIndex >= m_obtainedCodes.Count)
+                FeatureLogger.Warning("Failed to update reactor startup UI; code count is out of bounds!");
+            else
+                m_obtainedCodes[codeIndex] = true;
         }
 
         /// <summary>
@@ -740,7 +696,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// <param name="data">Objective data for the startup objective</param>
         /// <param name="reactor">The specific reactor that is currently being started up</param>
         /// <returns></returns>
-        private string MakeFormattedText(Objective.Data data, LG_WardenObjective_Reactor reactor)
+        private string MakeFormattedText(LG_WardenObjective_Reactor reactor)
         {
             StateTracker stateTracker = StateTracker.Get();
 
@@ -748,13 +704,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             int maxWaves = reactor.m_waveCountMax;
             string formatCode(string code, int index)
             {
-                bool isObtained = false;
-                if (data.TryLookupLocation(ReactorStartup_CodeLocation.MakeTag(data, index + 1), out var loc))
-                    isObtained = stateTracker.CollectedItemCounts.GetValueOrDefault(loc.Location.ItemID, 0) > 0 || !loc.Location.RandData.IsTreatedAsRandom;
-                else
-                    FeatureLogger.Error($"Failed to lookup code location #{index + 1} during code UI formatting");
-
-                string value = isObtained ? code : NotACode;
+                string value = (m_obtainedCodes != null && m_obtainedCodes[index]) ? code : NotACode;
                 return $"Wave #{index + 1} Code: {value}{((index + 1) == currentWave ? " <" : "")}";
             }
             var codes = reactor.GetOverrideCodes().RangeSubset(0, maxWaves).Select(formatCode).ToList();

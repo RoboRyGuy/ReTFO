@@ -1,6 +1,5 @@
 ﻿using GameData;
 using LevelGeneration;
-using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -17,14 +16,36 @@ public static class WinEventHandler_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_WinEventItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Win Event Items", "Event items which cause the player to immediately clear the main sector and extract (optionally triggered on death)", gd.Tag_EventItems));
+        /// <summary>
+        /// Parent tag for win event items
+        /// </summary>
+        public ItemID Item_WinEvent
+            => ItemID.From(gameData, "Win Event Items", data => new("Event items which cause the player to immediately clear the main sector and extract (sometimes triggered on death)", data.Item_Event));
     }
 
-    extension (Expedition.Data data)
+    extension(Expedition.Data data)
     {
-        public TagResolver Tag_WinEventItemForExpedition
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Win Event Item", "A win event item category for a particular expedition", gd.Tag_WinEventItems));
+        /// <summary>
+        /// Parent tag for win event items for a particular expedition
+        /// </summary>
+        public ItemID Item_WinEvent_ByExpedition
+            => ItemID.From(
+                data,
+                $"{data.ExpeditionName} Win Event Items",
+                data => new("Parent tag for win event items for a particular expedition", data.Item_WinEvent)
+            );
+
+        /// <summary>
+        /// A particular type of win event item for an expedition
+        /// </summary>
+        /// <param name="onDeath">If the event only triggers when all team members die</param>
+        public ItemID Item_WinEvent_Instance(bool onDeath)
+            => ItemID.From(
+                data,
+                onDeath ? $"{data.ExpeditionName} Win-On-Death Event" : $"{data.ExpeditionName} Instance Win Event",
+                data => new("A particular type of win event item for an expedition", data.Item_WinEvent_ByExpedition),
+                new WinEventHandler.InstantWinItem(data.Region_Expedition, onDeath)
+            );
     }
 }
 
@@ -45,63 +66,32 @@ public class WinEventHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Get an instant win item
-    /// </summary>
-    /// <param name="data">the expedition the item is for</param>
-    /// <param name="onDeath">If true, the instant win is "on death". Otherwise, it's instant.</param>
-    /// <returns></returns>
-    public static KeyedItem GetInstantWinItem(Expedition.Data data, bool onDeath)
-    {
-        if (data.TryLookupItem(InstantWinItem.MakeTag(data, onDeath), out var item))
-            return item;
-
-        Item newItem = new InstantWinItem(data, onDeath);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static Path.RequiredItem GetInstantWinPathReqs(Expedition.Data data)
-        => new(Path.RequiredItem.eType.Category, data.Tag_WinEventItemForExpedition);
-
-    /// <summary>
     /// Item represnting the instant win (and win on death) events
-    /// Note that because these are treated the same, only one can exist per expedition. 
-    /// If an expedition has both types, this might sometimes trigger the wrong one when randomized
     /// </summary>
-    private class InstantWinItem : Item
+    public class InstantWinItem : TerminalItem
     {
-        public InstantWinItem(Expedition.Data data, bool onDeath)
-            : base(MakeTag(data, onDeath), MakeRandData())
+        public InstantWinItem(RegionID expedition, bool onDeath)
+            : base(MakeRandData())
         {
-            ExpeditionData = data;
+            ExpeditionRegion = expedition;
             OnDeath = onDeath;
         }
 
-        public static TagResolver MakeTag(Expedition.Data data, bool onDeath)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag(onDeath ? $"{data.ExpeditionName} Win on Death" : $"{data.ExpeditionName} Instant Win", "An instant win event instance", data.Tag_WinEventItemForExpedition));
-
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
-        public Expedition.Data ExpeditionData { get; set; }
+        /// <summary>
+        /// The expedition the win event is for
+        /// </summary>
+        public RegionID ExpeditionRegion { get; private init; }
 
-        public bool OnDeath { get; set; }
+        /// <summary>
+        /// If true, the win event only triggers when the team wipes
+        /// </summary>
+        public bool OnDeath { get; private init; }
 
-        public override Path.RequiredItem PathReqs => GetInstantWinPathReqs(ExpeditionData);
+        public override RegionID TargetRegion => ExpeditionRegion;
 
-        public override Expedition.Data? RequiredExpedition => ExpeditionData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (ExpeditionData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ExpeditionData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             yield return () =>
             {
@@ -146,12 +136,7 @@ public class WinEventHandler : ArchipelagoFeature
                 continue;
             ++count;
 
-            var item = GetInstantWinItem(data, e.Type == eWardenObjectiveEventType.WinOnDeath);
-            FeatureLogger.Notice($"Adding instant win item: {data.LookupTagDef(item.Item.NameTag).Name}");
-
-            EventHelper.ConvertToCheckLocationEvent(
-                data, e, count, item.ID
-            );
+            EventHelper.CreateEventLocation(data, e, count, data.Item_WinEvent_Instance(e.Type == eWardenObjectiveEventType.WinOnDeath));
         }
     }
 

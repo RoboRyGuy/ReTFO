@@ -1,4 +1,5 @@
-﻿using ReTFO.Archipelago.FeaturesAPI;
+﻿using GameData;
+using ReTFO.Archipelago.FeaturesAPI;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
@@ -24,7 +25,9 @@ public class CheckEventRegionsHandler : ArchipelagoFeature
     [Event.Callback]
     public void InsertCheckRegionEvent(Event.Data data)
     {
-        data.Insert(0, EventHelper.CreateCheckRegionEvent(data.EventRegion));
+        WardenObjectiveEventData sourceData;
+        if (data.Count > 0) sourceData = data[0];
+        else sourceData = Il2CppSystem.Activator.CreateInstance(data.EventType).Cast<WardenObjectiveEventData>();
+        data.Insert(0, EventHelper.CreateCheckRegionEvent(sourceData, data.Region_Event));
     }
-
 }

@@ -19,14 +19,46 @@ public static class ProcessItemHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_ProcessItemStartLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Start Locations", "Locations checked by starting picking up the start item for Process Item objectives (if it spawned in the elevator)", gd.Tag_BigPickupLocations));
+        public LocationID Location_ProcessItemCages
+            => LocationID.From(data, "Process Item Cage Locations", data => new("Locations checked by picking up the start item for Process Item objectives (if it spawned in the elevator cage)", data.Location_BigPickups));
 
-        public TagResolver Tag_ProcessItemProcessorLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Processor Locations", "Locations containing the processor for a Process Item objective", gd.Tag_Never));
+        public LocationID Location_ProcessItemProcessors
+            => LocationID.From(data, "Process Item Processor Locations", data => new("Locations containing the processor for a Process Item objective", data.Location_Never));
 
-        public TagResolver Tag_ProcessItemProcessorItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Process Item Processor Items", "Items indicating a Process Items processor is reachable", gd.Tag_Never));
+        public ItemID Item_ProcessItemProcessors
+            => ItemID.From(data, "Process Item Processor Items", data => new("Items indicating a Process Items processor is reachable", data.Item_Never));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.ActivateSmallHSU;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
+    }
+
+    extension (Objective.Data data)
+    {
+        public RegionID Region_ProcessItemObtained
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Item Obtained", data => new("Region entered by obtaining the process item objective's unprocessed item.", data.Region_Objective));
+
+        public RegionID Region_ProcessItemProcessed
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Item Processed", data => new("Region entered by processing the process item objective's item.", data.Region_Objective));
+
+
+        public LocationID Location_ProcessItemCage_Instance
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Cage Locations", data => new("A particular Process Item objective cage spawn location.", data.Location_ProcessItemCages));
+
+        public LocationID Location_ProcessItemProcessor_Instance
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Processor Locations", data => new("A particular Process Item processor location", data.Location_ProcessItemProcessors));
+
+        public ItemID Item_ProcessItemProcessor_Instance
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Process Item Processor Items", 
+                data => new("A particular Process Item processor", data.Item_ProcessItemProcessors),
+                new ProcessItemHandler.ProcessItem_ProcessorItem(data.Region_Objective)
+            );
     }
 }
 
@@ -45,151 +77,73 @@ public class ProcessItemHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    public class ProcessItem_ProcessorItem : Item
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.ActivateSmallHSU;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public ProcessItem_ProcessorItem(RegionID objective)
+            : base(new ItemData() { IsProgression = true })
         {
-            CheckIsCorrectObjective(data);
-            ItemDataBlock startItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemFromStart);
-            if (startItem == null)
-                FeatureLogger.Error($"Failed to find start item for objective: {data.ObjectiveName(null)}");
-            ItemDataBlock endItem = ItemDataBlock.GetBlock(data.Objective.ActivateHSU_ItemAfterActivation);
-            if (endItem == null)
-                return $"Process \"{startItem?.publicName ?? "null!"}\"";
-            else
-                return $"Process \"{startItem?.publicName ?? "null!"}\" into \"{endItem?.publicName ?? "null!"}\"";
+            ObjectiveRegion = objective;
         }
 
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached by obtaining the start item for the objective (typically in the elevator)
-        public static string ItemObtained(Objective.Data data)
-            => $"{data.ObjectiveName()} Item Obtained";
-
-        // Region reached by processing the item
-        public static string ItemProcessed(Objective.Data data)
-            => $"{data.ObjectiveName()} Item Processed";
-    }
-
-    private static class ProcessItem_StartLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Start Location", "Location checked by grabbing a particular big pickup", gd.Tag_ProcessItemStartLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    private static class ProcessItem_ProcessorLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Processor Location", "Location checked by finding a particular processor", gd.Tag_ProcessItemProcessorLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
-    private class ProcessItem_ProcessorItem : Item
-    {
-        public ProcessItem_ProcessorItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
-        {
-            ObjectiveData = data;
-        }
-
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Processor Item", "Item indicating a particular processor is reachable", gd.Tag_ProcessItemProcessorItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    public static KeyedItem GetProcessorItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(ProcessItem_ProcessorItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new ProcessItem_ProcessorItem(data);
-        return new(data.AddItem(newItem), newItem);
+        public RegionID ObjectiveRegion { get; private init; }
     }
 
     // Objective requiring an item be brought to be "processed" and then brought to extraction
     [Objective.Callback]
     public void HandleActivateSmallHSUObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.ActivateSmallHSU)
             return;
 
         // Two-step objective: Find the item, then get to the processor
         // Fun fact: Any item with the correct id can be processed to complete the objective. There's only ever one such item per level, though
 
         // Add the item to the elevator zone, if necessary
-        KeyedItem startItem = BigPickupHandler.GetBigPickupItem(data, data.Objective.ActivateHSU_ItemFromStart);
+        ItemID startItem = data.Item_BigPickup_Instance(data.Objective.ActivateHSU_ItemFromStart);
         if (data.Objective.ActivateHSU_BringItemInElevator)
         {
-            RegionList region = data.LookupOrCreateRegion(data.GetLayer(LayerType.Main).FirstZone.ZoneName);
-            data.AddLocation(
-                ProcessItem_StartLocation.MakeTag(data),
+            RegionList region = data.GetLayer(LayerType.Main).FirstZone.Region_Zone;
+            data.Locations.CreateValue(
+                data.Location_ProcessItemCage_Instance,
                 region,
-                ProcessItem_StartLocation.MakeRandData(),
-                startItem.ID
+                new LocationData(),
+                startItem
             );
         }
 
-        // Collected item zone
-        RegionID collectItemRegion = data.LookupOrCreateRegion(ThisRegions.ItemObtained(data));
+        // Collected item region
+        RegionID collectItemRegion = data.Region_ProcessItemObtained;
         data.AddPath(new Path()
         {
-            StartingRegion = data.ObjectiveStartRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = collectItemRegion,
-            ReqItem = startItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, startItem),
             ReqCount = 1u,
         });
 
         // Add the processor to the expedition
-        KeyedItem processorItem = GetProcessorItem(data);
-        data.AddLocation(
-            ProcessItem_ProcessorLocation.MakeTag(data),
+        ItemID processorItem = data.Item_ProcessItemProcessor_Instance;
+        data.Locations.CreateValue(
+            data.Location_ProcessItemProcessor_Instance,
             data.ObjectiveData.ZonePlacementDatas.SelectMany(data.PlacementsToZoneRegions).Select(info => info.Region).ToList(),
-            ProcessItem_ProcessorLocation.MakeRandData(),
-            processorItem.ID
+            new LocationData() { IsAutoDiscovered = true },
+            processorItem
         );
 
         // Processed item region
-        string processedItemName = ThisRegions.ItemProcessed(data);
-        RegionID processedItemRegion = data.LookupOrCreateRegion(processedItemName);
+        RegionID processedItemRegion = data.Region_ProcessItemProcessed;
         data.AddPath(new Path()
         {
             StartingRegion = collectItemRegion,
             EndingRegion = processedItemRegion,
-            ReqItem = processorItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, processorItem),
             ReqCount = 1u,
         });
 
         // Events triggered by initiating processing on the small HSU - both sets are always triggered (I think)
         if (data.Objective.EventsOnActivate.Any())
-            data.ProcessEvents(processedItemRegion, processedItemName, data.Objective.EventsOnActivate);
-        data.ProcessEvents(processedItemRegion, processedItemName, data.Objective.ActivateHSU_Events ??= new(1));
+            data.ProcessEvents(processedItemRegion, data.Objective.EventsOnActivate);
+        data.ProcessEvents(processedItemRegion, data.Objective.ActivateHSU_Events ??= new(1));
 
         // Place objective complete item in the post-processing region if the objective can be completed that way
         if (data.Objective.ActivateHSU_ObjectiveCompleteAfterInsertion)
@@ -205,7 +159,7 @@ public class ProcessItemHandler : ArchipelagoFeature
     {
         public static void Postfix()
         {
-            var expeditionData = Expedition.Data.FromCurrentExpedition();
+            var expeditionData = Expedition.Data.GetFromCurrentExpedition();
             var firstData = expeditionData.MainLayer.GetObjectiveDatas().First();
 
             int count = 0;
@@ -215,17 +169,14 @@ public class ProcessItemHandler : ArchipelagoFeature
 
             foreach (var data in expeditionData.RealLayers.SelectMany(l => l.GetObjectiveDatas()))
             {
-                if (!This.IsCorrectObjective(data) || !data.Objective.ActivateHSU_BringItemInElevator)
+                if ((data.Objective.Type != eWardenObjectiveType.ActivateSmallHSU) || !data.Objective.ActivateHSU_BringItemInElevator)
                     continue;
 
                 var comp = ElevatorCage.Current.m_cargoCage.m_itemsToMoveToCargo[count].GetComponentInChildren<CarryItemPickup_Core>();
                 if (comp.ItemDataBlock.persistentID != data.Objective.ActivateHSU_ItemFromStart)
                     FeatureLogger.Warning("Associating wrong item with processor objective starting item!");
 
-                if (data.TryLookupLocation(ProcessItem_StartLocation.MakeTag(data), out var loc))
-                    PickupHelper.AssociateItem(comp, loc.ID);
-                else
-                    FeatureLogger.Error("Failed to create association for process item objective's starting item!");
+                PickupHelper.AssociateItem(comp, data.Location_ProcessItemCage_Instance);
             }
         }
     }

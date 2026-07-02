@@ -11,6 +11,11 @@ namespace ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+public static class UseTerminalHandler_Tags
+{
+
+}
+
 [EnableFeatureByDefault, AutomatedFeature]
 public class UseTerminalHandler : ArchipelagoFeature
 {
@@ -31,16 +36,19 @@ public class UseTerminalHandler : ArchipelagoFeature
     {
         Path path = new()
         {
-            StartingRegion = data.LookupOrCreateRegion(data.ZoneName),
-            EndingRegion = data.LookupOrCreateRegion(data.TerminalName)
+            StartingRegion = data.Region_Zone,
+            EndingRegion = data.Region_Terminal,
         };
 
         // Note the .Count > 0 check; this is to account for R8A2, which has the locked secret terminal
-        // The thought is "if this password is impossible to find in-level, it must be readily available"
+        // The thought is "if this password is impossible to find in-game, it must be readily available"
         if (data.TerminalStartingStateData.PasswordProtected && data.TerminalStartingStateData.TerminalZoneSelectionDatas.Count > 0)
         {
-            path.ReqItem = TerminalPasswordHandler.GetTerminalPasswordPartItem(data, 1).Item.PathReqs;
-            path.ReqCount = (uint)data.TerminalStartingStateData.PasswordPartCount;
+            path = new(path)
+            {
+                ReqItem = new(Path.RequiredItem.eType.Category, data.Item_TerminalPasswords_ByTerminal),
+                ReqCount = (uint)data.TerminalStartingStateData.PasswordPartCount,
+            };
         }
 
         data.AddPath(path);

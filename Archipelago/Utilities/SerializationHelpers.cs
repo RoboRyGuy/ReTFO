@@ -23,13 +23,12 @@ public static class SerializationHelpers
 
     /// <summary>
     /// Write an array length.
-    /// Currently defaults to an encoded long, but I may optimize it later.
     /// </summary>
     /// <param name="bytes">The byte array to write to</param>
     /// <param name="index">Index to write out. Will be moved to the next unwritten byte</param>
     /// <param name="value">The value to write</param>
     public static void WriteLength(Il2CppStructArray<byte> bytes, ref int index, int value)
-        => Write7BitEncodedLong(bytes, ref index, value);
+        => Write7BitEncodedInt(bytes, ref index, value);
 
     /// <summary>
     /// Read an array length from bytes.
@@ -38,13 +37,12 @@ public static class SerializationHelpers
     /// <param name="index">The index to read the length at. Will be moved to the next unread byte</param>
     /// <returns>The read length</returns>
     public static int ReadLength(Il2CppStructArray<byte> bytes, ref int index)
-        => checked((int)Read7BitEncodedLong(bytes, ref index));
+        => checked(Read7BitEncodedInt(bytes, ref index));
 
     /// <summary>
     /// Calculate the number of bytes this long will need after being encoded
     /// </summary>
     /// <param name="value">The value to calculate</param>
-    /// <param name="skipZeros">If true, return zero for inputs with zero (and consider them erroneous)</param>
     /// <returns>
     /// The predicted size, in bytes, from 0 to 9. 
     /// 0 is returned if the input is 0 as a special case for StateTracker.
@@ -63,16 +61,37 @@ public static class SerializationHelpers
             FeatureLogger.Warning("Networking a value greater than allowed; this may cause issues");
 #endif
 
-        if ((value & 0xFF00000000000000) != 0) return 9;
-        if ((value & 0xFE000000000000) != 0) return 8;
-        if ((value & 0x1FC0000000000) != 0) return 7;
-        if ((value & 0x3F800000000) != 0) return 6;
-        if ((value & 0x7F0000000) != 0) return 5;
-        if ((value & 0xFE00000) != 0) return 4;
-        if ((value & 0x1FC000) != 0) return 3;
-        if ((value & 0x3F80) != 0) return 2;
-        //if ((value & 0x7F) != 0) return 1;
-        return 1; 
+        if ((value & 0xFF00000000000000UL) != 0) return 9;
+        if ((value & 0xFE000000000000UL) != 0) return 8;
+        if ((value & 0x1FC0000000000UL) != 0) return 7;
+        if ((value & 0x3F800000000UL) != 0) return 6;
+        if ((value & 0x7F0000000UL) != 0) return 5;
+        if ((value & 0xFE00000UL) != 0) return 4;
+        if ((value & 0x1FC000UL) != 0) return 3;
+        if ((value & 0x3F80UL) != 0) return 2;
+        //if ((value & 0x7FUL) != 0) return 1;
+        return 1;
+    }
+
+    /// <inheritdoc cref="Calc7BitEncodedSize(long)"/>
+    public static int Calc7BitEncodedSize(int value)
+        => Calc7BitEncodedSize(unchecked((uint)value));
+
+    /// <inheritdoc cref="Calc7BitEncodedSize(long)"/>
+    public static int Calc7BitEncodedSize(uint value)
+    {
+        // This is the most convenient place to perform debug checks
+#if DEBUG
+        if (value == 0)
+            FeatureLogger.Error("Attempting to send 0 over the network; not allowed!");
+#endif
+
+        if ((value & 0xF0000000U) != 0) return 5;
+        if ((value & 0xFE00000U) != 0) return 4;
+        if ((value & 0x1FC000U) != 0) return 3;
+        if ((value & 0x3F80U) != 0) return 2;
+        //if ((value & 0x7FU) != 0) return 1;
+        return 1;
     }
 
     /// <summary>
@@ -94,6 +113,23 @@ public static class SerializationHelpers
 
     /// <inheritdoc cref="Calc7BitEncodedArraySize(ICollection{long})"/>
     public static int Calc7BitEncodedArraySize(IEnumerable<ulong> values, int count)
+        => Calc7BitEncodedSize(count) + values.Sum(i => Calc7BitEncodedSize(i));
+
+    /// <inheritdoc cref="Calc7BitEncodedArraySize(ICollection{long})"/>
+    public static int Calc7BitEncodedArraySize(ICollection<int> values)
+        => Calc7BitEncodedArraySize(values.Cast<uint>(), values.Count);
+
+    /// <inheritdoc cref="Calc7BitEncodedArraySize(ICollection{long})"/>
+    public static int Calc7BitEncodedArraySize(ICollection<uint> values)
+        => Calc7BitEncodedArraySize(values, values.Count);
+
+    /// <inheritdoc cref="Calc7BitEncodedArraySize(ICollection{long})"/>
+    /// <param name="count">Number of items in the enumeration</param>
+    public static int Calc7BitEncodedArraySize(IEnumerable<int> values, int count)
+        => Calc7BitEncodedArraySize(values.Cast<uint>(), count);
+
+    /// <inheritdoc cref="Calc7BitEncodedArraySize(ICollection{long})"/>
+    public static int Calc7BitEncodedArraySize(IEnumerable<uint> values, int count)
         => Calc7BitEncodedSize(count) + values.Sum(i => Calc7BitEncodedSize(i));
 
     /// <summary>
@@ -121,8 +157,29 @@ public static class SerializationHelpers
         return CalcLengthSize(valueCount + arrCount) + arrCount + values.Sum(arr => arr.Sum(i => Calc7BitEncodedSize(i)));
     }
 
+    /// <inheritdoc cref="Calc7BitEncodedMultiArraySize(ICollection{ICollection{long}})"/>
+    public static int Calc7BitEncodedMultiArraySize(ICollection<ICollection<int>> values)
+        => Calc7BitEncodedMultiArraySize(values.Cast<ICollection<uint>>(), values.Count, values.Sum(arr => arr.Count));
+
+    /// <inheritdoc cref="Calc7BitEncodedMultiArraySize(ICollection{ICollection{long}})"/>
+    public static int Calc7BitEncodedMultiArraySize(ICollection<ICollection<uint>> values)
+        => Calc7BitEncodedMultiArraySize(values, values.Count, values.Sum(arr => arr.Count));
+
+    /// <inheritdoc cref="Calc7BitEncodedMultiArraySize(IEnumerable{ICollection{long}})"/>
+    /// <param name="arrCount">Number of arrays being passed</param>
+    /// <param name="valueCount">Number of values being passed (sum of counts in arrays)</param>
+    public static int Calc7BitEncodedMultiArraySize(IEnumerable<IEnumerable<int>> values, int arrCount, int valueCount)
+        => Calc7BitEncodedMultiArraySize(values.Cast<IEnumerable<uint>>(), arrCount, valueCount);
+
+    /// <inheritdoc cref="Calc7BitEncodedMultiArraySize(IEnumerable{IEnumerable{long}}, int, int)"/>
+    public static int Calc7BitEncodedMultiArraySize(IEnumerable<IEnumerable<uint>> values, int arrCount, int valueCount)
+    {
+        arrCount = arrCount == 0 ? 0 : arrCount - 1;
+        return CalcLengthSize(valueCount + arrCount) + arrCount + values.Sum(arr => arr.Sum(i => Calc7BitEncodedSize(i)));
+    }
+
     /// <summary>
-    /// Write a 7-bit encoded long value to an array, and move the index to the next open spot
+    /// Write a 7-bit encoded long value to an array and move the index to the next open spot
     /// </summary>
     /// <param name="bytes">The array to write to</param>
     /// <param name="index">The index to write at, returned as the next blank index</param>
@@ -144,7 +201,30 @@ public static class SerializationHelpers
         // If the value set its most significant bit, we keep the continuation bit (as a special case which will be handled when reading).
         // Otherwise, we clear it.
         if (value == 0)
-            bytes[index - 1] = bytes[index - 1] &= 0x7F; // Clears the continuation bit
+            bytes[index - 1] = (byte)(bytes[index - 1] & 0x7F); // Clears the continuation bit
+    }
+
+    /// <summary>
+    /// Write a 7-bit encoded int value to an array and move the index to the next open spot
+    /// </summary>
+    /// <param name="bytes">The array to write to</param>
+    /// <param name="index">The index to write at, returned as the next blank index</param>
+    /// <param name="value">The value to write</param>
+    public static void Write7BitEncodedInt(Il2CppStructArray<byte> bytes, ref int index, int value)
+        => Write7BitEncodedInt(bytes, ref index, unchecked((uint)value));
+
+    /// <inheritdoc cref="Write7BitEncodedLong(Il2CppStructArray{byte}, ref int, int)"/>
+    public static void Write7BitEncodedInt(Il2CppStructArray<byte> bytes, ref int index, uint value)
+    {
+        // This loop intentially runs at least once, in case the original value is 0
+        for (int i = 0; i < 5; i++)
+        {
+            bytes[index++] = unchecked((byte)((value & 0x7F) | 0x80));
+            value >>= 7;
+            if (value == 0) break;
+        }
+
+        bytes[index - 1] = (byte)(bytes[index - 1] & 0x7F); // Clears the continuation bit
     }
 
     /// <summary>
@@ -171,7 +251,34 @@ public static class SerializationHelpers
         }
 
         // Special case read where we keep all bits
-        return value | ((ulong)(bytes[index++]) << 56);
+        return value | (((ulong)bytes[index++]) << 56);
+    }
+
+    /// <summary>
+    /// Reads a 7-bit encoded int from the array starting at the provided index.
+    /// Will move the index to the next unread spot.
+    /// </summary>
+    /// <param name="bytes">The array to read from</param>
+    /// <param name="index">The index to read at. Will be modified.</param>
+    /// <returns>The unencoded long value</returns>
+    public static int Read7BitEncodedInt(Il2CppStructArray<byte> bytes, ref int index)
+        => unchecked((int)Read7BitEncodedUInt(bytes, ref index));
+
+    /// <inheritdoc cref="Read7BitEncodedInt(Il2CppStructArray{byte}, ref int)"/>
+    public static uint Read7BitEncodedUInt(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        uint value = 0;
+        byte b;
+        for (int offset = 0; offset < 28; offset += 7)
+        {
+            // Read in first 7 bits. If the continuation bit is not set, return immediately
+            b = bytes[index++];
+            value |= (((uint)(b & 0x7F)) << offset);
+            if ((0x80 & b) == 0) return value;
+        }
+
+        // Just read in the last byte - it will be truncated during the shift
+        return value | (((uint)bytes[index++]) << 28);
     }
 
     /// <summary>
@@ -194,12 +301,32 @@ public static class SerializationHelpers
         => Write7BitEncodedArray(bytes, ref index, values.Cast<ulong>(), count);
 
     /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, IEnumerable{long}, int)"/>
-    public static unsafe void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<ulong> values, int count)
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<ulong> values, int count)
     {
-        byte* pBytes = (byte*)IntPtr.Add(bytes.Pointer, 4 * IntPtr.Size).ToPointer();
         WriteLength(bytes, ref index, count);
         foreach (var value in values)
             Write7BitEncodedLong(bytes, ref index, value);
+    }
+
+    /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, ICollection{long})"/>
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<int> values)
+        => Write7BitEncodedArray(bytes, ref index, values, values.Count);
+
+    /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, ICollection{long})"/>
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<uint> values)
+        => Write7BitEncodedArray(bytes, ref index, values, values.Count);
+
+    /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, ICollection{long})"/>
+    /// <param name="count">The count of how many values will be written. This will not be checked!</param>
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<int> values, int count)
+        => Write7BitEncodedArray(bytes, ref index, values.Cast<ulong>(), count);
+
+    /// <inheritdoc cref="Write7BitEncodedArray(Il2CppStructArray{byte}, ref int, IEnumerable{long}, int)"/>
+    public static void Write7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<uint> values, int count)
+    {
+        WriteLength(bytes, ref index, count);
+        foreach (var value in values)
+            Write7BitEncodedInt(bytes, ref index, value);
     }
 
     /// <summary>
@@ -208,7 +335,7 @@ public static class SerializationHelpers
     /// <param name="bytes">The bytes to read from</param>
     /// <param name="index">The index to start reading at</param>
     /// <returns>The decoded bytes</returns>
-    public static long[] Read7BitEncodedArray(Il2CppStructArray<byte> bytes, ref int index)
+    public static long[] Read7BitEncodedLongArray(Il2CppStructArray<byte> bytes, ref int index)
     {
         int size = ReadLength(bytes, ref index);
         long[] result = new long[size];
@@ -216,12 +343,30 @@ public static class SerializationHelpers
         return result;
     }
 
-    /// <inheritdoc cref="Read7BitEncodedArray(Il2CppStructArray{byte}, ref int)"/>
-    public static ulong[] Read7BitEncodedUArray(Il2CppStructArray<byte> bytes, ref int index)
+    /// <inheritdoc cref="Read7BitEncodedLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static ulong[] Read7BitEncodedULongArray(Il2CppStructArray<byte> bytes, ref int index)
     {
         int size = ReadLength(bytes, ref index);
         ulong[] result = new ulong[size];
         for (int i = 0; i < size; i++) result[i] = Read7BitEncodedULong(bytes, ref index);
+        return result;
+    }
+
+    /// <inheritdoc cref="Read7BitEncodedLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static int[] Read7BitEncodedIntArray(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        int size = ReadLength(bytes, ref index);
+        int[] result = new int[size];
+        for (int i = 0; i < size; i++) result[i] = Read7BitEncodedInt(bytes, ref index);
+        return result;
+    }
+
+    /// <inheritdoc cref="Read7BitEncodedLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static uint[] Read7BitEncodedUIntArray(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        int size = ReadLength(bytes, ref index);
+        uint[] result = new uint[size];
+        for (int i = 0; i < size; i++) result[i] = Read7BitEncodedUInt(bytes, ref index);
         return result;
     }
 
@@ -231,42 +376,57 @@ public static class SerializationHelpers
     /// <param name="bytes">The array to write to</param>
     /// <param name="index">The index to write at. Will be moved to to next open spot when done writing</param>
     /// <param name="values">The values to write</param>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<ICollection<long>> values)
+        => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, values.Sum(a => a.Count));
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{ICollection{long}})"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<ICollection<ulong>> values)
+        => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, values.Sum(a => a.Count));
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{ICollection{long}})"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<ICollection<int>> values)
+        => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, values.Sum(a => a.Count));
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{ICollection{long}})"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<ICollection<uint>> values)
+        => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, values.Sum(a => a.Count));
+
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{ICollection{long}})"/>
     /// <param name="valuesCount">The total number of encoded values in the `values` param</param>
     public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<IEnumerable<long>> values, int valuesCount)
         => Write7BitEncodedMultiArray(bytes, ref index, values.Cast<IEnumerable<ulong>>(), values.Count, valuesCount);
 
-    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}})"/>
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}}, int)"/>
     public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<IEnumerable<ulong>> values, int valuesCount)
         => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, valuesCount);
 
-    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}})"/>
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}}, int)"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<IEnumerable<int>> values, int valuesCount)
+        => Write7BitEncodedMultiArray(bytes, ref index, values.Cast<IEnumerable<uint>>(), values.Count, valuesCount);
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}}, int)"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, ICollection<IEnumerable<uint>> values, int valuesCount)
+        => Write7BitEncodedMultiArray(bytes, ref index, values, values.Count, valuesCount);
+
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, ICollection{IEnumerable{long}}, int)"/>
     /// <param name="arrCount">The number of arrays being written</param>
     public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<long>> values, int arrCount, int valuesCount)
         => Write7BitEncodedMultiArray(bytes, ref index, values.Cast<IEnumerable<ulong>>(), arrCount, valuesCount);
 
-    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, IEnumerable{IEnumerable{long}}, int)"/>
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, IEnumerable{IEnumerable{long}}, int, int)"/>
     public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<ulong>> values, int arrCount, int valuesCount)
+        => Write7BitEncodedArray(bytes, ref index, values.SelectMany(v => v.Prepend(0ul)).Skip(1), valuesCount + arrCount - 1);
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, IEnumerable{IEnumerable{long}}, int, int)"/>
+    /// <param name="arrCount">The number of arrays being written</param>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<int>> values, int arrCount, int valuesCount)
+        => Write7BitEncodedMultiArray(bytes, ref index, values.Cast<IEnumerable<uint>>(), arrCount, valuesCount);
+
+    /// <inheritdoc cref="Write7BitEncodedMultiArray(Il2CppStructArray{byte}, ref int, IEnumerable{IEnumerable{long}}, int, int)"/>
+    public static void Write7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index, IEnumerable<IEnumerable<uint>> values, int arrCount, int valuesCount)
         => Write7BitEncodedArray(bytes, ref index, values.SelectMany(v => v.Prepend(0u)).Skip(1), valuesCount + arrCount - 1);
-
-    /// <summary>
-    /// Wrapper for a span since span is ref only
-    /// </summary>
-    /// <typeparam name="T">The type contained by the span</typeparam>
-    public struct Spannable<T>
-    {
-        public T[] Values { get; init; }
-        public int Start { get; init; }
-        public int Length { get; init; }
-
-        public Spannable(T[] values, int start, int length)
-        {
-            Values = values;
-            Start = start;
-            Length = length;
-        }
-
-        public Span<T> AsSpan() => new Span<T>(Values, Start, Length);
-    }
 
     /// <summary>
     /// Read multiple arrays of values which are separated using 0 as a sentinel value
@@ -274,10 +434,10 @@ public static class SerializationHelpers
     /// <param name="bytes">The bytes containing the multiarray</param>
     /// <param name="index">The index to start reading at</param>
     /// <returns>The resulting multiarray</returns>
-    public static Spannable<long>[] Read7BitEncodedMultiArray(Il2CppStructArray<byte> bytes, ref int index)
+    public static Memory<long>[] Read7BitEncodedMultiLongArray(Il2CppStructArray<byte> bytes, ref int index)
     {
-        long[] values = Read7BitEncodedArray(bytes, ref index);
-        Spannable<long>[] spans = new Spannable<long>[1 + values.Count(i => i == 0)];
+        long[] values = Read7BitEncodedLongArray(bytes, ref index);
+        Memory<long>[] spans = new Memory<long>[1 + values.Count(i => i == 0)];
 
         int spanIndex = 0;
         int start = 0;
@@ -294,16 +454,11 @@ public static class SerializationHelpers
         return spans;
     }
 
-    /// <summary>
-    /// Read multiple arrays of values which are separated using 0 as a sentinel value
-    /// </summary>
-    /// <param name="bytes">The bytes containing the multiarray</param>
-    /// <param name="index">The index to start reading at</param>
-    /// <returns>The resulting multiarray</returns>
-    public static Spannable<ulong>[] Read7BitEncodedMultiUArray(Il2CppStructArray<byte> bytes, ref int index)
+    /// <inheritdoc cref="Read7BitEncodedMultiLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static Memory<ulong>[] Read7BitEncodedMultiULongArray(Il2CppStructArray<byte> bytes, ref int index)
     {
-        ulong[] values = Read7BitEncodedUArray(bytes, ref index);
-        Spannable<ulong>[] spans = new Spannable<ulong>[1 + values.Count(i => i == 0)];
+        ulong[] values = Read7BitEncodedULongArray(bytes, ref index);
+        Memory<ulong>[] spans = new Memory<ulong>[1 + values.Count(i => i == 0)];
 
         int spanIndex = 0;
         int start = 0;
@@ -315,6 +470,49 @@ public static class SerializationHelpers
                 start = i + 1;
             }
         }
+        spans[spanIndex] = new(values, start, values.Length - start);
+
+        return spans;
+    }
+
+    /// <inheritdoc cref="Read7BitEncodedMultiLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static Memory<int>[] Read7BitEncodedMultiIntArray(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        int[] values = Read7BitEncodedIntArray(bytes, ref index);
+        Memory<int>[] spans = new Memory<int>[1 + values.Count(i => i == 0)];
+
+        int spanIndex = 0;
+        int start = 0;
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] == 0)
+            {
+                spans[spanIndex++] = new(values, start, i - start);
+                start = i + 1;
+            }
+        }
+        spans[spanIndex] = new(values, start, values.Length - start);
+
+        return spans;
+    }
+
+    /// <inheritdoc cref="Read7BitEncodedMultiLongArray(Il2CppStructArray{byte}, ref int)"/>
+    public static Memory<uint>[] Read7BitEncodedMultiUIntArray(Il2CppStructArray<byte> bytes, ref int index)
+    {
+        uint[] values = Read7BitEncodedUIntArray(bytes, ref index);
+        Memory<uint>[] spans = new Memory<uint>[1 + values.Count(i => i == 0)];
+
+        int spanIndex = 0;
+        int start = 0;
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] == 0)
+            {
+                spans[spanIndex++] = new(values, start, i - start);
+                start = i + 1;
+            }
+        }
+        spans[spanIndex] = new(values, start, values.Length - start);
 
         return spans;
     }

@@ -4,6 +4,7 @@ using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using DoublePlacementList = Il2CppSystem.Collections.Generic.List<Il2CppSystem.Collections.Generic.List<GameData.ZonePlacementData>>;
@@ -16,9 +17,25 @@ using ReTFO.Archipelago.ModdedInstanceData.Model;
 
 public static class Zone
 {
+    private record class ScopeData
+    {
+        public ScopeData(ExpeditionZoneData? zone) => Zone = zone;
+        public ExpeditionZoneData? Zone { get; init; }
+    }
+
     // Interface class passed to processing giving access to necessary data
     public class Data : Layer.Data
     {
+        /// <summary>
+        /// The custom data stored in the region object for this data
+        /// </summary>
+        private readonly ScopeData ZoneScopeData;
+
+        /// <summary>
+        /// The region associated with this zone
+        /// </summary>
+        public RegionID Region_Zone { get; private init; }
+
         /// <summary>
         /// Create a new zone data
         /// </summary>
@@ -26,67 +43,93 @@ public static class Zone
         /// <param name="zone">The zone build data</param>
         public Data(Layer.Data data, ExpeditionZoneData? zone)
             : base(data)
-            => Zone = zone;
+        {
+            string name = $"{LayerName} ZONE_{GetAlias(this, zone)}";
+            Region_Zone = Regions.LookUpOrCreate(
+                data, name,
+                data => new("A region for a particular zone in a layer", data.Region_Layer)
+            );
+            if (!Regions.LookUpValue(Region_Zone).GetDataAllowNull(out ZoneScopeData!))
+                Regions.SetData(Region_Zone, ZoneScopeData = new(zone));
+        }
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid zone region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data, data.Regions.LookUpDefinition(region).Parent)
+        {
+            Region_Zone = region;
+            ZoneScopeData = Regions.GetData<ScopeData>(Region_Zone);
+        }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Zone.Data other)
-            : base(other as Layer.Data)
+            : base(other)
         {
-            Zone = other.Zone;
+            Region_Zone = other.Region_Zone;
+            ZoneScopeData = other.ZoneScopeData;
         }
 
         /// <summary>
-        /// The zone being processed.
-        /// Null if and only if processing a dimension layer which has no layout (only one custom geo)
+        /// Data for the zone refered to by this data.
+        /// This may be null if the zone is the only zone in a dimension.
         /// </summary>
-        public ExpeditionZoneData? Zone { get; private init; }
-
-        /// <summary>
-        /// Helper for calculating aliases
-        /// </summary>
-        private int WithOverride(int alias, int over) => over == -1 ? alias : over;
-        
-        /// <summary>
-        /// Get the zone alias for this zone; accounts for dimensions
-        /// </summary>
-        public int ZoneAlias // Note: Both DimensionData and Zone may be null if referring to the snatcher dimension
-           => Zone != null ? WithOverride(Layout!.ZoneAliasStart + ((int)Zone.LocalIndex), Zone.AliasOverride)
-                           : WithOverride((Layout?.ZoneAliasStart ?? 0), DimensionData?.StaticAliasOverride ?? 0);
+        public ExpeditionZoneData? Zone => ZoneScopeData.Zone;
 
         /// <summary>
         /// A name uniquely identifying this zone in a user-friendly way
         /// </summary>
         /// <remarks>
-        /// This assumes all zones in a layer have unique aliases, which is true for all vanilla expeditions.
-        /// If that is not the case, we can modify this to use local index instead of the alias.
+        /// The generated name assumes all zones in a layer have a unique alias.
+        /// If this is not the case, this name will not be unique and many problemss will arise.
         /// </remarks>
-        public string ZoneName => $"{LayerName} ZONE_{ZoneAlias}";
+        public string ZoneName => Regions.LookUpName(Region_Zone);
+
+        /// <summary>
+        /// Helper for calculating aliases
+        /// </summary>
+        private static int WithOverride(int alias, int over) => over == -1 ? alias : over;
+
+        /// <summary>
+        /// Get the alias for a particular zone in the provided layer
+        /// </summary>
+        private static int GetAlias(Layer.Data layer, ExpeditionZoneData? zone)
+           => zone != null ? WithOverride(layer.Layout!.ZoneAliasStart + ((int)zone.LocalIndex), zone.AliasOverride)
+                           : WithOverride((layer.Layout?.ZoneAliasStart ?? 0), layer.DimensionData?.StaticAliasOverride ?? 0);
+
+        /// <summary>
+        /// Get the alias for this zone
+        /// </summary>
+        public int ZoneAlias => GetAlias(this, Zone);
         public string? CustomGeo
             => Zone == null ? DimensionData!.DimensionGeomorph : Zone.CustomGeomorph;
 
         /// <summary>
-        /// Create zone data from the provided LG_Zone object
+        /// Create zone data from the in-level zone component.
+        /// Throws on fail, since loaded zones should always have registered data.
         /// </summary>
-        /// <param name="zone">The LG_Zone created as part of level generation</param>
-        /// <returns>The relevant zone data</returns>
-        public static Data FromZone(LG_Zone zone)
+        public static Zone.Data GetFromZone(LG_Zone zone)
         {
-            var layer = FromLayer(zone.m_layer);
+            Layer.Data layer = Layer.Data.GetFromLayer(zone.Layer);
             return layer.FindZoneByIndex(zone.LocalIndex);
         }
 
         /// <summary>
-        /// Get the LG_Zone associated with this zone, if loaded
+        /// Assuming the correct expedition is loaded in, get the LG_Zone component
+        ///  corresponding to this data's zone
         /// </summary>
-        /// <returns>The LG_Zone object created by level generation</returns>
+        /// <returns></returns>
         public LG_Zone? GetLG_Zone()
         {
-            LG_Layer? layer = GetLG_Layer();
-            if (layer == null) return null;
+            LG_Layer layer = GetLG_Layer();
             int entry = layer.m_zonesByLocalIndex.FindEntry(Zone?.LocalIndex ?? eLocalZoneIndex.Zone_0);
-            return entry == -1 ? null : layer.m_zonesByLocalIndex.entries[entry].value;
+            if (entry < 0)
+                throw new NullReferenceException("Could not fetch LG_Zone: No such zone exists!");
+            return layer.m_zonesByLocalIndex.entries[entry].value;
         }
     }
 
@@ -137,12 +180,6 @@ public static class Zone
         /// </summary>
         public Data StartingZone
             => expeditionData.MainLayer.FirstZone;
-
-        /// <summary>
-        /// Region for the first zone
-        /// </summary>
-        public RegionID StartingRegion
-            => expeditionData.LookupOrCreateRegion(expeditionData.StartingZone.ZoneName);
 
         /// <summary>
         /// Find a zone using event data
@@ -249,7 +286,7 @@ public static class Zone
             var zone = layerData.FindZoneByPlacement(placement);
             return new()
             {
-                Region = layerData.LookupOrCreateRegion(zone.ZoneName),
+                Region = zone.Region_Zone,
                 IsBad = (zone.Zone?.ProgressionPuzzleToEnter?.PuzzleType ?? eProgressionPuzzleType.None) != eProgressionPuzzleType.None
             };
         }

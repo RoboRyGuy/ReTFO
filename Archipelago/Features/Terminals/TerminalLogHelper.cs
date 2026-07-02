@@ -17,11 +17,11 @@ public static class TerminalLogHelper_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_TerminalLogLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Terminal Log Locations", "Locations checked by reading specific terminal logs", gd.Tag_AllLocations));
+        public LocationID Location_TerminalLogs
+            => LocationID.From(gameData, "Terminal Log Locations", data => new("Locations checked by reading specific terminal logs", data.Location_All));
 
-        public TagResolver Tag_TerminalLogItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Terminal Log Items", "Items typically obtained by reading specific terminal logs", gd.Tag_AllItems));
+        public ItemID Item_TerminalLogs
+            => ItemID.From(gameData, "Terminal Log Items", data => new("Items typically obtained by reading specific terminal logs", data.Item_All));
     }
 }
 
@@ -41,6 +41,18 @@ public class TerminalLogHelper : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    public abstract class TerminalLogLocation : Location
+    {
+        public TerminalLogLocation(RegionList regions, LocationData randData, ItemID itemId) : base(regions, randData, itemId) { }
+
+        /// <summary>
+        /// Called when the log is read, but the location is not randomized. Provided to help implement vanilla-like behaviour.
+        /// </summary>
+        /// <param name="stateTracker">The current state tracker</param>
+        /// <param name="terminal">The terminal the log was read on</param>
+        public abstract void OnNotRandomized(StateTracker stateTracker, LG_ComputerTerminal terminal);
+    }
+
     // Component placed on terminals to mark them as containing logs we care about
     [InjectToIl2Cpp]
     private class ContainsLocationLogComp : MonoBehaviour
@@ -48,22 +60,29 @@ public class TerminalLogHelper : ArchipelagoFeature
         public SortedList<string, LocationID> StoredLocations = new();
     }
 
-    // Associate a log with a location
-    public static void AssociateLog(LG_ComputerTerminal terminal, string logName, LocationID locationId)
+    /// <summary>
+    /// Associate a log with a location
+    /// </summary>
+    /// <param name="terminal">The terminal hosting the log</param>
+    /// <param name="logName">The log's name; the same name used to read the log</param>
+    /// <param name="locationId">ID of the location to associate with the log</param>
+    /// <param name="overwriteLog">If true, replace the log's text with a simple "you found item x" message if it's randomized</param>
+    public static void AssociateLog(LG_ComputerTerminal terminal, string logName, LocationID locationId, bool overwriteLog = true)
     {
         logName = logName.ToUpper();
-        Game.Data gameData = Plugin.Get().MidManager.GetProcessedGameData();
+        StateTracker stateTracker = StateTracker.Get();
+        Game.Data gameData = stateTracker.GameData;
         ContainsLocationLogComp comp = terminal.GetComponent<ContainsLocationLogComp>()
             ?? terminal.gameObject.AddComponent<ContainsLocationLogComp>();
         
         if (comp.StoredLocations.TryGetValue(logName, out var oldLocation))
         {
-            int locLength = Math.Max(oldLocation.AsId.ToString().Length, locationId.AsId.ToString().Length);
+            int locLength = Math.Max(oldLocation.ID.ToString().Length, locationId.ID.ToString().Length);
             string formatString = new string('0', locLength);
             FeatureLogger.Error(
                 $"Overwriting location stored in log!\n"
-                + $"  Old Location: [{oldLocation.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(oldLocation).NameTag).Name}"
-                + $"  New Location: [{locationId.AsId.ToString(formatString)}] {gameData.LookupTagDef(gameData.LookupLocation(locationId).NameTag).Name}"
+                + $"  Old Location: [{oldLocation.ID.ToString(formatString)}] {gameData.Locations.LookUpName(oldLocation)}"
+                + $"  New Location: [{locationId.ID.ToString(formatString)}] {gameData.Locations.LookUpName(locationId)}"
             );
         }
         comp.StoredLocations[logName] = locationId;
@@ -75,15 +94,15 @@ public class TerminalLogHelper : ArchipelagoFeature
             return;
         }
 
-        Location loc = gameData.LookupLocation(locationId);
-        if (!loc.RandData.IsTreatedAsRandom) return;
+        Location loc = gameData.Locations.LookUpValueChecked(locationId);
+        if (!(loc.RandData.IsTreatedAsRandom && overwriteLog)) return;
 
         var log = terminal.m_localLogs.entries[entry].value;
         log.FileContent = new()
         {
             UntranslatedText =
                 "Congratulations! By viewing this log, you have obtained the following item(s):"
-                + $"\n  {loc.ScoutedItemName ?? (loc.ItemID.IsNull ? "None" : gameData.LookupTagDef(gameData.LookupItem(loc.ItemID).NameTag).Name)}",
+                + $"\n  {loc.ScoutedItemName ?? (loc.ItemID.IsNull ? "None" : gameData.Items.LookUpName(loc.ItemID))}",
             OldId = 0,
             Id = 0,
         };
@@ -98,7 +117,15 @@ public class TerminalLogHelper : ArchipelagoFeature
             ContainsLocationLogComp? comp = __instance.m_terminal.GetComponent<ContainsLocationLogComp>();
             if (comp == null) return;
             if (comp.StoredLocations.TryGetValue(param1.ToUpper(), out LocationID location))
-                StateTracker.Get().NotifyFoundLocation(location, __instance.m_terminal.m_syncedInteractionSource);
+            {
+                StateTracker stateTracker = StateTracker.Get();
+                Location loc = stateTracker.NotifyFoundLocation(location, __instance.m_terminal.m_syncedInteractionSource);
+                if (!loc.RandData.IsTreatedAsRandom)
+                {
+                    if (loc is TerminalLogLocation log)
+                        log.OnNotRandomized(stateTracker, __instance.m_terminal);
+                }
+            }
         }
     }
 

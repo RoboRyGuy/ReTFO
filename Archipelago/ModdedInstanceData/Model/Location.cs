@@ -1,13 +1,10 @@
-﻿using Archipelago.MultiClient.Net.Models;
-using ReTFO.Archipelago.Utilities;
-using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+﻿using System;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Collections.Generic;
 
 /// <summary>
 /// Represents a location in archipelago. Some example locations:
@@ -26,55 +23,38 @@ public class Location
     /// <summary>
     /// Standard constructor
     /// </summary>
-    /// <param name="nameTag">Name of the location</param>
     /// <param name="regions">
     /// The regions the location can be found in. 
     /// Archipelago will require all listed regions be reachable for this location to be reachable.
     /// </param>
     /// <param name="randData">The data used to randomize this location</param>
-    public Location(RandomizationTag nameTag, RegionList regions, LocationData randData)
+    /// <param name="item">The item normally found in this location, if any</param>
+    public Location(RegionList regions, LocationData randData, ItemID item = new())
     {
-        NameTag = nameTag;
-        OwningRegionIDs = regions;
+        m_owningRegionIDs = regions;
         RandData = randData;
+        ItemID = item;
     }
-
-    /// <summary>
-    /// Identifying tag used by this locations
-    /// </summary>
-    [DataMember(Name = "name_tag")]
-    public RandomizationTag NameTag { get; init; }
-
-    /// <summary>
-    /// Optional secondary tag for this location.
-    /// </summary>
-    [DataMember(Name = "tag2")]
-    public RandomizationTag Tag2 { get; init; }
-
-    /// <summary>
-    /// Optional tertiary tag for this location.
-    /// </summary>
-    [DataMember(Name = "tag3")]
-    public RandomizationTag Tag3 { get; init; }
 
     /// <summary>
     /// Regions this location can be in.
     /// </summary>
     [DataMember(Name = "owning_regions")]
-    public RegionID[] OwningRegionIDs { get; init; }
+    public IReadOnlyList<RegionID> OwningRegionIDs => m_owningRegionIDs;
+    private RegionID[] m_owningRegionIDs;
+
+    /// <summary>
+    /// The data to use for this location.
+    /// </summary>
+    [DataMember(Name = "rand_data")]
+    public LocationData RandData { get; private set; }
 
     /// <summary>
     /// Item typically located in this location. 
     /// If 0, this location will be a candidate for floating items.
     /// </summary>
     [DataMember(Name = "item_id")]
-    public ItemID ItemID { get; set; } = new();
-
-    /// <summary>
-    /// The data to use for this location.
-    /// </summary>
-    [DataMember(Name = "rand_data")]
-    public LocationData RandData { get; set; }
+    public ItemID ItemID { get; private set; } = new();
 
     /// <summary>
     /// Name of the scouted item, if this location has been scouted
@@ -90,67 +70,96 @@ public class Location
     /// Name of the game for the scouted item, if this location has been scouted
     /// </summary>
     public string? ScoutedGameName { get; set; }
-}
 
-/// <summary>
-/// Simple wrapper around a long to help identify it as a LocationID, usable
-///  for looking up a Location instance in GameData.
-/// </summary>
-[DataContract]
-public struct LocationID : INullable, IId, IIndex, IComparable<LocationID>, IEquatable<LocationID>
-{
-    public LocationID() { }
-    [DataMember(Name = "value")] 
-    private readonly long m_value = 0;
-
-    public bool IsNull => m_value == 0;
-    public long AsId { get => m_value; init => m_value = value; }
-    public int AsIndex { get => checked((int)m_value) - 1; init => m_value = value + 1; }
-    public int CompareTo(LocationID other) => m_value.CompareTo(other.m_value);
-    public bool Equals(LocationID other) => m_value.Equals(other.m_value);
-    public override bool Equals([NotNullWhen(true)] object? obj) => obj is LocationID id && Equals(id);
-    public override int GetHashCode() => m_value.GetHashCode();
-    public override string ToString() => $"LocationID: {m_value}";
-}
-
-/// <summary>
-/// A Location with an ID associated with it
-/// </summary>
-[DataContract]
-public struct KeyedLocation : INullable
-{
     /// <summary>
-    /// Create a new null KeyedLocation
+    /// Add a new region to the OwningRegionIDs list
     /// </summary>
-    public KeyedLocation()
+    public void AddOwningRegionIDs(params RegionID[] regions)
     {
-        ID = new();
-        Location = null!;
+        if (regions.Length == 0) return;
+        RegionID[] ids = new RegionID[m_owningRegionIDs.Length + regions.Length];
+        for (int i = 0; i < m_owningRegionIDs.Length; i++)
+            ids[i] = m_owningRegionIDs![i];
+        for (int i = 0; i < ids.Length; i++)
+            ids[m_owningRegionIDs.Length + i] = regions[i];
+        m_owningRegionIDs = ids;
     }
 
     /// <summary>
-    /// Create a new KeyedLocation with the given location and ID
+    /// Update the randomization of this location
     /// </summary>
-    public KeyedLocation(LocationID id, Location location)
+    public void UpdateRandomization(bool isReachable, bool isWhitelisted, bool isBlacklisted, bool isRandomized, bool isRandomlike)
     {
-        ID = id;
-        Location = location;
+        if (isRandomized && isRandomlike)
+            throw new ArgumentException("Cannot set location data to be both randomized and randomlike!");
+        RandData = new(RandData)
+        {
+            IsReachable = isReachable,
+            IsWhitelisted = isWhitelisted,
+            IsBlacklisted = isBlacklisted,
+            IsRandomized = isRandomized,
+            IsRandomlike = isRandomlike
+        };
     }
 
     /// <summary>
-    /// Unique ID of the Location. IDs range from 1 to 2^53-1.
+    /// Set specifically the IsReachable bit in the rand data
     /// </summary>
-    [DataMember(Name = "id")] public LocationID ID { get; init; }
+    public void UpdateReachable(bool isReachable)
+        => RandData = new(RandData) { IsReachable = isReachable };
 
     /// <summary>
-    /// The location object with the given ID
+    /// Set specifically the IsWhitelisted and IsBlacklisted bits in the rand data
     /// </summary>
-    [DataMember(Name = "location")] public Location Location { get; init; }
+    public void UpdateListing(bool isWhitelisted, bool isBlacklisted)
+        => RandData = new(RandData) { IsWhitelisted = isWhitelisted, IsBlacklisted = isBlacklisted };
 
     /// <summary>
-    /// True if null (contains no location)
+    /// Set specifically the IsRandomized and IsRandomlike bits in the rand data
     /// </summary>
-    public bool IsNull => ID.IsNull;
+    public void UpdateRandomized(bool isRandomized, bool isRandomlike)
+    {
+        if (isRandomized && isRandomlike)
+            throw new ArgumentException("Cannot set location data to be both randomized and randomlike!");
+        RandData = new(RandData) { IsRandomized = isRandomized, IsRandomlike = isRandomlike };
+    }
+
+    /// <summary>
+    /// Change the assigned item for this location.
+    /// Only possible if this location's RandData indicates it's an empty location
+    /// </summary>
+    /// <param name="newItem"></param>
+    public void SetItem(ItemID newItem)
+    {
+        if (!RandData.IsEmpty)
+            throw new InvalidOperationException("Cannot overwrite item for a non-empty location!");
+        ItemID = newItem;
+    }
+}
+
+/// <summary>
+/// Simple declaration to help identify IDs for tags
+/// </summary>
+[DataContract]
+public struct LocationID : ITagID, IEquatable<LocationID>, IComparable<LocationID>
+{
+    [DataMember(Name = "id")]
+    public uint ID { get; init; }
+
+    public bool IsNull => ID == 0;
+    public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+    public bool Equals(LocationID other) => ID == other.ID;
+    public int CompareTo(LocationID other) => ID.CompareTo(other.ID);
+    public override string ToString() => $"LocationID {ID}";
+
+    public static LocationID From(Game.Data data, string name, Func<TagDefinition<LocationID>> definitionFactory, Location? item = null)
+        => data.Locations.LookUpOrCreate(name, definitionFactory, item);
+
+    public static LocationID From<TData>(TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, Location? item = null) where TData : Game.Data
+        => data.Locations.LookUpOrCreate(data, name, definitionFactory, item);
+
+    public static LocationID From<TData>(TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, RegionList regions, LocationData randData) where TData : Game.Data
+        => data.Locations.LookUpOrCreate(data, name, definitionFactory, new Location(regions, randData));
 }
 
 /// <summary>
@@ -216,9 +225,9 @@ public struct LocationData
         IsBlacklisted = 1 << 5,
 
         /// <summary>
-        /// This location is present / obtainable in the current expeditions list
+        /// This location is located in a whitelisted region
         /// </summary>
-        IsInRequiredExpeditions = 1 << 6,
+        IsReachable = 1 << 6,
 
         /// <summary>
         /// If this location has an item and both meet the criteria to be randomized
@@ -315,18 +324,18 @@ public struct LocationData
     }
 
     /// <summary>
-    /// Get or write the IsInRequiredExpeditions bit
+    /// Get or write the IsReachable bit
     /// </summary>
-    public bool IsInRequiredExpeditions
+    public bool IsReachable
     {
-        get => (m_value & eType.IsInRequiredExpeditions) != 0;
-        init => m_value = value ? (m_value | eType.IsInRequiredExpeditions) : (m_value & ~eType.IsInRequiredExpeditions);
+        get => (m_value & eType.IsReachable) != 0;
+        init => m_value = value ? (m_value | eType.IsReachable) : (m_value & ~eType.IsReachable);
     }
 
     /// <summary>
     /// True if this location should be randomized purely on its own merit (ignoring its item)
     /// </summary>
-    public bool ShouldBeRandomized => IsInRequiredExpeditions && IsWhitelisted && !IsBlacklisted;
+    public bool ShouldBeRandomized => IsReachable && IsWhitelisted && !IsBlacklisted;
 
     /// <summary>
     /// Get or write the IsRandomized bit
@@ -352,5 +361,5 @@ public struct LocationData
     /// </summary>
     public bool IsTreatedAsRandom => IsRandomized || IsRandomlike;
 
-    public LocationData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsInRequiredExpeditions | eType.IsRandomized | eType.IsRandomlike));
+    public LocationData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsReachable | eType.IsRandomized | eType.IsRandomlike));
 }

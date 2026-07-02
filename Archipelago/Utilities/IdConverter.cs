@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using ReTFO.Archipelago.ModdedInstanceData.Model;
 
 namespace ReTFO.Archipelago.Utilities;
 
@@ -17,7 +18,7 @@ public sealed class IdConverter : JsonConverter
 
     public override bool CanConvert(Type objectType)
     {
-        if (objectType.IsAssignableTo(typeof(IId)))
+        if (objectType.IsAssignableTo(typeof(ITagID)))
             return true;
 
         foreach (var i in objectType.GetInterfaces())
@@ -25,7 +26,7 @@ public sealed class IdConverter : JsonConverter
             if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
                 Type itemType = i.GetGenericArguments()[0];
-                if (itemType.IsAssignableTo(typeof(IId)))
+                if (itemType.IsAssignableTo(typeof(ITagID)))
                     return true;
             }
         }
@@ -35,15 +36,15 @@ public sealed class IdConverter : JsonConverter
 
     public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
     {
-        if (value is IId id)
+        if (value is ITagID id)
         {
-            serializer.Serialize(writer, id.AsId);
+            serializer.Serialize(writer, id.ID);
             return;
         }
 
         if (value is IEnumerable enumerable)
         {
-            var list = enumerable.Cast<IId>().Select(i => i.AsId).ToList();
+            var list = enumerable.Cast<ITagID>().Select(i => i.ID).ToList();
             serializer.Serialize(writer, list);
         }
 

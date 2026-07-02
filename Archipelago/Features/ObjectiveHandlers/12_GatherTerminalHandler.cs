@@ -1,5 +1,4 @@
 ﻿using LevelGeneration;
-using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -18,20 +17,44 @@ public static class GatherTerminalHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_GatherTerminalsCommandLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Gather Terminals Command Locations", "Locations checked executing gather terminals commands", gd.Tag_AllLocations));
+        public LocationID Location_GatherTerminalsCommands
+            => LocationID.From(data, "Gather Terminals Command Locations", data => new("Locations checked executing gather terminals commands", data.Location_All));
 
-        public TagResolver Tag_GatherTerminalsCommandItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Gather Terminals Command Items", "Items representing a gather terminals command having been executed", gd.Tag_AllItems));
+        public ItemID Item_GatherTerminalsCommands
+            => ItemID.From(data, "Gather Terminals Command Items", data => new("Items representing a gather terminals command having been executed", data.Item_All));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.GatherTerminal;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension(Objective.Data data)
     {
-        public TagResolver Tag_GatherTerminalsCommandLocations_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Gather Terminals Command Locations", "Locations checked executing gather terminals commands for a particular objective", gd.Tag_GatherTerminalsCommandLocations));
+        public RegionID Region_GatherCommandExecuted(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} {count} command{(count == 1 ? "" : "s")} executed", data => new("Region entered by executing a particular number of Gather Termianl commands for a particualr objective", data.Region_Objective));
 
-        public TagResolver Tag_GatherTerminalsCommandItem_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Gather Terminals Command Items", "Items representing a gather terminals command having been executed for a particular objective", gd.Tag_GatherTerminalsCommandItems));
+
+        public LocationID Location_GatherTerminalsCommands_ByObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Gather Terminals Command Locations", data => new("Locations checked by executing gather terminals commands for a particular objective", data.Location_GatherTerminalsCommands));
+
+        public ItemID Item_GatherTerminalsCommands_ByObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Gather Terminals Command Items", data => new("Items representing a gather terminals command having been executed for a particular objective", data.Item_GatherTerminalsCommands));
+
+
+        public LocationID Location_GatherTerminalsCommand_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Gather Terminals Command Locations #{count}", data => new("A particular checked by executing a gather terminals commands", data.Location_GatherTerminalsCommands_ByObjective));
+
+        public ItemID Item_GatherTerminalsCommand_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Gather Terminals Command #{count}", 
+                data => new("An item representing a particular gather terminals command having been executed", data.Item_GatherTerminalsCommands_ByObjective),
+                new GatherTerminalHandler.GatherTerminals_CommandItem(data.Region_Objective, count)
+            );
     }
 }
 
@@ -51,118 +74,49 @@ public class GatherTerminalHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
+    public class GatherTerminals_CommandItem : TerminalItem
     {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.GatherTerminal;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
+        public GatherTerminals_CommandItem(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            CheckIsCorrectObjective(data);
-            return $"Execute {data.Objective.GatherTerminal_Command} on {data.Objective.GatherTerminal_RequiredCount} Terminals";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region reached by executing a command
-        public static string CommandExecuted(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} {count} command{(count == 1 ? "" : "s")} executed";
-    }
-
-    private static class GatherTerminals_CommandLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Command Location #{count}", "Location containing a gather terminals command", data.Tag_GatherTerminalsCommandLocations_ByObjective));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    private class GatherTerminals_CommandItem : Item
-    {
-        public GatherTerminals_CommandItem(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
-        {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
             Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Command Item #{count}", "Item obtained for completing a gather terminals command", data.Tag_GatherTerminalsCommandItem_ByObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public int Count { get; private init; }
 
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_GatherTerminalsCommandItem_ByObjective);
+        public override RegionID TargetRegion => ObjectiveRegion;
 
-        public Objective.Data ObjectiveData { get; set; }
-
-        public int Count { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (ObjectiveData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ObjectiveData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             const uint defaultStartText = 436196897;
             const uint defaultEndText = 2410856699;
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
 
             yield return () =>
             {
-                var text = ObjectiveData.Objective.GatherTerminal_DownloadingText;
+                var text = data.Objective.GatherTerminal_DownloadingText;
                 if (text.Id == 0 && (text.UntranslatedText?.Length ?? 0) == 0)
                     terminal.m_command.AddOutput(TerminalLineType.ProgressWait, defaultStartText, 1f);
                 else
-                    terminal.m_command.AddOutput(TerminalLineType.ProgressWait, ObjectiveData.Objective.GatherTerminal_DownloadingText, MathF.Min(1f, ObjectiveData.Objective.GatherTerminal_DownloadTime));
+                    terminal.m_command.AddOutput(TerminalLineType.ProgressWait, data.Objective.GatherTerminal_DownloadingText, MathF.Min(1f, data.Objective.GatherTerminal_DownloadTime));
             };
 
             yield return () =>
             {
-                var items = WardenObjectiveManager.GetObjectiveItemCollection(ObjectiveData.LayerType, ObjectiveData.ObjectiveIndex);
+                var items = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
                 items[Count - 1].ObjectiveItemSolved = true;
-                WardenObjectiveManager.OnLocalPlayerSolvedObjectiveItem(ObjectiveData.LayerType, items[Count - 1], true);
+                WardenObjectiveManager.OnLocalPlayerSolvedObjectiveItem(data.LayerType, items[Count - 1], true);
 
-                var text = ObjectiveData.Objective.GatherTerminal_DownloadCompleteText;
+                var text = data.Objective.GatherTerminal_DownloadCompleteText;
                 if (text.Id == 0 && (text.UntranslatedText?.Length ?? 0) == 0)
                     terminal.m_command.AddOutput(defaultEndText);
                 else
-                    terminal.m_command.AddOutput(ObjectiveData.Objective.GatherTerminal_DownloadCompleteText);
+                    terminal.m_command.AddOutput(data.Objective.GatherTerminal_DownloadCompleteText);
             };
         }
-    }
-
-    public static KeyedItem GetCommandItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(GatherTerminals_CommandItem.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new GatherTerminals_CommandItem(data, count);
-        return new(data.AddItem(newItem), newItem);
     }
 
     // Objective requiring prisoners enter commands on a variety of terminals throughought the complex
@@ -170,38 +124,38 @@ public class GatherTerminalHandler : ArchipelagoFeature
     [Objective.Callback]
     public void HandleGatherTerminalObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.GatherTerminal)
             return;
 
         // Seems like a logical assumption, but it's worth checking
         if (data.Objective.GatherTerminal_RequiredCount > data.Objective.GatherTerminal_SpawnCount)
         {
-            FeatureLogger.Error($"{data.ObjectiveName()}: Expected at least as many terminal spawns as required terminals");
+            FeatureLogger.Error($"{data.ObjectiveName}: Expected at least as many terminal spawns as required terminals");
             return;
         }
 
         List<List<RegionID>> regionSets = data.ObjectiveToTerminalRegionSets(data.Objective.GatherTerminal_SpawnCount).ToList();
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
 
-        RegionID last = data.ObjectiveStartRegion;
+        RegionID last = data.Region_Objective;
+        ItemID gatherCategory = data.Item_GatherTerminalsCommands_ByObjective;
         for (int i = 1; i <= data.Objective.GatherTerminal_SpawnCount; i++)
         {
-            KeyedItem commandItem = GetCommandItem(data, i);
-            data.AddLocation(
-                GatherTerminals_CommandLocation.MakeTag(data, i),
+            ItemID commandItem = data.Item_GatherTerminalsCommand_Instance(i);
+            data.Locations.CreateValue(
+                data.Location_GatherTerminalsCommand_Instance(i),
                 regionSets[i - 1],
-                GatherTerminals_CommandLocation.MakeRandData(),
-                commandItem.ID
+                new LocationData(),
+                commandItem
             );
 
-            string newName = ThisRegions.CommandExecuted(data, i);
-            RegionID newRegion = data.LookupOrCreateRegion(newName);
+            RegionID newRegion = data.Region_GatherCommandExecuted(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = commandItem.Item.PathReqs,
-                ReqCount = 1u,
+                ReqItem = new(Path.RequiredItem.eType.Category, gatherCategory),
+                ReqCount = (uint)i,
             });
             last = newRegion;
 
@@ -209,12 +163,13 @@ public class GatherTerminalHandler : ArchipelagoFeature
             if (i == data.Objective.GatherTerminal_RequiredCount)
                 SharedObjectiveHandler.AddObjectiveCompleteItem(data, newRegion);
 
-            eventWrapper.Process(newRegion, newName, true);
+            eventWrapper.Process(newRegion, true);
         }
     }
 
     /// <summary>
-    /// For some reason, the objective chain index is not updated normally, so this will fix that.
+    /// For some reason, the objective chain index is not set up
+    /// normally, so this will fix that.
     /// </summary>
     [ArchivePatch(typeof(LG_ComputerTerminal), nameof(LG_ComputerTerminal.SetupAsWardenObjectiveGatherTerminal))]
     public static class LG_ComputerTerminal__SetupAsWardenObjectiveGatherTerminal__Patch
@@ -233,11 +188,11 @@ public class GatherTerminalHandler : ArchipelagoFeature
         {
             var func = () =>
             {
-                Objective.Data data = Expedition.Data.FromCurrentExpedition()
+                Objective.Data data = Expedition.Data.GetFromCurrentExpedition()
                     .GetLayer(__instance.SpawnNode.LayerType)
                     .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
 
-                if (!This.IsCorrectObjective(data))
+                if (data.Objective.Type != eWardenObjectiveType.GatherTerminal)
                 {
                     FeatureLogger.Error("Failed to find objective data while intercepting gather command!");
                     return true;
@@ -254,17 +209,20 @@ public class GatherTerminalHandler : ArchipelagoFeature
                     return true;
                 }
 
-                RandomizationTag tag = GatherTerminals_CommandLocation.MakeTag(data, i + 1);
-                if (!data.TryLookupLocation(tag, out KeyedLocation loc))
-                {
-                    FeatureLogger.Error($"Failed to find location index while intercepting gather command: {data.LookupTagDef(tag).Name}");
-                    return true;
-                }
-
-                if (StateTracker.Get().NotifyFoundLocation(loc.ID, __instance.m_syncedInteractionSource).RandData.IsTreatedAsRandom)
+                LocationID id = data.Location_GatherTerminalsCommand_Instance(i + 1);
+                Location loc = StateTracker.Get().NotifyFoundLocation(id, __instance.m_syncedInteractionSource);
+                if (loc.RandData.IsTreatedAsRandom)
                 {
                     __instance.m_command.AddOutput("Discovered item(s):", false);
-                    __instance.m_command.AddOutput($"  {(loc.Location.ItemID.IsNull ? "None" : data.LookupTagDef(data.LookupItem(loc.Location.ItemID).NameTag).Name)}");
+
+                    string itemName() => loc.ScoutedItemName ?? (loc.ItemID.IsNull ? "None" : data.Items.LookUpName(loc.ItemID));
+                    string itemGame() => loc.ScoutedGameName ?? "DEBUG";
+                    string itemPlayer() => loc.ScoutedPlayerName ?? StateTracker.Config.Username;
+
+                    __instance.m_command.AddOutput($"   Item: {itemName()}", false);
+                    __instance.m_command.AddOutput($"  World: {itemGame()}", false);
+                    __instance.m_command.AddOutput($"  Owner: {itemPlayer()}", false);
+
                     return false;
                 }
                 else return true;

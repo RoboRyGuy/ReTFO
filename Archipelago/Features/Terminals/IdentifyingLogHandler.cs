@@ -53,7 +53,7 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         int entry = terminal.m_localLogs.FindEntry(IdentifyingLogName);
         if (entry < 0)
         {
-            Zone.Data? zone = terminal.SpawnNode?.m_zone == null ? null : Zone.Data.FromZone(terminal.SpawnNode.m_zone);
+            Zone.Data? zone = terminal.SpawnNode?.m_zone == null ? null : Zone.Data.GetFromZone(terminal.SpawnNode.m_zone);
             FeatureLogger.Warning($"Failed to find identifying log from {terminal.ItemKey} in {zone?.ZoneName ?? "ZONE_NULL"}");
             return new IdentifyTerminalResult(false, null);
         }
@@ -63,12 +63,12 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         IdentifyingLogTextDataBlock? injectedText = text?.TryCast<IdentifyingLogTextDataBlock>();
         if (injectedText == null)
         {
-            Zone.Data zone = Zone.Data.FromZone(terminal.SpawnNode.m_zone);
+            Zone.Data zone = Zone.Data.GetFromZone(terminal.SpawnNode.m_zone);
             FeatureLogger.Warning($"Failed to retrieving identifying data from log for terminal in zone: {zone.ZoneName}");
             return new IdentifyTerminalResult(false, null);
         }
 
-        return new IdentifyTerminalResult(false, injectedText.TerminalData);
+        return new IdentifyTerminalResult(false, new(StateTracker.Get().GameData, injectedText.TerminalRegion));
     }
 
     // Name of the log used to identify the terminal
@@ -84,7 +84,7 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         public IdentifyingLogTextDataBlock(IntPtr ptr) : base(ptr) { }
 
         [HideFromIl2Cpp]
-        public Terminal.Data TerminalData { get; set; } = null!;
+        public RegionID TerminalRegion { get; init; } = new();
     }
 
     // When processing terminals, add a custom log which helps us identify it during gameplay
@@ -98,30 +98,42 @@ public class IdentifyingLogHandler : ArchipelagoFeature
         TextDataBlock log = TextDataBlock.GetBlock(logTextBlockName);
         if (log == null)
         {
+            LanguageData helper = new()
+            {
+                Translation = $"[{data.TerminalIndex}] {data.TerminalName}",
+                ShouldTranslate = false
+            };
+
             log = new IdentifyingLogTextDataBlock()
             {
                 internalEnabled = true,
                 name = logTextBlockName,
                 SkipLocalization = true,
                 MachineTranslation = true,
-                English = $"[{data.TerminalIndex}] {data.TerminalName}",
+                English = helper.Translation,
                 Description = "",
                 CharacterMetaData = 1,
                 ImportVersion = 1,
                 ExportVersion = 1,
+                TerminalRegion = data.Region_Terminal,
+                French = helper,
+                Italian = helper,
+                German = helper,
+                Spanish = helper,
+                Russian = helper,
+                Portuguese_Brazil = helper,
+                Polish = helper,
+                Japanese = helper,
+                Korean = helper,
+                Chinese_Traditional = helper,
+                Chinese_Simplified = helper,
             };
-            log.French = log.Italian = log.German = log.Spanish = log.Russian = log.Portuguese_Brazil
-                = log.Polish = log.Japanese = log.Korean = log.Chinese_Traditional = log.Chinese_Simplified
-                = new()
-                {
-                    Translation = log.English,
-                    ShouldTranslate = false
-                };
             TextDataBlock.AddBlock(log);
         }
-
-        var myLog = log.Cast<IdentifyingLogTextDataBlock>();
-        myLog.TerminalData = data; // Overwrite if fetching an existing log (reprocessing data)
+        else
+        {
+            FeatureLogger.Warning("Attmpted to set identifying log twice!");
+        }
 
         data.TerminalLocalLogs.Capacity = data.TerminalLocalLogs.Count + 1; // Ensure exact sizing
         data.TerminalLocalLogs.Insert(0, new()

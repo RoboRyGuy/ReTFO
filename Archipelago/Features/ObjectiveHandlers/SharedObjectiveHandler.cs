@@ -17,34 +17,70 @@ public static class SharedObjectiveHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_CompleteObjectiveLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Complete Objective Locations", "Locations checked by completing objectives", gd.Tag_Never));
+        public LocationID Location_CompleteObjectives
+            => LocationID.From(data, "Complete Objective Locations", data => new("Locations checked by completing objectives", data.Location_Never));
 
-        public TagResolver Tag_CompleteObjectiveItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Complete Objective Items", "Items representing objective completions", gd.Tag_Never));
+        public ItemID Item_CompleteObjectives
+            => ItemID.From(data, "Complete Objective Items", data => new("Items representing objective completions", data.Item_Never));
 
-        public TagResolver Tag_SectorClearLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Sector Clear Locations", "Locations checked by clearing a sector and successfully extracting (or equivalent)", gd.Tag_Never));
+        public LocationID Location_SectorClears
+            => LocationID.From(data, "Sector Clear Locations", data => new("Locations checked by clearing a sector and successfully extracting (or equivalent)", data.Location_Never));
         
-        public TagResolver Tag_SectorClearItems(LayerType layerType)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{layerType.GetName()} Sector Clear Items", "Items awarded by successfully clearing sectors in a cateogry of layer", data.Tag_GoalItems));
+        public ItemID Item_SectorClears
+            => ItemID.From(data, "Sector Clear Items", data => new("Items awarded by successfully clearing sectors in a cateogry of a particular layer", data.Item_Never));
 
+
+        public LocationID Location_CompleteObjectives_LayerOnly(LayerType layer)
+            => LocationID.From(data, $"{layer.GetName()} Complete Objective Locations", data => new("Locations checked by completing objectives which are part of a particular layer type", new()));
+
+        public ItemID Item_CompleteObjectives_LayerOnly(LayerType layer)
+            => ItemID.From(data, $"{layer.GetName()} Complete Objective Items", data => new("Items representing objective completions for a particular layer type", new()));
+
+        public LocationID Location_SectorClears_LayerOnly(LayerType layer)
+            => LocationID.From(data, $"{layer.GetName()} Sector Clear Locations", data => new("Locations checked by clearing a particular type of sector and successfully extracting (or equivalent)", new()));
+
+        public ItemID Item_SectorClears_LayerOnly(LayerType layer)
+            => ItemID.From(data, $"{layer.GetName()} Sector Clear Items", data => new("Items awarded by successfully clearing a particular type of sector and successfully extracting (or equivalent)", new()));
     }
 
     extension (Layer.Data data)
     {
-        /// <summary>
-        /// Sector clear items by layer only; the expedition of the data is ignored
-        /// </summary>
-        public TagResolver Tag_SectorClearItems_ByLayer
-            => data.Tag_SectorClearItems(data.LayerType);
+        public RegionID Region_GoToWin
+            => RegionID.From(data, $"{data.LayerName} Go To Win", data => new("Region entered when all layer objectives are completed", data.Region_Layer));
+
+        public RegionID Region_SectorCleared
+            => RegionID.From(data, $"{data.LayerName} Sector Cleared", data => new("Region entered when a particular sector is cleared", data.Region_Layer));
+
+
+        public LocationID Location_CompleteObjectives_ByLayer
+            => LocationID.From(data, $"{data.LayerName} Complete Objective Locations", data => new("Parent tag of complete objective locations for a particular layer", data.Location_CompleteObjectives, data.Location_CompleteObjectives_LayerOnly(data.LayerType)));
+
+        public ItemID Item_CompleteObjective_Instance
+            => ItemID.From(
+                data, 
+                $"{data.LayerName} Complete Objectives", 
+                data => new("An objective clear item, indicating one of the objectives was cleared for a particular layer.", data.Item_CompleteObjectives, data.Item_CompleteObjectives_LayerOnly(data.LayerType)),
+                new SharedObjectiveHandler.CompleteObjectiveItem(data.Region_Layer)
+            );
+
+        public LocationID Location_SectorClear_Instance
+            => LocationID.From(data, $"{data.LayerName} Sector Clear Location", data => new("The location of a sector clear item in for a particular layer in a particular expedition", data.Location_SectorClears, data.Location_SectorClears_LayerOnly(data.LayerType)));
+
+        public ItemID Item_SectorClear_Instance
+            => ItemID.From(
+                data, 
+                $"{data.LayerName} Sector Clear Item", 
+                data => new("The sector clear item for a particular layer in a particular expedition", data.Item_SectorClears, data.Item_SectorClears_LayerOnly(data.LayerType)),
+                new SharedObjectiveHandler.SectorClearedItem(data.Region_Layer)
+            );
     }
 
-    extension (Layer.Data data)
+    extension (Objective.Data data)
     {
-        public TagResolver Tag_CompleteObjectiveItems_ByLayer
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Complete Objective Items", "Items representing objective completions for a particular layer in a particular expedition", gd.Tag_Never));
+        public LocationID Location_CompleteObjective_Instance
+            => LocationID.From(data, $"{data.ObjectiveName} Completed Location", data => new("The location of a particular objective completion item", data.Location_CompleteObjectives_ByLayer));
     }
+
 }
 
 /// <summary>
@@ -71,20 +107,9 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Randomization category used by sector clear items
+    /// Category used to customize goal options
     /// </summary>
-    public const string SectorClearsCat = "Sector Clears";
-
-    /// <summary>
-    /// Generic complete objective location
-    /// </summary>
-    public static class CompleteObjectiveLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Completion Location", "Location checked by completing a particular objective", gd.Tag_CompleteObjectiveLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
+    public const string GOAL_CATEGORY = "Goal";
 
     /// <summary>
     /// Item representing a single objective being completed.
@@ -92,33 +117,13 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     /// </summary>
     public class CompleteObjectiveItem : Item
     {
-        public CompleteObjectiveItem(Objective.Data layer)
-            : base(MakeTag(layer), MakeRandData())
+        public CompleteObjectiveItem(RegionID layer)
+            : base(new ItemData() { IsProgression = true })
         {
-            Layer = layer;
+            LayerRegion = layer;
         }
 
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Completion", "Item representing a particular objective being cleared", data.Tag_CompleteObjectiveItems_ByLayer));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data Layer { get; set; }
-
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Layer.Tag_CompleteObjectiveItems_ByLayer);
-
-        public override Expedition.Data? RequiredExpedition => Layer;
-    }
-
-    /// <summary>
-    /// Location used by SectorCleared items
-    /// </summary>
-    private static class SectorClearedLocation
-    {
-        public static TagResolver MakeTag(Layer.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear Location", "Location checked by clearing a particular layer and successfull extracting (or equivalent)", gd.Tag_SectorClearLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
+        public RegionID LayerRegion { get; private init; }
     }
 
     /// <summary>
@@ -127,48 +132,13 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     /// </summary>
     public class SectorClearedItem : Item
     {
-        public SectorClearedItem(Layer.Data layer)
-            : base(MakeTag(layer), MakeRandData())
+        public SectorClearedItem(RegionID layer)
+            : base(new ItemData() { IsProgression = true, IsRandomLike = true })
         {
-            Layer = layer;
+            LayerRegion = layer;
         }
 
-        public static TagResolver MakeTag(Layer.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Sector Clear", "Item representing a particular sector layer was successfully cleared", data.Tag_SectorClearItems_ByLayer));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsRandomLike = true };
-
-        public Layer.Data Layer { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => Layer;
-    }
-
-    /// <summary>
-    /// Get the "Complete Objective" item, signaling an objective for this layer has been completed
-    /// </summary>
-    /// <param name="data">The layer objective being completed is on</param>
-    /// <returns>The CompleteObjectiveItem</returns>
-    public static KeyedItem GetCompleteObjectiveItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(CompleteObjectiveItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new CompleteObjectiveItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    /// <summary>
-    /// Get the "Sector Cleared" item, signaling an expedtion was completed with a sector (main, secondary, or overload) cleared
-    /// </summary>
-    /// <param name="data">The layer for the sector being cleared</param>
-    /// <returns>The SectorCleared item</returns>
-    public static KeyedItem GetSectorClearedItem(Layer.Data data)
-    {
-        if (data.TryLookupItem(SectorClearedItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new SectorClearedItem(data);
-        return new(data.AddItem(newItem), newItem);
+        public RegionID LayerRegion { get; set; }
     }
 
     /// <summary>
@@ -177,56 +147,52 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddGoalOptions(Game.Data data)
     {
-        OptionID secondariesInput = data.AddOption(
-            new OptionToggle()
-            {
-                DisplayName = "Require Secondaries",
-                Description = ""
-                    + "If true, clearing the goal requires clearing all selected expeditions' secondaries. Otherwise, it does not."
-                    + "\nNote that this does not prevent items from being randomized into or out of secondary sectors.",
-                Category = "Goal",
-                DefaultValue = 1,
-                Condition = new()
-            }
-        );
+        OptionID mainInput = data.AddOption(new OptionToggle(
+            displayName: "Require Mains",
+            description: "If true, clearing the goal requires clearing all selected expeditions' main layers. Otherwise, it does not.",
+            category: GOAL_CATEGORY,
+            categorySort: Array.Empty<uint>(),
+            defaultValue: 1,
+            condition: new()
+        ));
 
-        OptionID notSecondaries = data.AddOption(
-            new OptionNotOperation() { Param = secondariesInput, }
-        );
-
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.GoalBlacklist,
-            Tag = data.Tag_SectorClearItems(LayerType.Secondary).SelfResolve(),
-            Condition = notSecondaries,
-            Count = -1,
-        });
+        data.AddOption(new OptionAddAll(
+            condition: mainInput,
+            target: Option.eDictTarget.GoalItems,
+            tag: data.Item_SectorClears_LayerOnly(LayerType.Main)
+        ));
 
 
-        OptionID overloadsInput = data.AddOption(
-            new OptionToggle()
-            {
-                DisplayName = "Require Overloads",
-                Description = ""
-                    + "If true, clearing the goal requires clearing all selected expeditions' overloads. Otherwise, it does not."
-                    + "\nNote that this does not prevent items from being randomized into or out of overload sectors.",
-                Category = "Goal",
-                DefaultValue = 1,
-                Condition = new()
-            }
-        );
+        OptionID secondariesInput = data.AddOption(new OptionToggle(
+            displayName: "Require Secondaries",
+            description: "If true, clearing the goal requires clearing all selected expeditions' secondary layers. Otherwise, it does not.",
+            category: GOAL_CATEGORY,
+            categorySort: Array.Empty<uint>(),
+            defaultValue: 1,
+            condition: new()
+        ));
 
-        OptionID notOverloads = data.AddOption(
-            new OptionNotOperation() { Param = overloadsInput, }
-        );
+        data.AddOption(new OptionAddAll(
+            condition: secondariesInput,
+            target: Option.eDictTarget.GoalItems,
+            tag: data.Item_SectorClears_LayerOnly(LayerType.Secondary)
+        ));
 
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.GoalBlacklist,
-            Tag = data.Tag_SectorClearItems(LayerType.Overload).SelfResolve(),
-            Condition = notOverloads,
-            Count = -1,
-        });
+
+        OptionID overloadsInput = data.AddOption(new OptionToggle(
+            displayName: "Require Overloads",
+            description: "If true, clearing the goal requires clearing all selected expeditions' overload layers. Otherwise, it does not.",
+            category: GOAL_CATEGORY,
+            categorySort: Array.Empty<uint>(),
+            defaultValue: 1,
+            condition: new()
+        ));
+
+        data.AddOption(new OptionAddAll(
+            condition: overloadsInput,
+            target: Option.eDictTarget.GoalItems,
+            tag: data.Item_SectorClears_LayerOnly(LayerType.Overload)
+        ));
     }
 
     // Adds common regions, locations, and items for all layers. Things like the sector clear, the elevator dropped region and events, etc
@@ -236,72 +202,85 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         var objectives = data.GetObjectiveDatas().ToList();
         if (!objectives.Any()) return;
 
-        Objective.Data firstObjective = objectives.First();
-        Objective.Data lastObjective = objectives.Last();
-
-        // All objectives are immediately available upon level start. We'll connect them to a virtual "Elevator Landed" zone
-        //  so when hints are given players aren't wondering why they need to navigate to the start of the level
-        RegionID startRegion = data.ObjectiveStartRegion;
-        if (data.LayerType.IsMainLayer)
+        // Below we attach objectives to their layers.
+        // Here we attach layers to their expedition.
+        // This results in all objectives reachable upon entering the expedition, which matches in-game logic
+        data.AddPath(new()
         {
-            data.AddPath(new Path()
-            {
-                StartingRegion = data.StartingRegion,
-                EndingRegion = startRegion
-            });
-        }
-
-        // Objects attach directly to the start region, so we can skip straight to processing the final regions
-        // One region is added for the gotowin events
-        string gotoWinName = $"{data.LayerName} Goto Win";
-        RegionID gotoWinRegion = data.LookupOrCreateRegion(gotoWinName);
-        data.AddPath(new Path()
-        {
-            StartingRegion = startRegion,
-            EndingRegion = gotoWinRegion,
-            ReqItem = GetCompleteObjectiveItem(data.GetObjectiveDatas().First()).Item.PathReqs,
-            ReqCount = (uint)data.GetObjectiveDatas().Count(),
-            AlternateItem = data.LayerType == LayerType.Main ? WinEventHandler.GetInstantWinPathReqs(data) : new()
+            StartingRegion = data.Region_Expedition,
+            EndingRegion = data.Region_Layer,
         });
 
-        // A final region is added with the reward for reaching extraction with the objective complete
-        string winLayerName = $"{data.LayerName} Sector Cleared";
-        RegionID winLayerRegion = data.LookupOrCreateRegion(winLayerName);
+        // Add the GoToWin path
+        RegionID gotoWinRegion = data.Region_GoToWin;
         Path path = new()
         {
+            StartingRegion = data.Region_Layer,
+            EndingRegion = gotoWinRegion,
+            ReqItem = new(Path.RequiredItem.eType.Category, data.Item_CompleteObjective_Instance),
+            ReqCount = (uint)data.GetObjectiveDatas().Count(),
+        };
+        if (data.LayerType.IsMainLayer)
+            path = new(path) { AlternateItem = new(Path.RequiredItem.eType.Category, data.Item_WinEvent_ByExpedition) };
+        data.AddPath(path);
+            
+
+        // A final region is added with the reward for reaching extraction with the objective complete
+        RegionID sectorClearedRegion = data.Region_SectorCleared;
+        path = new()
+        {
             StartingRegion = gotoWinRegion,
-            EndingRegion = winLayerRegion,
+            EndingRegion = sectorClearedRegion,
         };
 
         // If this is secondary or overload, we'll need main to be clearable. Otherwise, we need to reach extraction
         if (data.LayerType.IsMainLayer)
         {
-            path.ReqItem = ExtractionHandler.GetExtractionReachableItem(data).Item.PathReqs;
-            path.ReqCount = 1u;
-            path.AlternateItem = WinEventHandler.GetInstantWinPathReqs(data);
+            path = new(path)
+            {
+                ReqItem = new(Path.RequiredItem.eType.Item, data.Item_Extraction_Instance),
+                ReqCount = 1u,
+                AlternateItem = new(Path.RequiredItem.eType.Category, data.Item_WinEvent_ByExpedition),
+            };
         }
         else
         {
-            path.ReqItem = GetSectorClearedItem(data.MainLayer).Item.PathReqs;
-            path.ReqCount = 1u;
+            path = new(path)
+            {
+                ReqItem = new(Path.RequiredItem.eType.Item, data.MainLayer.Item_SectorClear_Instance),
+                ReqCount = 1u,
+            };
         }
         data.AddPath(path);
 
         // Events triggered either when the last objective is complete or when extraction is reached
+        Objective.Data lastObjective = objectives.Last();
         if (lastObjective.Objective.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.OnObjectiveCompleted)
-            data.ProcessEvents(gotoWinRegion, gotoWinName, lastObjective.Objective.EventsOnGotoWin ??= new(1));
+            data.ProcessEvents(gotoWinRegion, lastObjective.Objective.EventsOnGotoWin ??= new(1));
         else if (lastObjective.Objective.EventsOnGotoWinTrigger == eRetrieveExitWaveTrigger.WhenExitScanMakesProgress)
             // Note that the win region is just extraction reachable + sector cleared, ie the conditions needed to start the extraction scan
-            data.ProcessEvents(winLayerRegion, winLayerName, lastObjective.Objective.EventsOnGotoWin ??= new(1)); 
+            data.ProcessEvents(sectorClearedRegion, lastObjective.Objective.EventsOnGotoWin ??= new(1)); 
         else throw new ArgumentException($"Objective.EventsOnGotoWinTrigger has an unexpected value for expedition: {lastObjective.ExpeditionName}");
 
-        KeyedItem sectorClearedItem = GetSectorClearedItem(data);
-        data.AddLocation(
-            SectorClearedLocation.MakeTag(data),
-            winLayerRegion,
-            SectorClearedLocation.MakeRandData(),
-            sectorClearedItem.ID
+        data.Locations.CreateValue(
+            data.Location_SectorClear_Instance,
+            sectorClearedRegion,
+            new LocationData() { IsAutoDiscovered = true },
+            data.Item_SectorClear_Instance
         );
+    }
+
+    /// <summary>
+    /// Connects objective regions to their respective layers
+    /// </summary>
+    [Objective.Callback]
+    public void ConnectObjectiveRegions(Objective.Data data)
+    {
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.Region_Layer,
+            EndingRegion = data.Region_Objective,
+        });
     }
 
     /// <summary>
@@ -312,13 +291,14 @@ public class SharedObjectiveHandler : ArchipelagoFeature
     /// <returns>The created location ID. May be null if it failed to create a new location</returns>
     public static LocationID AddObjectiveCompleteItem(Objective.Data data, RegionList regions)
     {
-        KeyedItem item = GetCompleteObjectiveItem(data);
-        return data.AddLocation(
-            CompleteObjectiveLocation.MakeTag(data),
+        LocationID result = data.Location_CompleteObjective_Instance;
+        data.Locations.CreateValue(
+            result,
             regions,
-            CompleteObjectiveLocation.MakeRandData(),
-            item.ID
+            new LocationData() { IsAutoDiscovered = true },
+            data.Item_CompleteObjective_Instance
         );
+        return result;
     }
 
     [ArchivePatch(typeof(RundownManager), nameof(RundownManager.OnExpeditionEnded))]
@@ -329,24 +309,16 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             if (endState != ExpeditionEndState.Success) return;
 
             StateTracker stateTracker = StateTracker.Get();
-            Expedition.Data data = Expedition.Data.FromCurrentExpedition();
+            Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
 
             // Main is always awarded, even if we didn't clear it (by convention)
-            if (data.TryLookupLocation(SectorClearedLocation.MakeTag(data.MainLayer), out var mainLoc))
-                stateTracker.NotifyFoundLocation(mainLoc.ID, null);
-            else
-                FeatureLogger.Error("Failed to award main sector clear!");
+            stateTracker.NotifyFoundLocation(data.MainLayer.Location_SectorClear_Instance, null);
 
             if (data.HasSecondary)
             {
                 // This is the most consistent way to check if it was cleared
                 if (WardenObjectiveManager.CurrentState.second_status == eWardenObjectiveStatus.WardenObjectiveItemSolved)
-                {
-                    if (data.TryLookupLocation(SectorClearedLocation.MakeTag(data.GetLayer(LayerType.Secondary)), out var loc))
-                        stateTracker.NotifyFoundLocation(loc.ID, null);
-                    else
-                        FeatureLogger.Error("Failed to award secondary sector clear!");
-                }
+                    stateTracker.NotifyFoundLocation(data.GetLayer(LayerType.Secondary).Location_SectorClear_Instance, null);
                 else
                     FeatureLogger.Debug("Secondary clear not awared due to it not being cleared");
             }
@@ -355,12 +327,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             {
                 // This is the most consistent way to check if it was cleared
                 if (WardenObjectiveManager.CurrentState.third_status == eWardenObjectiveStatus.WardenObjectiveItemSolved)
-                {
-                    if (data.TryLookupLocation(SectorClearedLocation.MakeTag(data.GetLayer(LayerType.Overload)), out var loc))
-                        stateTracker.NotifyFoundLocation(loc.ID, null);
-                    else
-                        FeatureLogger.Error("Failed to award overload sector clear!");
-                }
+                    stateTracker.NotifyFoundLocation(data.GetLayer(LayerType.Overload).Location_SectorClear_Instance, null);
                 else
                     FeatureLogger.Debug("Overload clear not awared due to it not being cleared");
             }

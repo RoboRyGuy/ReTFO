@@ -20,8 +20,25 @@ public static class UnlockExpeditionHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_ExpeditionUnlocks
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Expedition Unlock Items", "Items which trigger expeditions to be unlocked", gd.Tag_FloatingItems));
+        /// <summary>
+        /// Parent tag of all items which unlock expeditions
+        /// </summary>
+        public ItemID Item_ExpeditionUnlocks
+            => ItemID.From(data, "Expedition Unlock Items", data => new("Items which trigger expeditions to be unlocked", data.Item_All));
+    }
+
+    extension (Expedition.Data data)
+    {
+        /// <summary>
+        /// Item which unlocks a particular expedition
+        /// </summary>
+        public ItemID Item_ExpedtionUnlock_Instance
+            => ItemID.From(
+                data, 
+                $"{data.ExpeditionName} Expedition Unlock Item", 
+                data => new("Item which unlocks a particular expedition", data.Item_ExpeditionUnlocks),
+                new UnlockExpeditionHandler.ExpeditionUnlockItem(data.Region_Expedition)
+            );
     }
 }
 
@@ -60,83 +77,81 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     {
         if (m_choices != null) return m_choices;
 
-        OptionID unlockRange = data.AddOption(new OptionRange()
-        {
-            DisplayName = "Number of Unlocked Expeditions",
-            Description =
+        ItemID tag = data.Item_ExpeditionUnlocks;
+        uint[] sort = Option.MakeSortKey(data, tag);
+
+        OptionID unlockRange = data.AddOption(new OptionRange(
+            displayName: "Number of Unlocked Expeditions",
+            description:
                 "The number of random expeditions which should start unlocked."
-                + " Ensure at least one expedition is unlocked either here or below.",
-            Category = EXPEDITION_OPTION_CATEGORY,
-            DefaultValue = 1,
-            Condition = new(),
-            Min = -1,
-            Max = 99,
-        });
-        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
+                + " Ensure at least one expedition is unlocked either here or below."
+                + "\nA value of `-1` will unlock all expeditions.",
+            category: EXPEDITION_OPTION_CATEGORY,
+            categorySort: sort,
+            defaultValue: 1,
+            condition: new(),
+            min: -1,
+            max: 99
+        ));
+        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation(unlockRange, -1));
 
-        RandomizationTag tag = data.Tag_ExpeditionUnlocks.SelfResolve();
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Whitelist,
-            Tag = tag,
-            Condition = randomizationEnabled,
-        });
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Blacklist,
-            Tag = tag,
-            Condition = data.AddOption(new OptionNotOperation() { Param = randomizationEnabled }),
-        });
+        data.AddOption(new OptionAddToSet(
+            target: Option.eSetTarget.ItemWhitelist,
+            tag: tag,
+            condition: randomizationEnabled
+        ));
+        data.AddOption(new OptionAddToSet(
+            target: Option.eSetTarget.ItemBlacklist,
+            tag: tag,
+            condition: data.AddOption(new OptionNotOperation(randomizationEnabled))
+        ));
 
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = tag,
-            Count = unlockRange,
-            Condition = randomizationEnabled,
-        });
+        data.AddOption(new OptionAddCount(
+            target: Option.eDictTarget.StartVouchers,
+            tag: tag,
+            count: unlockRange,
+            condition: randomizationEnabled
+        ));
 
-        OptionID choice = data.AddOption(m_choices = new OptionChoice()
-        {
-            DisplayName = "Starting Expedition",
-            Description =
+        OptionID choice = data.AddOption(m_choices = new OptionChoice(
+            displayName: "Starting Expedition",
+            description:
                 "Choose a single expedition to guarantee unlocked. This should be one of the expeditions" 
-                + " you chose in \"Required Expeditions\" or \"none\". This will be in addition to expeditions"
+                + " you chose in \"Required Expeditions\" or \"None\". This will be in addition to expeditions"
                 + " randomly unlocked.",
-            Category = EXPEDITION_OPTION_CATEGORY,
-            DefaultValue = new RandomizationTag().AsId,
-            Condition = randomizationEnabled,
-            ChoiceNames = new() { "None" },
-            ChoiceValues = new() { new RandomizationTag().AsId },
-        });
+            category: EXPEDITION_OPTION_CATEGORY,
+            categorySort: sort,
+            defaultValue: new ItemID().ID,
+            condition: randomizationEnabled,
+            choiceNames: new() { "None" },
+            choiceValues: new() { new ItemID().ID }
+        ));
 
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Blacklist,
-            Tag = choice,
-            Condition = randomizationEnabled,
-        });
+        data.AddOption(new OptionAddToSet(
+            target: Option.eSetTarget.ItemBlacklist,
+            tag: choice,
+            condition: randomizationEnabled
+        ));
 
-        OptionID earlyRange = data.AddOption(new OptionRange()
-        {
-            DisplayName = "Number of Early Expeditions",
-            Description =
+        OptionID earlyRange = data.AddOption(new OptionRange(
+            displayName: "Number of Early Expeditions",
+            description:
                 "The number of random expeditions which should be guaranteed reachable before any item is collected."
                 + Option.EARLY_WARNING_SUFFIX,
-            Category = EXPEDITION_OPTION_CATEGORY,
-            DefaultValue = 1,
-            Condition = new(),
-            Min = 0,
-            Max = 99,
-        });
+            category: EXPEDITION_OPTION_CATEGORY,
+            categorySort: sort,
+            defaultValue: 1,
+            condition: new(),
+            min: 0,
+            max: 99
+        ));
 
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.EarlyItems,
-            Tag = tag,
-            Count = earlyRange,
-            Condition = randomizationEnabled,
-        });
+        data.AddOption(new OptionAddCount(
+            target: Option.eDictTarget.EarlyItems,
+            tag: tag,
+            count: earlyRange,
+            condition: randomizationEnabled
+        ));
 
         return m_choices;
     }
@@ -163,67 +178,53 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// <summary>
     /// The item which unlocks an expedition
     /// </summary>
-    private class ExpeditionUnlockItem : Item
+    public class ExpeditionUnlockItem : Item
     {
-        public ExpeditionUnlockItem(Expedition.Data expedition)
-            : base(MakeTag(expedition), MakeRandData())
+        public ExpeditionUnlockItem(RegionID expedition)
+            : base(MakeRandData())
         {
-            ExpeditionData = expedition;
-            Tag2 = expedition.Tag_UnlockItems; // Used internally for path traversal checks
+            ExpeditionRegion = expedition;
         }
-
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Expedition Unlock", "Item which unlocks a particular expedition", data.Tag_ExpeditionUnlocks));
 
         public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsCollectedByDefault = true };
 
-        public Expedition.Data ExpeditionData { get; set; }
+        public RegionID ExpeditionRegion { get; private init; }
 
-        public override Expedition.Data? RequiredExpedition => ExpeditionData;
-
-        private List<ExpeditionInTierData> FindExpeditions()
+        private IEnumerable<ExpeditionInTierData> FindExpeditions(Game.Data data)
         {
-            List<ExpeditionInTierData> expeditions = GetExpeditions()
-                .Where(e => Expedition.Data.TryFromExpedition(e)?.IsSameExpedition(ExpeditionData) ?? false)
-                .ToList();
+            List<ExpeditionInTierData> expeditions = new();
+            
+            foreach (var expedition in GetExpeditions())
+            {
+                if (data.TryGetExpeditionData(expedition, out Expedition.Data? eData))
+                    if (eData.Region_Expedition.Equals(ExpeditionRegion)) expeditions.Add(expedition);
+            }
 
             if (expeditions.Count == 0)
-                FeatureLogger.Error($"Failed to find expedition during lock/unlock event: {ExpeditionData.ExpeditionName}");
+                FeatureLogger.Error($"Failed to find expedition during lock/unlock event: {data.Regions.LookUpName(ExpeditionRegion)}");
 
             return expeditions;
         }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null, ItemID itemId = new())
         {
             if (ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled)
             {
-                foreach (var e in FindExpeditions()) 
+                foreach (var e in FindExpeditions(stateTracker.GameData)) 
                     e.Accessibility = eExpeditionAccessibility.AlwaysAllow;
                 StateTracker.UpdateLocationCounts(); // Since a new icon is now visible
             }
         }
 
-        public override void OnItemLost(StateTracker stateTracker)
+        public override void OnItemLost(StateTracker stateTracker, ItemID itemId = new())
         {
             if (ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled)
             {
-                foreach (var e in FindExpeditions()) 
+                foreach (var e in FindExpeditions(stateTracker.GameData)) 
                     e.Accessibility = eExpeditionAccessibility.AlwayBlock;
                 StateTracker.UpdateLocationCounts(); // Since a new icon is now hidden
             }
         }
-    }
-
-    /// <summary>
-    /// Get the expedition unlock item for the provided expedition
-    /// </summary>
-    public static KeyedItem GetExpeditionUnlockItem(Expedition.Data data)
-    {
-        if (data.TryLookupItem(ExpeditionUnlockItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new ExpeditionUnlockItem(data);
-        return new(data.AddItem(newItem), newItem);
     }
 
     /// <summary>
@@ -233,20 +234,20 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     [Expedition.Callback]
     public void AddExpeditionUnlock(Expedition.Data data)
     {
-        KeyedItem reqItem = GetExpeditionUnlockItem(data);
-        data.AddFloatingItem(reqItem.ID);
+        ItemID item = data.Item_ExpedtionUnlock_Instance;
+        data.AddFloatingItem(data.Region_Expedition, item);
         data.AddPath(new Path()
         {
             Name = $"{data.ExpeditionName} Expdition Unlock",
-            StartingRegion = data.MenuRegion,
-            EndingRegion = data.StartingRegion,
-            ReqItem = reqItem.Item.PathReqs,
+            StartingRegion = data.Region_Menu,
+            EndingRegion = data.Region_Expedition,
+            ReqItem = new(Path.RequiredItem.eType.Item, item),
             ReqCount = 1u,
         });
 
         OptionChoice choice = GetOrCreateOptions(data);
         choice.ChoiceNames.Add(data.ExpeditionName);
-        choice.ChoiceValues.Add(reqItem.Item.NameTag.AsId);
+        choice.ChoiceValues.Add(item.ID);
     }
     
     /// <summary>
@@ -267,14 +268,14 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         Game.Data data = stateTracker.MidManager.GetProcessedGameData();
         foreach (var expedition in GetExpeditions())
         {
-            if (!data.TryLookupExpedition(expedition.Descriptive.Prefix, out var eData))
+            if (!data.TryGetExpeditionData(expedition, out var eData))
             {
                 FeatureLogger.Warning("Failed to find data for expedition: " + expedition.Descriptive.Prefix + "; not applying lock!");
                 continue;
             }
 
-            KeyedItem reqItem = GetExpeditionUnlockItem(eData);
-            if (reqItem.Item.RandData.ShouldBeRandomized && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem.ID, 0) <= 0)
+            ItemID reqItem = eData.Item_ExpedtionUnlock_Instance;
+            if (stateTracker.IsItemRandomized(eData.Region_Expedition, reqItem) && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem, 0) <= 0)
                 expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
         }
     }

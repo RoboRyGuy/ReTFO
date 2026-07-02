@@ -13,7 +13,7 @@ public class AsyncItemSpawnWrapper
     /// <summary>
     /// The item which was spawned if successful, null otherwise.
     /// </summary>
-    public ISyncedItem? Item { get; private set; } = null;
+    public ISyncedItem? Item { get; set; } = null;
 
     /// <summary>
     /// Invoked when the item is spawned.

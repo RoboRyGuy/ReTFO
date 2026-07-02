@@ -1,6 +1,5 @@
 ﻿using GameData;
 using LevelGeneration;
-using Player;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
 using System.Collections.Generic;
@@ -17,8 +16,32 @@ public static class WarpEvent_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_WarpEventItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Warp Event Items", "Event items which trigger the team to teleport, typically between dimensions", gd.Tag_WarpItems));
+        /// <summary>
+        /// Parent tag for all event items which trigger warps
+        /// </summary>
+        public ItemID Item_WarpEvents
+            => ItemID.From(
+                gameData,
+                "Warp Event Items",
+                data => new("Event items which trigger the team to teleport, typically between dimensions", data.Item_Warps)
+            );
+    }
+
+    extension (Zone.Data data)
+    {
+        /// <summary>
+        /// Item which warps the team to a particular zone
+        /// </summary>
+        public ItemID Item_WarpEvent_ByZone
+            => ItemID.From(data, $"Team Warps to {data.ZoneName}", data => new("Event items which trigger the team to teleport to a particular zone", data.Item_WarpEvents));
+
+        public ItemID Item_WarpEvent_Instance(string? targetAlign, bool withDimensionClearing)
+            => ItemID.From(
+                data,
+                $"Team Warp to {data.ZoneName}{(targetAlign != null ? $", Align: \"{targetAlign}\"" : string.Empty)}{(withDimensionClearing ? ", with ClearDimension" : string.Empty)}",
+                data => new("A particular variation of a team warp going to a particular zone", data.Item_WarpEvent_ByZone),
+                new WarpEventsHandler.DimensionWarpItem(data.Region_Zone, targetAlign, withDimensionClearing)
+            );
     }
 }
 
@@ -38,18 +61,15 @@ public class WarpEventsHandler : ArchipelagoFeature
     /// <summary>
     /// Dimension warp event targetting a specific zone
     /// </summary>
-    private class DimensionWarpItem : Item
+    public class DimensionWarpItem : TerminalItem
     { 
-        public DimensionWarpItem(Zone.Data targetZone, string? align, bool clearDimension)
-            : base(MakeTag(targetZone, align, clearDimension), MakeRandData())
+        public DimensionWarpItem(RegionID targetZone, string? align, bool clearDimension)
+            : base(MakeRandData())
         {
             TargetZone = targetZone;
             ClearDimension = clearDimension;
             WarpAlign = align;
         }
-
-        public static TagResolver MakeTag(Zone.Data targetZone, string? align, bool clearDimension)
-            => new TagResolver(targetZone, gd => gd.LookupOrCreateTag(MakeName(targetZone, align, clearDimension), "A particular warp event item", gd.Tag_WarpEventItems));
 
         public static string MakeName(Zone.Data targetZone, string? align, bool clearDimension)
         {
@@ -64,60 +84,40 @@ public class WarpEventsHandler : ArchipelagoFeature
         /// <summary>
         /// The zone the warp goes to
         /// </summary>
-        public Zone.Data TargetZone { get; set; }
+        public RegionID TargetZone { get; private init; }
 
         /// <summary>
         /// If true, the previous dimension will be cleared when the players leave
         /// </summary>
-        public bool ClearDimension { get; set; }
+        public bool ClearDimension { get; private init; }
 
         /// <summary>
         /// An align provided via the WorldObjectFilter of the warp event
         /// </summary>
-        public string? WarpAlign { get; set; }
+        public string? WarpAlign { get; private init; }
 
-        public override Expedition.Data? RequiredExpedition => TargetZone;
+        public override RegionID TargetRegion => TargetZone;
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
-            if (TargetZone.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (TargetZone.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
-        {
+            Zone.Data zone = new(stateTracker.GameData, TargetZone);
             yield return () =>
             {
-                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Initiating Dimension Warp to {Enum.GetName<eDimensionIndex>(TargetZone.LayerType)}", 2f);
+                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Initiating Dimension Warp to {Enum.GetName<eDimensionIndex>(zone.LayerType)}", 2f);
                 terminal.AddLine($"Warp will occur in 3 seconds. Enjoy the scenery :)");
             };
 
             yield return () => WorldEventManager.ExecuteEvent(new()
             {
                 Type = eWardenObjectiveEventType.DimensionWarpTeam,
-                DimensionIndex = TargetZone.LayerType,  
-                Layer = TargetZone.LayerType,
-                LocalIndex = TargetZone.Zone?.LocalIndex ?? eLocalZoneIndex.Zone_0,
+                DimensionIndex = zone.LayerType,  
+                Layer = zone.LayerType,
+                LocalIndex = zone.Zone?.LocalIndex ?? eLocalZoneIndex.Zone_0,
                 Delay = 3f,
                 ClearDimension = ClearDimension,
                 WorldEventObjectFilter = WarpAlign,
             });
         }
-    }
-
-    public static KeyedItem GetDimensionWarpEventItem(Zone.Data targetZone, string? align, bool cleanDimension)
-    {
-        if (targetZone.TryLookupItem(DimensionWarpItem.MakeTag(targetZone, align, cleanDimension), out var item))
-            return item;
-
-        Item newItem = new DimensionWarpItem(targetZone, align, cleanDimension);
-        return new(targetZone.AddItem(newItem), newItem);
     }
 
     // Warps between dimensions when triggered by an event
@@ -140,15 +140,14 @@ public class WarpEventsHandler : ArchipelagoFeature
             }
 
             // Add warp as item / location pair
-            KeyedItem item = GetDimensionWarpEventItem(targetZone, e.WorldEventObjectFilter, e.ClearDimension);
-            EventHelper.ConvertToCheckLocationEvent(data, e, count, item.ID);
+            EventHelper.CreateEventLocation(data, e, count, targetZone.Item_WarpEvent_Instance(e.WorldEventObjectFilter, e.ClearDimension));
 
             // Add path represented by warp
             data.AddPath(new Path()
             {
-                StartingRegion = data.EventRegion,
-                EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName),
-                ReqItem = item.Item.PathReqs,
+                StartingRegion = data.Region_Event,
+                EndingRegion = targetZone.Region_Zone,
+                ReqItem = new(Path.RequiredItem.eType.Category, targetZone.Item_WarpEvent_ByZone),
                 ReqCount = 1u,
             });
         }

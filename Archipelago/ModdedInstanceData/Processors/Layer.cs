@@ -1,24 +1,37 @@
 ﻿using GameData;
 using LevelGeneration;
-using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+using ReTFO.Archipelago.ModdedInstanceData.Model;
+
 public static class Layer
 {
+    private record class ScopeData
+    {
+        public ScopeData(LayerType layerType) => LayerType = layerType;
+        public LayerType LayerType { get; init; }
+    }
+
     /// <summary>
     /// Class passed to processing to provided relevant data
     /// </summary>
     public class Data : Expedition.Data
     {
         /// <summary>
-        /// The layer type
+        /// The custom data stored in the region object for this data
         /// </summary>
-        public LayerType LayerType { get; private init; }
+        private readonly ScopeData LayerScopeData;
+
+        /// <summary>
+        /// The region associated with this layer
+        /// </summary>
+        public RegionID Region_Layer { get; private init; }
 
         /// <summary>
         /// Construct a new Layer.Data
@@ -28,22 +41,45 @@ public static class Layer
         public Data(Expedition.Data data, LayerType layerType)
             : base(data)
         {
-            LayerType = layerType;
+            string name = $"{data.ExpeditionName} ({layerType.GetName()})";
+            Region_Layer = data.Regions.LookUpOrCreate(
+                data, name,
+                data => new("A region for a particular layer for an expedition", data.Region_Expedition)
+            );
+            if (!Regions.LookUpValue(Region_Layer).GetDataAllowNull(out LayerScopeData!))
+                data.Regions.SetData(Region_Layer, LayerScopeData = new ScopeData(layerType));
+        }
+
+        /// <summary>
+        /// Constructor for constructing from an existing region's data.
+        /// This can be invoked if you're reasonably confident the ID is a valid layer region.
+        /// </summary>
+        public Data(Game.Data data, RegionID region)
+            : base(data, data.Regions.LookUpDefinition(region).Parent)
+        {
+            Region_Layer = region;
+            LayerScopeData = data.Regions.GetData<ScopeData>(region);
         }
 
         /// <summary>
         /// Copy constructor
         /// </summary>
         public Data(Layer.Data other)
-            : base(other as Expedition.Data)
+            : base(other)
         {
-            LayerType = other.LayerType;
+            Region_Layer = other.Region_Layer;
+            LayerScopeData = other.LayerScopeData;
         }
+
+        /// <summary>
+        /// The layer type
+        /// </summary>
+        public LayerType LayerType => LayerScopeData.LayerType;
 
         /// <summary>
         /// Name uniquely identifying this layer in a user-friendly way
         /// </summary>
-        public string LayerName => $"{ExpeditionName} ({LayerType.GetName()})";
+        public string LayerName => Regions.LookUpName(Region_Layer);
 
         // Other useful things to have //
 
@@ -93,42 +129,39 @@ public static class Layer
            => LevelLayoutDataBlock.GetBlock(LayoutID);
 
         /// <summary>
-        /// Get data for a loaded layer
+        /// Create layer data from the in-level layer component.
+        /// Throws on fail, since loaded layer should always have registered data.
         /// </summary>
-        /// <param name="layer">The in-level layer object, typically obtained from a course node</param>
-        /// <returns>The relevant layer data</returns>
-        public static Data FromLayer(LG_Layer layer)
+        public static Layer.Data GetFromLayer(LG_Layer layer)
         {
-            var expedition = FromCurrentExpedition(); // Expedition.Data.FromCurrentExpedition()
-            LayerType type = new(layer.m_dimension.DimensionIndex, layer.m_type);
-            return new Data(expedition, type);
+            Expedition.Data expedition = GetFromCurrentExpedition();
+            return expedition.GetLayer(new LayerType(layer.m_dimension.DimensionIndex, layer.m_type));
         }
 
         /// <summary>
-        /// Get data for a loaded layer, but only for reality; uses MainLayer if looking at a dimension
+        /// Create layer data from the in-level layer component.
+        /// If the in-level layer is not in reality, instead returns the main layer.
+        /// Used in certain objective processing to find the objective's origin layer.
         /// </summary>
-        /// <param name="layer">The in-level layer object, typically from an objective item's "Origin Layer"</param>
-        /// <returns>The relevant layer data</returns>
-        /// <remarks>
-        /// This is tyipcally used for objective items and similar; from what I can tell, only main objective items
-        ///  can spawn in alternate dimensions, and I believe GTFO assumes the same.
-        /// </remarks>
-        public static Data FromLayerFlattened(LG_Layer layer)
-            => layer.m_dimension.DimensionIndex != eDimensionIndex.Reality
-                ? FromCurrentExpedition().MainLayer
-                : FromLayer(layer);
+        public static Layer.Data GetFromLayerFlattened(LG_Layer layer)
+        {
+            if (layer.m_dimension.DimensionIndex != eDimensionIndex.Reality)
+                return GetFromCurrentExpedition().MainLayer;
+            else 
+                return GetFromLayer(layer);
+        }
 
         /// <summary>
-        /// Get the actual layer object if in level
+        /// Assuming the correct layer is loaded in, get the LG_Layer component
+        ///  corresponding to this data's layer
         /// </summary>
-        /// <returns>The layer (in in the correct expedition), null otherwise</returns>
-        public LG_Layer? GetLG_Layer()
+        public LG_Layer GetLG_Layer()
         {
-            if (!IsCurrentExepdition())
-                return null;
-            if (!Dimension.GetDimension(LayerType, out var dim))
-                return null;
-            return dim.GetLayer(LayerType);
+            if (!TryGetFromCurrentExpedition(out Expedition.Data? result) || !result.Region_Expedition.Equals(Region_Expedition))
+                throw new NullReferenceException("Cannot fetch LG_Layer; expedition is not loaded!");
+            if (!Dimension.GetDimension(LayerType, out Dimension? dimension))
+                throw new NullReferenceException("Failed to fetch layer's dimension from loaded expedition!");
+            return dimension.GetLayer(LayerType);
         }
     }
 

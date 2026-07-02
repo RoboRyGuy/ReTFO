@@ -11,11 +11,13 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 [DataContract]
 public abstract class OptionUnaryOperation : OptionOperation
 {
+    public OptionUnaryOperation(OptionParameter param) => Param = param;
+
     /// <summary>
     /// The first parameter in this operation
     /// </summary>
     [DataMember(Name = "param")]
-    public required OptionParameter Param { get; set; }
+    public OptionParameter Param { get; init; }
 }
 
 /// <summary>
@@ -24,6 +26,8 @@ public abstract class OptionUnaryOperation : OptionOperation
 [DataContract]
 public class OptionToBoolOperation : OptionUnaryOperation
 {
+    public OptionToBoolOperation(OptionParameter param) : base(param) { }
+
     public override Option.eType Type => Option.eType.ToBool;
 }
 
@@ -33,6 +37,8 @@ public class OptionToBoolOperation : OptionUnaryOperation
 [DataContract]
 public class OptionNotOperation : OptionUnaryOperation
 {
+    public OptionNotOperation(OptionParameter param) : base(param) { }
+
     public override Option.eType Type => Option.eType.Not;
 }
 
@@ -42,6 +48,8 @@ public class OptionNotOperation : OptionUnaryOperation
 [DataContract]
 public class OptionNegateOperation : OptionUnaryOperation
 {
+    public OptionNegateOperation(OptionParameter param) : base(param) { }
+
     public override Option.eType Type => Option.eType.Negate;
 }
 
@@ -51,6 +59,8 @@ public class OptionNegateOperation : OptionUnaryOperation
 [DataContract]
 public class OptionReciprocalOperation : OptionUnaryOperation
 {
+    public OptionReciprocalOperation(OptionParameter param) : base(param) { }
+
     public override Option.eType Type => Option.eType.Reciprocal;
 }
 
@@ -60,17 +70,23 @@ public class OptionReciprocalOperation : OptionUnaryOperation
 [DataContract]
 public abstract class OptionBinaryOperation : OptionOperation
 {
+    public OptionBinaryOperation(OptionParameter lParam, OptionParameter rParam)
+    {
+        LParam = lParam;
+        RParam = rParam;
+    }
+
     /// <summary>
     /// The "left" parameter, ie 'a' in 'a * b = c'
     /// </summary>
     [DataMember(Name = "l_param")]
-    public required OptionParameter LParam { get; set; }
+    public OptionParameter LParam { get; init; }
 
     /// <summary>
     /// The "right" parameter, ie 'b' in 'a * b = c'
     /// </summary>
     [DataMember(Name = "r_param")]
-    public required OptionParameter RParam { get; set; }
+    public OptionParameter RParam { get; init; }
 }
 
 /// <summary>
@@ -78,6 +94,8 @@ public abstract class OptionBinaryOperation : OptionOperation
 /// </summary>
 public class OptionOrOperation : OptionBinaryOperation
 {
+    public OptionOrOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Or;
 }
 
@@ -86,6 +104,8 @@ public class OptionOrOperation : OptionBinaryOperation
 /// </summary>
 public class OptionAndOperation : OptionBinaryOperation
 {
+    public OptionAndOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.And;
 }
 
@@ -94,6 +114,8 @@ public class OptionAndOperation : OptionBinaryOperation
 /// </summary>
 public class OptionEqualsOperation : OptionBinaryOperation
 {
+    public OptionEqualsOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Equals;
 }
 
@@ -102,6 +124,8 @@ public class OptionEqualsOperation : OptionBinaryOperation
 /// </summary>
 public class OptionDoesNotEqualOperation : OptionBinaryOperation
 {
+    public OptionDoesNotEqualOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.DoesNotEqual;
 }
 
@@ -110,6 +134,8 @@ public class OptionDoesNotEqualOperation : OptionBinaryOperation
 /// </summary>
 public class OptionLessThanOperation : OptionBinaryOperation
 {
+    public OptionLessThanOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.LessThan;
 }
 
@@ -118,6 +144,8 @@ public class OptionLessThanOperation : OptionBinaryOperation
 /// </summary>
 public class OptionLessThanOrEqualOperation : OptionBinaryOperation
 {
+    public OptionLessThanOrEqualOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.LessThanOrEqual;
 }
 
@@ -126,6 +154,8 @@ public class OptionLessThanOrEqualOperation : OptionBinaryOperation
 /// </summary>
 public class OptionGreaterThanOperation : OptionBinaryOperation
 {
+    public OptionGreaterThanOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.GreaterThan;
 }
 
@@ -134,6 +164,8 @@ public class OptionGreaterThanOperation : OptionBinaryOperation
 /// </summary>
 public class OptionGreaterThanOrEqualOperation : OptionBinaryOperation
 {
+    public OptionGreaterThanOrEqualOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.GreaterThanOrEqual;
 }
 
@@ -142,6 +174,8 @@ public class OptionGreaterThanOrEqualOperation : OptionBinaryOperation
 /// </summary>
 public class OptionAddOperation : OptionBinaryOperation
 {
+    public OptionAddOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Add;
 }
 
@@ -150,6 +184,8 @@ public class OptionAddOperation : OptionBinaryOperation
 /// </summary>
 public class OptionSubtractOperation : OptionBinaryOperation
 {
+    public OptionSubtractOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Subtract;
 }
 
@@ -158,6 +194,8 @@ public class OptionSubtractOperation : OptionBinaryOperation
 /// </summary>
 public class OptionMultiplyOperation : OptionBinaryOperation
 {
+    public OptionMultiplyOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Multiply;
 }
 
@@ -166,6 +204,8 @@ public class OptionMultiplyOperation : OptionBinaryOperation
 /// </summary>
 public class OptionDivideOperation : OptionBinaryOperation
 {
+    public OptionDivideOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
     public override Option.eType Type => Option.eType.Divide;
 }
 
@@ -174,23 +214,30 @@ public class OptionDivideOperation : OptionBinaryOperation
 /// </summary>
 public abstract class OptionTernaryOperation : OptionOperation
 {
+    public OptionTernaryOperation(OptionParameter aParam, OptionParameter bParam, OptionParameter cParam)
+    {
+        AParam = aParam;
+        BParam = bParam;
+        CParam = cParam;
+    }
+
     /// <summary>
     /// The first parameter; its use varies
     /// </summary>
     [DataMember(Name = "a_param")]
-    public required OptionParameter AParam { get; set; }
+    public OptionParameter AParam { get; init; }
 
     /// <summary>
     /// The second parameter; its use varies
     /// </summary>
     [DataMember(Name = "b_param")]
-    public required OptionParameter BParam { get; set; }
+    public OptionParameter BParam { get; init; }
 
     /// <summary>
     /// The third parameter; its use varies
     /// </summary>
     [DataMember(Name = "c_param")]
-    public required OptionParameter CParam { get; set; }
+    public OptionParameter CParam { get; init; }
 }
 
 /// <summary>
@@ -199,6 +246,9 @@ public abstract class OptionTernaryOperation : OptionOperation
 /// </summary>
 public class OptionConditionalOperation : OptionTernaryOperation
 {
+    public OptionConditionalOperation(OptionParameter aParam, OptionParameter bParam, OptionParameter cParam)
+        : base(aParam, bParam, cParam) { }
+
     public override Option.eType Type => Option.eType.Conditional;
 }
 
@@ -207,5 +257,8 @@ public class OptionConditionalOperation : OptionTernaryOperation
 /// </summary>
 public class OptionLinearMapOperation : OptionTernaryOperation
 {
+    public OptionLinearMapOperation(OptionParameter aParam, OptionParameter bParam, OptionParameter cParam)
+        : base(aParam, bParam, cParam) { }
+
     public override Option.eType Type => Option.eType.LinearMap;
 }

@@ -4,24 +4,40 @@ using ReTFO.Archipelago.FeaturesAPI;
 using SNetwork;
 using System;
 using System.Collections.Generic;
-using TMPro;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
+using TMPro;
 using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using XInputDotNetPure;
 
 public static class LockLobbySlotsHandler_Tags
 {
     extension(Game.Data data)
     {
-        public TagResolver Tag_LobbySlotUnlocks
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Unlock Lobby Slot Items", "Items which unlock more lobby slots", gd.Tag_FloatingItems));
+        /// <summary>
+        /// Parent tag of all items which unlock lobby slots
+        /// </summary>
+        public ItemID Item_LobbySlotUnlocks
+            => ItemID.From(data, "Unlock Lobby Slot Items", data => new("Items which unlock more lobby slots", data.Item_All));
+
+        /// <summary>
+        /// A lobby slot unlock item for a particular slot index
+        /// </summary>
+        /// <param name="index">0-indexed position which will be unlocked (0 is master (woods), 1 is dauda, etc)</param>
+        public ItemID Item_LobbySlotUnlock_Instance(int index)
+            => ItemID.From(
+                data, 
+                $"Lobby Slot #{index} Unlock", 
+                data => new("Item which unlocks a particular lobby slot", data.Item_LobbySlotUnlocks),
+                new LockLobbySlotsHandler.LobbySlotUnlockItem(index)
+            );
     }
 }
 
@@ -42,20 +58,17 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
 
     public const string LOBBY_SLOT_OPTION_CATEGORY = "Lobby Slots";
 
-    private class LobbySlotUnlockItem : Item
+    public class LobbySlotUnlockItem : Item
     {
-        public LobbySlotUnlockItem(Game.Data data, int index)
-            : base(MakeTag(data, index), MakeRandData())
+        public LobbySlotUnlockItem(int index)
+            : base(MakeRandData())
         {
             Index = index;
         }
 
-        public static TagResolver MakeTag(Game.Data data, int index)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"Lobby Slot #{index} Unlock", "Item which unlocks a particular lobby slot", gd.Tag_LobbySlotUnlocks));
-
         public static ItemData MakeRandData() => new ItemData() { IsUseful = true, IsCollectedByDefault = true };
 
-        public int Index { get; set; }
+        public int Index { get; private init; }
 
         public void LockButtonNow()
         {
@@ -113,13 +126,13 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             lobbyBar.OnPermissionButtonPressed = new Il2CppSystem.Action<int>(closure, methodPtr);
         }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null, ItemID itemId = new())
         {
             // Make the permissions button work again
             UnlockButtonNow();
         }
 
-        public override void OnItemLost(StateTracker stateTracker)
+        public override void OnItemLost(StateTracker stateTracker, ItemID itemId = new())
         {
             // Try and kick the current player in the slot
             SNet.Slots.SetSlotPermission(Index, SNet_PlayerSlotManager.SlotPermission.Forbidden);
@@ -131,84 +144,70 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
         }
     }
 
-    public static KeyedItem GetSlotUnlockItem(Game.Data data, int index)
-    {
-        if (data.TryLookupItem(LobbySlotUnlockItem.MakeTag(data, index), out var item))
-            return item;
-
-        Item newItem = new LobbySlotUnlockItem(data, index);
-        return new(data.AddItem(newItem), newItem);
-    }
-
     [Game.Callback]
     public void AddSlotUnlockItems(Game.Data data)
     {
         // Define the items
         for (int i = 1; i < SNet.Slots.CharacterSlots.Count; i++)
-        {
-            KeyedItem slotUnlock = GetSlotUnlockItem(data, i);
-            data.AddFloatingItem(slotUnlock.ID);
-        }
+            data.AddFloatingItem(data.Region_Always, data.Item_LobbySlotUnlock_Instance(i));
 
         // Add the options
-        OptionID unlockRange = data.AddOption(new OptionRange()
-        {
-            DisplayName = $"Number of Unlocked Lobby Slots",
-            Description =
+        ItemID tag = data.Item_LobbySlotUnlocks;
+        uint[] sort = Option.MakeSortKey(data, tag);
+
+        OptionID unlockRange = data.AddOption(new OptionRange(
+            displayName: $"Number of Unlocked Lobby Slots",
+            description:
                 "The number of lobby slots which will be unlocked when the game starts."
                 + " This does not include the host slot, which will always be unlocked."
                 + " This can be 0. To unlock all lobby slots, use -1.",
-            Category = LOBBY_SLOT_OPTION_CATEGORY,
-            DefaultValue = 1,
-            Condition = new(),
-            Min = -1,
-            Max = SNet.Slots.CharacterSlots.Count - 1,
-        });
-        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation() { LParam = unlockRange, RParam = -1 });
+            category: LOBBY_SLOT_OPTION_CATEGORY,
+            categorySort: sort,
+            defaultValue: 1,
+            condition: new(),
+            min: -1,
+            max: SNet.Slots.CharacterSlots.Count - 1
+        ));
+        OptionID randomizationEnabled = data.AddOption(new OptionDoesNotEqualOperation(unlockRange, -1));
 
-        RandomizationTag tag = data.Tag_LobbySlotUnlocks;
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Whitelist,
-            Tag = tag,
-            Condition = randomizationEnabled,
-        });
-        data.AddOption(new OptionAddToSet()
-        {
-            Target = Option.eTarget.Blacklist,
-            Tag = tag,
-            Condition = data.AddOption(new OptionNotOperation() { Param = randomizationEnabled }),
-        });
+        data.AddOption(new OptionAddToSet(
+            target: Option.eSetTarget.ItemWhitelist,
+            tag: tag,
+            condition: randomizationEnabled
+        ));
+        data.AddOption(new OptionAddToSet(
+            target: Option.eSetTarget.ItemWhitelist,
+            tag: tag,
+            condition: data.AddOption(new OptionNotOperation(randomizationEnabled))
+        ));
 
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.StartVouchers,
-            Tag = tag,
-            Count = unlockRange,
-            Condition = randomizationEnabled,
-        });
+        data.AddOption(new OptionAddCount(
+            target: Option.eDictTarget.StartVouchers,
+            tag: tag,
+            count: unlockRange,
+            condition: randomizationEnabled
+        ));
 
-        OptionID earlyRange = data.AddOption(new OptionRange()
-        {
-            DisplayName = "Early Lobby Slots",
-            Description =
+        OptionID earlyRange = data.AddOption(new OptionRange(
+            displayName: "Early Lobby Slots",
+            description:
                 "The number of lobby slots which are guaranteed to randomize into locations which can be collected"
                 + " before any player collects any items. You may specify -1 to enable this for all randomized slots."
                 + Option.EARLY_WARNING_SUFFIX,
-            Category = LOBBY_SLOT_OPTION_CATEGORY,
-            DefaultValue = 0,
-            Condition = randomizationEnabled,
-            Min = -1,
-            Max = SNet.Slots.CharacterSlots.Count - 1,
-        });
+            category: LOBBY_SLOT_OPTION_CATEGORY,
+            categorySort: sort,
+            defaultValue: 0,
+            condition: randomizationEnabled,
+            min: -1,
+            max: SNet.Slots.CharacterSlots.Count - 1
+        ));
 
-        data.AddOption(new OptionAddCount()
-        {
-            Target = Option.eTarget.EarlyItems,
-            Tag = tag,
-            Count = earlyRange,
-            Condition = randomizationEnabled,
-        });
+        data.AddOption(new OptionAddCount(
+            target: Option.eDictTarget.EarlyItems,
+            tag: tag,
+            count: earlyRange,
+            condition: randomizationEnabled
+        ));
     }
 
     /// <summary>
@@ -224,14 +223,9 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             StateTracker stateTracker = StateTracker.Get();
             Game.Data data = stateTracker.MidManager.GetProcessedGameData();
 
-            if (!data.TryLookupItem(LobbySlotUnlockItem.MakeTag(data, playerIndex), out KeyedItem item))
-            {
-                FeatureLogger.Error("Failed to lookup slot unlock item; allowing slot modifications!");
-                return true;
-            }
-
-            if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return true;
-            if (!item.Item.RandData.ShouldBeRandomized) return true;
+            ItemID item = data.Item_LobbySlotUnlock_Instance(playerIndex);
+            if (stateTracker.CollectedItemCounts.GetValueOrDefault(item, 0) > 0) return true;
+            if (!data.Items.LookUpValueChecked(item).RandData.CanBeRandomized) return true;
 
             __instance.m_playerSlotPermissions[playerIndex] = SNet_PlayerSlotManager.SlotPermission.Forbidden;
             return false;
@@ -251,16 +245,12 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
             StateTracker stateTracker = StateTracker.Get();
             Game.Data data = stateTracker.MidManager.GetProcessedGameData();
 
-            if (!data.TryLookupItem(LobbySlotUnlockItem.MakeTag(data, pillarIndex), out KeyedItem item))
-            {
-                FeatureLogger.Error("Failed to look up slot unlock item; not locking slot button!");
-                return;
-            }
+            ItemID item = data.Item_LobbySlotUnlock_Instance(pillarIndex);
+            Item instance = data.Items.LookUpValueChecked(item);
+            if (stateTracker.CollectedItemCounts.GetValueOrDefault(item, 0) > 0) return;
+            if (!instance.RandData.CanBeRandomized) return;
 
-            if (stateTracker.CollectedItemCounts.GetValueOrDefault(item.ID, 0) > 0) return;
-            if (!item.Item.RandData.ShouldBeRandomized) return;
-
-            item.Item.OnItemLost(stateTracker);
+            instance.OnItemLost(stateTracker, item);
         }
     }
 }

@@ -20,26 +20,70 @@ public static class CentralGenClusterHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_CentralGenCellLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Central Gen Cell Locations", "Locations checked by picking up cells spawned for central gen cluster objectives", gd.Tag_BigPickupLocations));
+        public LocationID Location_CentralGenCells
+            => LocationID.From(data, "Central Gen Cell Locations", data => new("Locations checked by picking up cells spawned for central gen cluster objectives", data.Location_BigPickups));
 
-        public TagResolver Tag_CentralGenClusterLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Central Gen Cluster Locations", "Locations checked by finding central gen clusters", gd.Tag_Never));
+        public LocationID Location_CentralGenClusters
+            => LocationID.From(data, "Central Gen Cluster Locations", data => new("Locations checked by finding central gen clusters", data.Location_Never));
 
-        public TagResolver Tag_CentralGenClusterItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Central Gen Cluster Items", "Items representing central gen clusters", gd.Tag_Never));
+        public ItemID Item_CentralGenClusters
+            => ItemID.From(data, "Central Gen Cluster Items", data => new("Items representing central gen clusters", data.Item_Never));
 
-        public TagResolver Tag_CentralGenScanLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Central Gen Scan Locations", "Locations checked by fully powering a central gen cluster", gd.Tag_AllLocations));
+        public LocationID Location_CentralGenScans
+            => LocationID.From(data, "Central Gen Scan Locations", data => new("Locations checked by fully powering a central gen cluster", data.Location_All));
 
-        public TagResolver Tag_CentralGenScanItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Central Gen Scan Items", "Items which start the final gen cluster scan (which normally occurs when it's fully powered)", gd.Tag_ScanItems));
+        public ItemID Item_CentralGenScans
+            => ItemID.From(data, "Central Gen Scan Items", data => new("Items which start the final gen cluster scan (which normally occurs when it's fully powered)", data.Item_Scans));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.CentralGeneratorCluster;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension (Objective.Data data)
     {
-        public TagResolver Tag_CentralGenCellLocations_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Central Gen Cell Locations", "Locations for cells for a particular objective", gd.Tag_CentralGenCellLocations));
+        public RegionID Region_FoundGenCluster
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Found Gen Cluster", data => new("Region entered when a central gen cluster is found", data.Region_Objective));
+
+        public RegionID Region_PoweredCentralGenerator(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Powered Generator #{count}", data => new("Region entered when a central generator is powered", data.Region_Objective));
+
+        public RegionID Region_CompletedCentralGenScan
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Completed Scan", data => new("Region entered when a central gen cluster's scan is completed", data.Region_Objective));
+
+
+        public LocationID Location_CentralGenCells_ByObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Central Gen Cell Locations", data => new("Locations for cells for a particular objective", data.Location_CentralGenCells));
+
+
+        public LocationID Location_CentralGenCell_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Central Gen Cell Location #{count}", data => new("Location of a particular central gen cell", data.Location_CentralGenCells_ByObjective));
+
+        public LocationID Location_CentralGenCluster_Instance
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Central Gen Cluster Location", data => new("The location of a particular central gen cluster", data.Location_CentralGenClusters));
+
+        public ItemID Item_CentralGenCluster_Instance
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Central Gen Cluster", 
+                data => new("A particular central gen cluster", data.Item_CentralGenClusters),
+                new CentralGenClusterHandler.GenCluster_ClusterItem(data.Region_Objective)
+            );
+
+        public LocationID Location_CentralGenScan_Instance
+            => LocationID.From(data, $"{data.ObjectiveName} Central Gen Scan Location", data => new("A particular gen cluster scan's location", data.Location_CentralGenScans));
+
+        public ItemID Item_CentralGenScan_Instance
+            => ItemID.From(
+                data, 
+                $"{data.ObjectiveName} Central Gen Scan Items", 
+                data => new("A particular gen cluster scan", data.Item_CentralGenScans),
+                new CentralGenClusterHandler.GenCluster_ScanItem(data.Region_Objective)
+            );
     }
 }
 
@@ -58,137 +102,40 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
-    {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.CentralGeneratorCluster;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return $"{data.Objective.CentralPowerGenClustser_NumberOfGenerators}x Central Gen Cluster";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Region names for this objective
-    private static class ThisRegions
-    {
-        // Region reached after finding the gen cluster
-        public static string FoundGenCluster(Objective.Data data)
-            => $"{data.ObjectiveName()} Found Gen Cluster";
-
-        // Region reached after powering a generator
-        public static string PoweredGenerator(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Powered Generator #{count}";
-
-        // Region reached after completing the final scan
-        public static string CompletedScan(Objective.Data data)
-            => $"{data.ObjectiveName()} Completed Scan";
-    }
-
-    /// <summary>
-    /// A location containing a cell spawned for a central gen cluster
-    /// </summary>
-    private static class GenCluster_CellLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cell Location #{count}", "A particular cell spawn location", data.Tag_CentralGenCellLocations_ByObjective));
-
-        public static LocationData MakeRandData() => new LocationData() { };
-    }
-
-    /// <summary>
-    /// A location containing a gen cluster
-    /// </summary>
-    private static class GenCluster_ClusterLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cluster Location", "A particular gen cluster spawn location", gd.Tag_CentralGenClusterLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { IsAutoDiscovered = true };
-    }
-
     /// <summary>
     /// A gen cluster item - ie, the actual gen cluster itself
     /// </summary>
-    private class GenCluster_ClusterItem : Item
+    public class GenCluster_ClusterItem : Item
     {
-        public GenCluster_ClusterItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public GenCluster_ClusterItem(RegionID objective)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
         }
-
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Central Gen Cluster Item", "A particular gen cluster", gd.Tag_CentralGenClusterItems));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
-
-        public Objective.Data ObjectiveData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-    }
-
-    /// <summary>
-    /// Location containing the scan that occurs when all cells are inserted
-    /// </summary>
-    private static class GenCluster_ScanLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Cluster Scan Location", "A particular scan location", gd.Tag_CentralGenScanLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
+        
+        public RegionID ObjectiveRegion { get; private init; }
     }
 
     /// <summary>
     /// Item which represents / triggers the gen cluster scan
     /// </summary>
-    private class GenCluster_ScanItem : Item
+    public class GenCluster_ScanItem : TerminalItem
     {
-        public GenCluster_ScanItem(Objective.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public GenCluster_ScanItem(RegionID objective)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
+            ObjectiveRegion = objective;
         }
 
-        public static TagResolver MakeTag(Objective.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Gen Cluster Scan Item", "A particular scan item", gd.Tag_CentralGenScanItems));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public override RegionID TargetRegion => ObjectiveRegion;
 
-        public Objective.Data ObjectiveData;
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
-            if (ObjectiveData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
 
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ObjectiveData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
-        {
-            var item = WardenObjectiveManager.GetObjectiveItemCollection(ObjectiveData.LayerType, ObjectiveData.ObjectiveIndex);
+            var item = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
             LG_PowerGeneratorCluster? cluster = item[0].TryCast<LG_PowerGeneratorCluster>();
 
             yield return () =>
@@ -207,50 +154,33 @@ public class CentralGenClusterHandler : ArchipelagoFeature
                 else
                 {
                     terminal.AddLine($"<#F00>Failed to find generator cluster! Item returned to terminal.</color>");
-                    stateTracker.AddItemToTerminal(this);
+                    stateTracker.AddItemToTerminal(itemId);
                 }
             };
         }
-    }
-
-    public static KeyedItem GetClusterItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(GenCluster_ClusterItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new GenCluster_ClusterItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    public static KeyedItem GetScanItem(Objective.Data data)
-    {
-        if (data.TryLookupItem(GenCluster_ScanItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new GenCluster_ScanItem(data);
-        return new(data.AddItem(newItem), newItem);
     }
 
     // Objective requiring one or more cells be found in the map and used to power a central generator cluster
     [Objective.Callback]
     public void HandleCentralGenGlusterObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.CentralGeneratorCluster)
             return;
 
         // a) Placing cells in the map
-        KeyedItem cellItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID);
+        ItemID cellItem = data.Item_BigPickup_Cell;
         List<List<RegionID>> regionSets = data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas)
             .Select(ps => ps.Select(i => i.Region).ToList())
             .TakeLooped(data.Objective.CentralPowerGenClustser_NumberOfPowerCells)
             .ToList();
+
         for (int i = 1; i <= data.Objective.CentralPowerGenClustser_NumberOfPowerCells; i++)
         {
-            data.AddLocation(
-                GenCluster_CellLocation.MakeTag(data, i),
+            data.Locations.CreateValue(
+                data.Location_CentralGenCell_Instance(i),
                 regionSets[i - 1],
-                GenCluster_CellLocation.MakeRandData(),
-                cellItem.ID
+                new LocationData(),
+                cellItem
             );
         }
 
@@ -266,25 +196,25 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         }
         if (clusterZone == null)
         {
-            FeatureLogger.Warning($"Failed to find gen cluster for objective: {data.ObjectiveName()}");
+            FeatureLogger.Warning($"Failed to find gen cluster for objective: {data.ObjectiveName}");
             clusterZone = data.FirstZone;
         }
 
-        KeyedItem clusterItem = GetClusterItem(data);
-        data.AddLocation(
-            GenCluster_ClusterLocation.MakeTag(data),
-            data.LookupOrCreateRegion(clusterZone.ZoneName),
-            GenCluster_ClusterLocation.MakeRandData(),
-            clusterItem.ID
+        ItemID clusterItem = data.Item_CentralGenCluster_Instance;
+        data.Locations.CreateValue(
+            data.Location_CentralGenCluster_Instance, 
+            clusterZone.Region_Zone,
+            new LocationData() { IsAutoDiscovered = true },
+            clusterItem
         );
 
         // This region represents having found the gen cluster
-        RegionID foundGenClusterRegion = data.LookupOrCreateRegion(ThisRegions.FoundGenCluster(data));
+        RegionID foundGenClusterRegion = data.Region_FoundGenCluster;
         data.AddPath(new Path()
         {
-            StartingRegion = data.ObjectiveStartRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = foundGenClusterRegion,
-            ReqItem = clusterItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, clusterItem),
             ReqCount = 1u,
         });
 
@@ -293,35 +223,33 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         RegionID last = foundGenClusterRegion;
         for (int i = 1; i <= data.Objective.CentralPowerGenClustser_NumberOfGenerators; i++)
         {
-            string newRegionName = ThisRegions.PoweredGenerator(data, i);
-            RegionID newRegion = data.LookupOrCreateRegion(newRegionName);
+            RegionID newRegion = data.Region_PoweredCentralGenerator(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = cellItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, cellItem),
                 ReqCount = 1u,
             });
             last = newRegion;
-            eventWrapper.Process(newRegion, newRegionName, true);
+            eventWrapper.Process(newRegion, true);
         }
 
         // d) Scan at the end of the objective
-        KeyedItem scanItem = GetScanItem(data);
-        data.AddLocation(
-            GenCluster_ScanLocation.MakeTag(data),
+        ItemID scanItem = data.Item_CentralGenScan_Instance;
+        data.Locations.CreateValue(
+            data.Location_CentralGenScan_Instance,
             last,
-            GenCluster_ScanLocation.MakeRandData(),
-            scanItem.ID
+            new LocationData(),
+            scanItem
         );
 
-        string scanRegionName = ThisRegions.CompletedScan(data);
-        RegionID scanRegion = data.LookupOrCreateRegion(scanRegionName);
+        RegionID scanRegion = data.Region_CompletedCentralGenScan;
         data.AddPath(new Path()
         {
             StartingRegion = last,
             EndingRegion = scanRegion,
-            ReqItem = scanItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, scanItem),
             ReqCount = 1u,
         });
 
@@ -337,18 +265,14 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     {
         public static bool Prefix(LG_PowerGeneratorCluster __instance)
         {
-            Objective.Data data = Layer.Data.FromLayer(__instance.SpawnNode.m_zone.Layer)
+            Objective.Data data = Layer.Data.GetFromLayer(__instance.SpawnNode.m_zone.Layer)
                 .GetObjectiveDatas().ElementAt(__instance.WardenObjectiveChainIndex);
 
             if (__instance.m_currentFogStepIndex == (data.Objective.CentralPowerGenClustser_NumberOfGenerators - 2))
             {
-                if (data.TryLookupLocation(GenCluster_ScanLocation.MakeTag(data), out var loc))
-                {
-                    if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandData.IsTreatedAsRandom)
-                        return false;
-                }
-                else
-                    FeatureLogger.Error("Failed to notify finding of gen cluster scan location!");
+                Location loc = StateTracker.Get().NotifyFoundLocation(data.Location_CentralGenScan_Instance, null);
+                if (loc.RandData.IsTreatedAsRandom)
+                    return false;
             }
             return true;
         }
@@ -361,7 +285,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     /// DistributePickupItems calls TryGetValidPlacementZonesFromPlacementData to first get placements, then 
     ///  SelectZoneFromPlacementAndKeepTrackOnCount once per distribution item to actually use those placements.
     /// Passed to SelectZoneFromPlacementAndKeepTrackOnCount is a lambda to actually use the placement; this is the lamdba we are targetting below.
-    /// The lambda uses the selected zone to create and queue a new LG_Distribute_PickupItemsPerZone job, which then laters places
+    /// The lambda uses the selected zone to create and queue a new LG_Distribute_PickupItemsPerZone job, which then later places
     ///  the objective item in the relevant FunctionMarker builder job and yada yada.
     /// For our use case, when this function is done, a brand new LG_Distribute_PickupItemsPerZone job is sitting on the queue, so we'll go claim it :)
     /// </summary>
@@ -370,18 +294,14 @@ public class CentralGenClusterHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_Distribute_WardenObjective.__c__DisplayClass8_1 __instance, LG_Zone zone)
         {
-            Objective.Data data = Layer.Data.FromLayerFlattened(zone.Layer).GetObjectiveDatas().ElementAt(__instance.field_Public___c__DisplayClass8_0_0.chainIndex);
-            if (data.Objective.Type != This.ObjectiveType) return;
+            Objective.Data data = Layer.Data.GetFromLayerFlattened(zone.Layer)
+                .GetObjectiveDatas().ElementAt(__instance.field_Public___c__DisplayClass8_0_0.chainIndex);
+            if (data.Objective.Type != eWardenObjectiveType.CentralGeneratorCluster) return;
 
-            if (data.TryLookupLocation(GenCluster_CellLocation.MakeTag(data, __instance.i + 1), out var loc))
-            {
-                PickupHelper.AssociateDistributionWithLocation(
-                    LG_Factory.Current.m_currentBatch.Jobs.FromEnd().Cast<LG_Distribute_PickupItemsPerZone>(),
-                    loc.ID
-                );
-            }
-            else
-                FeatureLogger.Error("Failed to create association for Central Gen Cluster spawned cell!");
+            PickupHelper.AssociateDistributionWithLocation(
+                LG_Factory.Current.m_currentBatch.Jobs.FromEnd().Cast<LG_Distribute_PickupItemsPerZone>(),
+                data.Location_CentralGenCell_Instance(__instance.i + 1)
+            );
         }
     }
 

@@ -23,20 +23,44 @@ public static class RetrieveBigItemsHandler_Tags
 { 
     extension (Game.Data data)
     {
-        public TagResolver Tag_BigRetrievalLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Big Retrieval Locations", "Locations checked by picking up big retrieval objective items, IE in R2A1", gd.Tag_BigPickupLocations));
+        public LocationID Location_BigRetrievals
+            => LocationID.From(data, "Big Retrieval Locations", data => new("Locations checked by picking up big retrieval objective items, IE in R2A1", data.Location_BigPickups));
 
-        public TagResolver Tag_BigRetrievalItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Big Retrieval Items", "Big pickup items marked as retrieval objective items, IE the cargos in R2A1", gd.Tag_BigPickupItems));
+        public ItemID Item_BigRetrievals
+            => ItemID.From(data, "Big Retrieval Items", data => new("Big pickup items marked as retrieval objective items, IE the cargos in R2A1", data.Item_BigPickups));
+    }
+
+    public static Objective.Data Checked(Objective.Data data)
+    {
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.RetrieveBigItems;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
     }
 
     extension (Objective.Data data)
     {
-        public TagResolver Tag_BigRetrievalLocations_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Big Retrieval Locations", "Locations checked by picking up big retrieval items for a particular objective", gd.Tag_BigRetrievalLocations));
+        public RegionID Region_RetrievedItem(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} {count} Big Items Retrieved", data => new("Region entered when a particular big objective item is retrieved (picked up)", data.Region_Objective));
 
-        public TagResolver Tag_BigRetrievalItems_ByObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Big Retrieval Items", "Big pickup items marked as big retrieval items for a particular objective", gd.Tag_BigRetrievalItems));
+
+        public LocationID Location_BigRetrievals_ByObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Big Retrieval Locations", data => new("Locations checked by picking up big retrieval items for a particular objective", data.Location_BigRetrievals));
+
+        public ItemID Item_BigRetrievals_ByObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Big Retrieval Items", data => new("Big pickup items marked as big retrieval items for a particular objective", data.Item_BigRetrievals));
+
+
+        public LocationID Location_BigRetrieval_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Big Retrieval Location #{count}", data => new("A particular big retrieval item's location", data.Location_BigRetrievals_ByObjective));
+
+        public ItemID Item_BigRetrieval_Instance(int count)
+            => ItemID.From(
+                Checked(data),
+                $"{data.ObjectiveName} Big Retrieval Item #{count}",
+                data => new("A particular big retrieval item", data.Item_BigRetrievals_ByObjective),
+                new RetrieveBigItemsHandler.BigRetrieval_Item(data.Region_Objective, count)
+            );
     }
 }
 
@@ -56,135 +80,47 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
-    {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.RetrieveBigItems;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            return $"Retrieve {data.Objective.Retrieve_Items.Count}x Big Items";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Names of regions for this objective
-    private static class ThisRegions
-    {
-        // Region entered when retrieving the big item(s)
-        public static string RetrievedItem(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} {count} Big Items Retrieved";
-    }
-
-    // Location where a big retrieval item can be found
-    private static class BigRetrieval_Location
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Retrieval Location #{count}", "A location containing a particular retrieval target", data.Tag_BigRetrievalLocations_ByObjective));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
     // Big retrieval item itself - note that despite this being usable as a normal item, we disallow it by changing its name
-    private class BigRetrieval_Item : Item
+    public class BigRetrieval_Item : TerminalItem
     {
-        public BigRetrieval_Item(Objective.Data data, int count)
-            : base(MakeTag(data, count), MakeRandData())
+        public BigRetrieval_Item(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            Data = data;
+            ObjectiveRegion = objective;
             ItemIndex = count - 1;
         }
-
-        public static RandomizationTag MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Retrieval Item #{count}", "A particular big retrieval item", data.Tag_BigRetrievalItems_ByObjective));
-
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
 
         /// <summary>
         /// The expedition this item was created for
         /// </summary>
-        public Objective.Data Data { get; set; }
+        public RegionID ObjectiveRegion { get; private init; }
 
         /// <summary>
         /// Which item in the obejctive this refers to, 0-indexed
         /// </summary>
-        public int ItemIndex { get; set; }
+        public int ItemIndex { get; private init; }
 
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, Data.Tag_BigRetrievalItems_ByObjective);
+        public override RegionID TargetRegion => ObjectiveRegion;
 
-        public override Expedition.Data? RequiredExpedition => Data;
-
-        /// <summary>
-        /// Immediately attempt to spawn the related big pickup.
-        /// Spawning must be async because the host must approve it.
-        /// </summary>
-        /// <returns>A wrapper around the spawn attempt. This will later contain the item if it successfully spawns.</returns>
-        private AsyncItemSpawnWrapper TrySpawnAsync()
-        {
-            var wrapper = new AsyncItemSpawnWrapper();
-            ItemDataBlock itemDataBlock = ItemDataBlock.GetBlock(Data.Objective.Retrieve_Items[ItemIndex]);
-            if (itemDataBlock != null)
-                ItemReplicationManager.SpawnItem(
-                    new pItemData() { itemID_gearCRC = itemDataBlock.persistentID },
-                    new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
-                    ItemMode.Pickup,
-                    Vector3.zero,
-                    Quaternion.identity,
-                    null,
-                    null
-                );
-            return wrapper;
-        }
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
-        {
-            if (Data.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (Data.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             // Isolating these for the lambda just in case
-            ItemDataBlock itemDataBlock = ItemDataBlock.GetBlock(Data.Objective.Retrieve_Items[ItemIndex]);
-            string itemName = $"Big Pickup #{itemDataBlock?.persistentID ?? 0} \"{itemDataBlock?.publicName ?? "null"}\"";
-            var wrapper = TrySpawnAsync();
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
+            ItemDataBlock itemDataBlock = ItemDataBlock.GetBlock(data.Objective.Retrieve_Items[ItemIndex]);
+            string itemName = $"Big Pickup #{itemDataBlock.persistentID} \"{itemDataBlock.publicName}\"";
+            var wrapper = new AsyncItemSpawnWrapper();
+            ItemReplicationManager.SpawnItem(
+                new pItemData() { itemID_gearCRC = itemDataBlock.persistentID },
+                new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
+                ItemMode.Pickup,
+                Vector3.zero,
+                Quaternion.identity,
+                null,
+                null
+            );
+            var player = terminal.m_syncedInteractionSource;
             var node = terminal.SpawnNode;
-
-            // We'll calculate a random raycast behind the player using their camera view
-            // If we get a good hit, we'll place the item there. Otherwise, we'll place it at their feet
-            System.Random rand = new(Guid.NewGuid().GetHashCode()); // Hopefully this is entropic enough
-
-            // There's probably an easier way to calculate this. Whatever, this works!
-            PlayerAgent player = terminal.m_syncedInteractionSource;
-            Vector3 position = player.FPSCamera.Position;
-            Vector3 right = player.FPSCamera.FlatRight;
-            Vector3 backVector = Quaternion.AngleAxis(30f + rand.NextSingle() * 120f, Vector3.up) * right;
-            Quaternion fullDown = Quaternion.FromToRotation(backVector, Vector3.down);
-            Quaternion downAngle = Quaternion.Lerp(Quaternion.identity, fullDown, .4f + rand.NextSingle() * .4f);
-            Vector3 testVector = downAngle * backVector;
-            if (Physics.Raycast(position, testVector, out RaycastHit hit, 10f, 1))
-                position = hit.point;
-            Quaternion rotation = Quaternion.AngleAxis(360f * rand.NextSingle(), Vector3.up);
+            var trans = BigPickupHandler.CalcBigObjectPointNearTerminal(terminal);
 
             yield return () =>
             {
@@ -199,21 +135,21 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                     // Effectively timed out. If it successfully spawns after now, we don't want it anymore
                     wrapper.QueueDespawn();
                     FeatureLogger.Error($"Failed to spawn {itemName}!");
-                    stateTracker.AddItemToTerminal(this);
+                    stateTracker.AddItemToTerminal(itemId);
                     terminal.AddLine($"<#F00>Failed to retrieve {itemName}! It has been re-added to terminal system.</color>");
                     return;
                 }
 
-                carryItem.SpawnNode = Data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
+                carryItem.SpawnNode = data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
                 carryItem.Set_pItemData(new pItemData()
                 {
                     itemID_gearCRC = carryItem.pItemData.itemID_gearCRC,
-                    originLayer = Data.LayerType
+                    originLayer = data.LayerType
                 });
                 carryItem.m_isWardenObjective = true;
 
                 // Overwriting the originally-spawned item
-                var items = WardenObjectiveManager.GetObjectiveItemCollection(Data.LayerType, Data.ObjectiveIndex);
+                var items = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
                 ChainedPuzzles.CP_Bioscan_Core? core;
                 if (WardenObjectiveManager.m_customGeoExitWinConditionItem != null)
                     core = WardenObjectiveManager.m_customGeoExitWinConditionItem.Cast<LG_LevelExitGeo>().m_puzzle.m_chainedPuzzleCores[0].TryCast<ChainedPuzzles.CP_Bioscan_Core>();
@@ -239,7 +175,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                 carryItem.m_sync.AttemptPickupInteraction(
                     ePickupItemInteractionType.Place,
                     player.Owner, default,
-                    position, rotation,
+                    trans.Item1, trans.Item2,
                     node, true, true
                 );
                 carryItem.m_navMarkerPlacer.SetMarkerVisible(true);
@@ -249,20 +185,11 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
         }
     }
 
-    public static KeyedItem GetItem(Objective.Data data, int count)
-    {
-        if (data.TryLookupItem(BigRetrieval_Item.MakeTag(data, count), out var item))
-            return item;
-
-        Item newItem = new BigRetrieval_Item(data, count);
-        return new(data.AddItem(newItem), newItem);
-    }
-
     // Objective requiring the retrieval of one or more big pickups, which may be of multiple (varying) item types
     [Objective.Callback]
     public void HandleRetrieveBigItemsObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.RetrieveBigItems)
             return;
 
         /* Similar to small items, we create one region per item we need to pick up
@@ -272,55 +199,52 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
         List<List<RegionID>> regionSets = data.ObjectiveToZoneRegionSets(data.Objective.Retrieve_Items.Count).ToList();
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
 
-        RegionID last = data.ObjectiveStartRegion;
+        ItemID category = data.Item_BigRetrievals_ByObjective;
+        RegionID last = data.Region_Objective;
         for (int i = 1; i <= data.Objective.Retrieve_Items.Count; i++)
         {
             // Note that retrieval targets cannot be used as normal items, and so cannot currently be added the same way
-            KeyedItem item = GetItem(data, i);
-            data.AddLocation(
-                BigRetrieval_Location.MakeTag(data, i),
+            data.Locations.CreateValue(
+                data.Location_BigRetrieval_Instance(i),
                 regionSets[i - 1],
-                BigRetrieval_Location.MakeRandData(),
-                item.ID
+                new LocationData(),
+                data.Item_BigRetrieval_Instance(i)
             );
 
-            string regionName = ThisRegions.RetrievedItem(data, i);
-            RegionID newRegion = data.LookupOrCreateRegion(regionName);
+            RegionID newRegion = data.Region_RetrievedItem(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = item.Item.PathReqs,
-                ReqCount = 1u
+                ReqItem = new(Path.RequiredItem.eType.Category, category),
+                ReqCount = (uint)i,
             });
             last = newRegion;
 
-            eventWrapper.Process(newRegion, regionName);
+            eventWrapper.Process(newRegion);
         }
 
         SharedObjectiveHandler.AddObjectiveCompleteItem(data, last);
     }
 
     /// <summary>
-    /// See the similar explanation in 09_CentralGenClusterHandler
+    /// See the similar explanation in 09_CentralGenClusterHandler: <see cref="CentralGenClusterHandler.LG_Distribute_WardenObjective____c__DisplayClass8_1___DistributePickupItems_b__0__Patch"/>
     /// </summary>
     [ArchivePatch(typeof(LG_Distribute_WardenObjective.__c__DisplayClass8_1), nameof(LG_Distribute_WardenObjective.__c__DisplayClass8_1._DistributePickupItems_b__0))]
     public static class LG_Distribute_WardenObjective____c__DisplayClass8_1___DistributePickupItems_b__0__Patch
     {
         public static void Postfix(LG_Distribute_WardenObjective.__c__DisplayClass8_1 __instance, LG_Zone zone)
         {
-            Objective.Data data = Layer.Data.FromLayerFlattened(zone.Layer).GetObjectiveDatas().ElementAt(__instance.field_Public___c__DisplayClass8_0_0.chainIndex);
-            if (data.Objective.Type != This.ObjectiveType) return;
+            Objective.Data data = Layer.Data.GetFromLayerFlattened(zone.Layer)
+                .GetObjectiveDatas()
+                .ElementAt(__instance.field_Public___c__DisplayClass8_0_0.chainIndex);
+            if (data.Objective.Type != eWardenObjectiveType.RetrieveBigItems) 
+                return;
 
-            if (data.TryLookupLocation(BigRetrieval_Location.MakeTag(data, __instance.i + 1), out var loc))
-            {
-                PickupHelper.AssociateDistributionWithLocation(
-                    LG_Factory.Current.m_currentBatch.Jobs.FromEnd().Cast<LG_Distribute_PickupItemsPerZone>(),
-                    loc.ID
-                );
-            }
-            else
-                FeatureLogger.Error("Failed to lookup big retrieval target location during association");
+            PickupHelper.AssociateDistributionWithLocation(
+                LG_Factory.Current.m_currentBatch.Jobs.FromEnd().Cast<LG_Distribute_PickupItemsPerZone>(),
+                data.Location_BigRetrieval_Instance(__instance.i + 1)
+            );
         }
 
     }

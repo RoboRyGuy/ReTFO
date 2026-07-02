@@ -15,6 +15,15 @@ namespace ReTFO.Archipelago.Features.ZoneHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+public static class SecDoorHandler_Tags
+{
+    extension (Zone.Data data)
+    {
+        public RegionID Region_OnApproachEvents
+            => RegionID.From(data, $"{data.ZoneName} OnApproach", data => new("Region entered by looking at a sec door's interact", data.Region_Zone));
+    }
+}
+
 [EnableFeatureByDefault, AutomatedFeature]
 public class SecDoorHandler : ArchipelagoFeature
 {
@@ -43,49 +52,46 @@ public class SecDoorHandler : ArchipelagoFeature
             entryZone = data.FirstZone; // Yes, this happens. Presumably an oversight in R8C1's secondary layout data
         else
             entryZone = data.FindZoneByIndex(data.Zone.BuildFromLocalIndex)!;
-        RegionID entryRegion = data.LookupOrCreateRegion(entryZone.ZoneName);
-        Path path = new Path()
+        RegionID entryRegion = entryZone.Region_Zone;
+
+        // Handle locked doors
+        Path.RequiredItem pathReq = new(Path.RequiredItem.eType.None, new());
+        LayerData? layerData = data.LayerDatas;
+        if (layerData?.ZonesWithBulkheadEntrance.Contains(data.Zone.LocalIndex) ?? false)
+            // This zone is locked by a bulkhead door
+            pathReq = new(Path.RequiredItem.eType.ItemConsumed, data.Item_BulkheadKey_Instance);
+        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Keycard_SecurityBox)
+            // Typical colored key
+            pathReq = new(Path.RequiredItem.eType.Item, data.Item_ColoredKey_Instance);
+        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
+            // Must power a specific generator with a cell
+            pathReq = new(Path.RequiredItem.eType.ItemConsumed, data.Item_BigPickup_Cell);
+        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Locked_No_Key)
+            // Can only be unlocked by an event force unlocking it
+            pathReq = new(Path.RequiredItem.eType.Blocked, new());
+        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType != eProgressionPuzzleType.None)
+            FeatureLogger.Error($"Unknown progression puzzle type {data.Zone.ProgressionPuzzleToEnter.PuzzleType}! Zone: {data.ZoneName}");
+
+        data.AddPath(new Path()
         {
             Name = $"{data.ZoneName} Main Entry",
             StartingRegion = entryRegion,
-            EndingRegion = data.LookupOrCreateRegion(data.ZoneName)
-        };
-
-        // Handle locked doors
-        LayerData? layerData = data.LayerDatas;
-        if (layerData?.ZonesWithBulkheadEntrance.Contains(data.Zone.LocalIndex) ?? false)
-        {   // This zone is locked by a bulkhead door
-            path.ReqItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).Item.PathReqs;
-            path.ReqCount = 1u;
-        }
-        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Keycard_SecurityBox)
-        {   // Typical colored key
-            path.ReqItem = ColoredKeyHandler.GetColoredKeyItem(data).Item.PathReqs;
-            path.ReqCount = 1u;
-        }
-        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.PowerGenerator_And_PowerCell)
-        {   // Must power a specific generator with a cell
-            path.ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.CellItemID).Item.PathReqs;
-            path.ReqCount = 1u;
-        }
-        else if (data.Zone.ProgressionPuzzleToEnter.PuzzleType == eProgressionPuzzleType.Locked_No_Key)
-        {   // Can only be unlocked by an event force unlocking it
-            path.ReqItem = new(Path.RequiredItem.eType.Blocked, data.Tag_Never);
-            path.ReqCount = 1u;
-        }
-        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(data).Item.PathReqs;
-        data.AddPath(path);
+            EndingRegion = data.Region_Zone,
+            ReqItem = pathReq,
+            ReqCount = 1u,
+            AlternateItem = new(Path.RequiredItem.eType.Category, data.Item_DoorUnlockEvent_ByZone),
+        });
 
         // Finally, handle OnApproach events, which will live in the entry zone
         if (data.Zone.EventsOnApproachDoor.Any())
         {
-            string eventName = $"{data.ZoneName} OnApproach";
-            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            RegionID eventRegion = data.Region_OnApproachEvents;
+            
             data.AddPath(new Path() {
                 StartingRegion = entryRegion, 
                 EndingRegion = eventRegion
             });
-            data.ProcessEvents(eventRegion, eventName, data.Zone.EventsOnApproachDoor);
+            data.ProcessEvents(eventRegion, data.Zone.EventsOnApproachDoor);
         }
     }
 
@@ -99,39 +105,50 @@ public class SecDoorHandler : ArchipelagoFeature
         Layer.Data sourceLayer = data.GetLayer(data.BuildFromData.LayerType);
         Zone.Data? entryZone = sourceLayer.FindZoneByIndex(data.BuildFromData.Zone);
 
-        RegionID entryRegion = data.LookupOrCreateRegion(entryZone.ZoneName);
-        Path path = new()
+        RegionID entryRegion = entryZone.Region_Zone;
+
+        Path.RequiredItem pathReqs;
+        if (sourceLayer.LayerDatas!.BulkheadDoorControllerPlacements.FirstOrDefault(p => p.ZoneIndex == data.BuildFromData.Zone) != null)
+            // If there is a bulkhead DC in the zone this layer connects to, we can unlock this zone with a key
+            pathReqs = new(Path.RequiredItem.eType.ItemConsumed, data.Item_BulkheadKey_Instance);
+        else
+            // Can only unlock via an event
+            pathReqs = new(Path.RequiredItem.eType.Blocked, new());
+
+        data.AddPath(new Path()
         {
             Name = $"{data.LayerName} Layer Entry",
             StartingRegion = entryRegion,
-            EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName)
-        };
-
-        if (sourceLayer.LayerDatas!.BulkheadDoorControllerPlacements.FirstOrDefault(p => p.ZoneIndex == data.BuildFromData.Zone) != null)
-        {   // If there is a bulkhead DC in the zone this layer connects to, we can unlock this zone with a key
-            path.ReqItem = BulkheadKeyHandler.GetBulkheadKeyItem(data).Item.PathReqs;
-            path.ReqCount = 1u;
-        }
-        else
-        {   // Can only unlock via an event
-            path.ReqItem = new(Path.RequiredItem.eType.Blocked, data.Tag_Never);
-            path.ReqCount = 1u;
-        }
-        path.AlternateItem = UnlockEventHandler.GetUnlockEventItem(targetZone).Item.PathReqs;
-        data.AddPath(path);
+            EndingRegion = targetZone.Region_Zone,
+            ReqItem = pathReqs,
+            ReqCount = 1u,
+            AlternateItem = new(Path.RequiredItem.eType.Category, targetZone.Item_DoorUnlockEvent_ByZone),
+        });
 
         // Finally, handle OnApproach events, which will live in the entry zone
         if (targetZone.Zone!.EventsOnApproachDoor.Any())
         {
-            string eventName = $"{targetZone.ZoneName} OnApproach";
-            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            RegionID eventRegion = targetZone.Region_OnApproachEvents;
             data.AddPath(new Path()
             {
                 StartingRegion = entryRegion,
                 EndingRegion = eventRegion
             });
-            data.ProcessEvents(eventRegion, eventName, targetZone.Zone.EventsOnApproachDoor);
+            data.ProcessEvents(eventRegion, targetZone.Zone.EventsOnApproachDoor);
         }
+    }
+
+    /// <summary>
+    /// Connect the first zone of an expedition to its virtual expedition region
+    /// </summary>
+    [Expedition.Callback]
+    public void AddExpeditionEntrace(Expedition.Data data)
+    {
+        data.AddPath(new Path()
+        {
+            StartingRegion = data.Region_Expedition,
+            EndingRegion = data.MainLayer.FirstZone.Region_Zone,
+        });
     }
 
     // Identifies and reports when players enter a new zone
@@ -140,8 +157,8 @@ public class SecDoorHandler : ArchipelagoFeature
     {
         public static void Postfix(PlayerAgent __instance)
         {
-            Zone.Data zoneData = Zone.Data.FromZone(__instance.CourseNode.m_zone);
-            StateTracker.Get().NotifyFoundRegion(zoneData.ZoneName, __instance);
+            Zone.Data zoneData = Zone.Data.GetFromZone(__instance.CourseNode.m_zone);
+            StateTracker.Get().NotifyFoundRegion(zoneData.Region_Zone, __instance);
         }
     }
 }

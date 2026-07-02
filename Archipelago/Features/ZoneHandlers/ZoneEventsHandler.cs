@@ -1,6 +1,5 @@
 ﻿using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
-using System;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.FeaturesAPI;
@@ -11,6 +10,33 @@ namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+
+public static class ZoneEventsHandler_Tags
+{
+    extension (Zone.Data data)
+    {
+        public RegionID Region_OnBossDeathEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnBossDeath", data => new("Region entered by killing a boss in a particular zone", data.Region_Zone));
+        
+        public RegionID Region_OnDoorScanDoneEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnDoorScanDone", data => new("Region entered by completing a scan to unlock a particular zone door", data.Region_Zone));
+        
+        public RegionID Region_OnDoorScanStartEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnDoorScanStart", data => new("Region entered by starting a scan to unlock a particular zone door", data.Region_Zone));
+        
+        public RegionID Region_OnOpenDoorEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnOpenDoor", data => new("Region entered by opening a particular zone door", data.Region_Zone));
+        
+        public RegionID Region_OnPortalWarpEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnPortalWarp", data => new("Region entered by trigger a dimsion portal's warp in a particular zone", data.Region_Zone));
+        
+        public RegionID Region_OnTerminalDeactivateAlarmEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnTerminalDeactivateAlarm", data => new("Region entered by executing the DEACTIVATE_ALARMS command associated with a particular zone door's error alarm", data.Region_Zone));
+        
+        public RegionID Region_OnUnlockDoorEvents 
+            => RegionID.From(data, $"{data.ZoneName} OnUnlockDoor", data => new("Region entered by unlocking a particular zone door", data.Region_Zone));
+    }
+}
 
 [EnableFeatureByDefault, AutomatedFeature]
 public class ZoneEventsHandler : ArchipelagoFeature
@@ -34,47 +60,61 @@ public class ZoneEventsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    /// <summary>
+    /// Helper struct for below, since delegate* cannot be used in generics (ie in tuple types)
+    /// </summary>
+    private unsafe struct RegionEventPair
+    {
+        public RegionEventPair(delegate*<Zone.Data, RegionID> builder, EventList? events)
+        {
+            IDBuilder = builder;
+            Events = events;
+        }
+
+        public readonly delegate*<Zone.Data, RegionID> IDBuilder;
+        public readonly EventList? Events;
+    }
+
     // Triggers some important zone events that don't really have a home elsewhere
     [Zone.Callback]
-    public void AddZoneEvents(Zone.Data data)
+    public unsafe void AddZoneEvents(Zone.Data data)
     {
-        RegionID region = data.LookupOrCreateRegion(data.ZoneName);
         if (data.Zone != null)
         {
-            Tuple<string, EventList?>[] pairs =
+            // Note: Using a delegate* to delay ID creation, preventing unecessary regions from being created
+            RegionEventPair[] pairs =
             {
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnBossDeath",               data.Zone.EventsOnBossDeath ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnDoorScanDone",            data.Zone.EventsOnDoorScanDone ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnDoorScanStart",           data.Zone.EventsOnDoorScanStart ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnOpenDoor",                data.Zone.EventsOnOpenDoor ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnPortalWarp",              data.Zone.EventsOnPortalWarp ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnTerminalDeactivateAlarm", data.Zone.EventsOnTerminalDeactivateAlarm ),
-                Tuple.Create<string, EventList?>( $"{data.ZoneName} OnUnlockDoor",              data.Zone.EventsOnUnlockDoor ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnBossDeathEvents,               data.Zone.EventsOnBossDeath ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnDoorScanDoneEvents,            data.Zone.EventsOnDoorScanDone ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnDoorScanStartEvents,           data.Zone.EventsOnDoorScanStart ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnOpenDoorEvents,                data.Zone.EventsOnOpenDoor ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnPortalWarpEvents,              data.Zone.EventsOnPortalWarp ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnTerminalDeactivateAlarmEvents, data.Zone.EventsOnTerminalDeactivateAlarm ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnUnlockDoorEvents,              data.Zone.EventsOnUnlockDoor ),
             };
             foreach (var pair in pairs)
             {
-                if (pair.Item2.Any())
+                if (pair.Events?.Any() ?? false)
                 {
-                    RegionID eventRegion = data.LookupOrCreateRegion(pair.Item1);
+                    RegionID id = pair.IDBuilder(data);
                     data.AddPath(new Path() {
-                        StartingRegion = region, 
-                        EndingRegion = eventRegion
+                        StartingRegion = data.Region_Zone, 
+                        EndingRegion = id
                     });
-                    data.ProcessEvents(eventRegion, pair.Item1, pair.Item2!);
+                    data.ProcessEvents(id, pair.Events!);
                 }
             }
         }
         else if (data.DimensionData != null && data.DimensionData.EventsOnBossDeath.Any())
         {   // Only event of note in dimension data is OnBossDeath
-            string eventName = $"{data.ZoneName} OnBossDeath";
-            RegionID eventRegion = data.LookupOrCreateRegion(eventName);
+            RegionID eventRegion = data.Region_OnBossDeathEvents;
             data.AddPath(new Path()
             {
-                StartingRegion = region, 
+                StartingRegion = data.Region_Zone, 
                 EndingRegion = eventRegion
             });
             // TODO: Item detecting a boss being spawned?
-            data.ProcessEvents(eventRegion, eventName, data.DimensionData.EventsOnBossDeath);
+            data.ProcessEvents(eventRegion, data.DimensionData.EventsOnBossDeath);
         }
     }
 

@@ -1,6 +1,5 @@
 ﻿using GameData;
 using LevelGeneration;
-using Player;
 using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -21,18 +20,51 @@ public static class DimensionPortalHandler_Tags
 {
     extension (Game.Data data)
     {
-        public TagResolver Tag_DimensionPortalScanLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Dimension Portal Scan Locations", "Locations checked by powering up a dimension portal (ie R6B1)", gd.Tag_AllLocations));
+        public LocationID Location_DimensionPortalScans
+            => LocationID.From(data, "Dimension Portal Scan Locations", data => new("Locations checked by powering up a dimension portal (ie R6B1)", data.Location_All));
 
-        public TagResolver Tag_DimensionPortalScanItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Dimension Portal Scans", "The scan in dimension portal rooms (ie R6B1) which trigger a dimension warp", gd.Tag_ScanItems));
+        public ItemID Item_DimensionPortalScans
+            => ItemID.From(data, "Dimension Portal Scans", data => new("The scan in dimension portal rooms (ie R6B1) which trigger a dimension warp", data.Item_Scans));
 
-        public TagResolver Tag_DimensionPortalWarpLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Dimension Portal Warp Locations", "Locations checked by triggering a dimension warp using a dimension portal (ie R6B1)", gd.Tag_AllLocations));
+        public LocationID Location_DimensionPortalWarps
+            => LocationID.From(data, "Dimension Portal Warp Locations", data => new("Locations checked by triggering a dimension warp using a dimension portal (ie R6B1)", data.Location_All));
 
-        public TagResolver Tag_DimensionPortalWarpItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Dimension Portal Warps", "A warp normally triggerd by a dimension portal room (ie R6B1)", gd.Tag_WarpItems));
+        public ItemID Item_DimensionPortalWarps
+            => ItemID.From(data, "Dimension Portal Warps", data => new("A warp normally triggerd by a dimension portal room (ie R6B1)", data.Item_Warps));
     }
+
+    extension (Zone.Data data)
+    {
+        public RegionID Region_PortalKeyInserted
+            => RegionID.From(data, $"{data.ZoneName} Dimension Portal Key Inserted", data => new("Region entered when the MWP is put into a particular dimension portal", data.Region_Zone));
+
+        public RegionID Region_PortalScanCompleted
+            => RegionID.From(data, $"{data.ZoneName} Dimension Portal Scan Completed", data => new("Region entered by completing the scan for a particular dimension portal", data.Region_Zone));
+
+
+        public LocationID Location_DimensionPortalScan_Instance
+            => LocationID.From(data, $"{data.ZoneName} Dimension Portal Scan Location", data => new("The location of a particular dimension portal's scan", data.Location_DimensionPortalScans));
+
+        public ItemID Item_DimensionPortalScan_Instance
+            => ItemID.From(
+                data, 
+                $"{data.ZoneName} Dimension Portal Scan", 
+                data => new("A particular dimension portal's scan", data.Item_DimensionPortalScans),
+                new DimensionPortalHandler.DimensionPortal_ScanItem(data.Region_Zone)
+            );
+
+        public LocationID Location_DimensionPortalWarp_Instance
+            => LocationID.From(data, $"{data.ZoneName} Dimension Portal Warp Location", data => new("A particular dimension portal warp location", data.Location_DimensionPortalWarps));
+
+        public ItemID Item_DimensionPortalWarp_Instance
+            => ItemID.From(
+                data, 
+                $"{data.ZoneName} Dimension Portal Warp", 
+                data => new("A warp triggered by a particular dimension portal", data.Item_DimensionPortalWarps),
+                new DimensionPortalHandler.DimensionPortal_WarpItem(data.Region_Zone)
+            );
+    }
+
 }
 
 [EnableFeatureByDefault, AutomatedFeature]
@@ -52,69 +84,24 @@ public class DimensionPortalHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Regions associated with this feature
-    /// </summary>
-    public static class ThisRegions
-    {
-        /// <summary>
-        /// Region reached after the portal key is inserted
-        /// </summary>
-        public static string KeyInsertedRegion(Zone.Data data) 
-            => $"{data.ZoneName} Dimension Portal Key Inserted";
-        
-        /// <summary>
-        /// Region reached after the portal scan is completed
-        /// </summary>
-        public static string ScanCompletedRegion(Zone.Data data)
-            => $"{data.ZoneName} Dimension Portal Scan Completed";
-    }
-
-    /// <summary>
-    /// Location containing the scan for the dimension portal for a particular zone
-    /// </summary>
-    public static class DimensionPortal_ScanLocation
-    {
-        public static TagResolver MakeTag(Zone.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Dimension Portal Scan Location", "A location checked by startinga a dimension portal scan", gd.Tag_DimensionPortalScanLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    /// <summary>
     /// Item which represents / triggers the dimension portal scan
     /// </summary>
-    public class DimensionPortal_ScanItem : Item
+    public class DimensionPortal_ScanItem : TerminalItem
     {
-        public DimensionPortal_ScanItem(Zone.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public DimensionPortal_ScanItem(RegionID zone)
+            : base(new ItemData() { IsProgression = true })
         {
-            ZoneData = data;
+            ZoneRegion = zone;
         }
 
-        public static TagResolver MakeTag(Zone.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Dimension Portal Scan", "A scan used by a dimension portal", gd.Tag_DimensionPortalScanItems));
+        public RegionID ZoneRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public override RegionID TargetRegion => ZoneRegion;
 
-        public Zone.Data ZoneData;
-
-        public override Expedition.Data? RequiredExpedition => ZoneData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
-            if (ZoneData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ZoneData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
-        {
-            LG_Zone? zone = ZoneData.GetLG_Zone();
+            Zone.Data data = new(stateTracker.GameData, ZoneRegion);
+            LG_Zone? zone = data.GetLG_Zone();
             LG_DimensionPortalRoom? portalRoom = null;
             foreach (LG_Area area in zone?.m_areas.Iter() ?? Enumerable.Empty<LG_Area>())
             {
@@ -139,58 +126,31 @@ public class DimensionPortalHandler : ArchipelagoFeature
                 else
                 {
                     terminal.AddLine($"<#F00>Failed to find dimension portal! Item returned to terminal.</color>");
-                    stateTracker.AddItemToTerminal(this);
+                    stateTracker.AddItemToTerminal(itemId);
                 }
             };
         }
     }
 
     /// <summary>
-    /// Location containing a warp for a dimension portal
-    /// </summary>
-    public static class DimensionPortal_WarpLocation
-    {
-        public static TagResolver MakeTag(Zone.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Dimension Portal Warp Location", "A location checked by triggering a particular dimension portal's warp", gd.Tag_DimensionPortalWarpLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    /// <summary>
     /// Item representing a warp by a DimensionPortal to a particular zone
     /// </summary>
-    public class DimensionPortal_WarpItem : Item
+    public class DimensionPortal_WarpItem : TerminalItem
     {
-        public DimensionPortal_WarpItem(Zone.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public DimensionPortal_WarpItem(RegionID zone)
+            : base(new ItemData() { IsProgression = true })
         {
-            ZoneData = data;
+            ZoneRegion = zone;
         }
 
-        public static TagResolver MakeTag(Zone.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ZoneName} Dimension Portal Warp", "A warp triggerd by a particular dimension portal in the zone", gd.Tag_DimensionPortalWarpItems));
+        public RegionID ZoneRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public override RegionID TargetRegion => ZoneRegion;
 
-        public Zone.Data ZoneData;
-
-        public override Expedition.Data? RequiredExpedition => ZoneData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
-            if (ZoneData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ZoneData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
-        {
-            LG_Zone? zone = ZoneData.GetLG_Zone();
+            Zone.Data data = new(stateTracker.GameData, ZoneRegion);
+            LG_Zone? zone = data.GetLG_Zone();
             LG_DimensionPortalRoom? portalRoom = null;
             foreach (LG_Area area in zone?.m_areas.Iter() ?? Enumerable.Empty<LG_Area>())
             {
@@ -210,42 +170,16 @@ public class DimensionPortalHandler : ArchipelagoFeature
                 {
                     terminal.AddLine($"Initiating Dimension Warp via Dimension Portal. Goodbye!");
                     portal._Setup_b__61_0(); // This is the lambda normally supplied to the chained puzzle instance
+                    stateTracker.AddItemToTerminal(itemId);
                 }
                 else
                 {
                     terminal.AddLine($"<#F00>Failed to find dimension portal! Item returned to terminal.</color>");
-                    stateTracker.AddItemToTerminal(this);
+                    stateTracker.AddItemToTerminal(itemId);
                 }
             };
         }
     }
-
-    /// <summary>
-    /// Get a dimension portal scan item
-    /// </summary>
-    /// <param name="data">The zone with the dimension portal which contains the scan</param>
-    public static KeyedItem GetDimensionPortalScanItem(Zone.Data data)
-    {
-        if (data.TryLookupItem(DimensionPortal_ScanItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new DimensionPortal_ScanItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
-    /// <summary>
-    /// Get a warp item for a particular zone
-    /// </summary>
-    /// <param name="data">The zone of the dimension portal which triggers the warp</param>
-    public static KeyedItem GetDimensionPortalWarpItem(Zone.Data data)
-    {
-        if (data.TryLookupItem(DimensionPortal_WarpItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new DimensionPortal_WarpItem(data);
-        return new(data.AddItem(newItem), newItem);
-    }
-
 
     // Warps between dimensions triggered by the portal room
     [Zone.Callback]
@@ -269,47 +203,46 @@ public class DimensionPortalHandler : ArchipelagoFeature
             FeatureLogger.Warning($"{data.ZoneName}: Using default portal location for presumed DimensionPortal");
 
         // Putting in the key and starting the scan
-        RegionID keyInsertedRegion = data.LookupOrCreateRegion(ThisRegions.KeyInsertedRegion(data));
+        RegionID keyInsertedRegion = data.Region_PortalKeyInserted;
         data.AddPath(new Path()
         {
-            StartingRegion = data.LookupOrCreateRegion(data.ZoneName),
+            StartingRegion = data.Region_Zone,
             EndingRegion = keyInsertedRegion,
-            ReqItem = BigPickupHandler.GetBigPickupItem(data, BigPickupHandler.MatterWaveProjectorID).Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.ItemConsumed, data.Item_BigPickup_MWP),
             ReqCount = 1u
         });
 
-
-        KeyedItem scanItem = GetDimensionPortalScanItem(data);
-        data.AddLocation(
-            DimensionPortal_ScanLocation.MakeTag(data),
+        ItemID scanItem = data.Item_DimensionPortalScan_Instance;
+        data.Locations.CreateValue(
+            data.Location_DimensionPortalScan_Instance,
             keyInsertedRegion,
-            DimensionPortal_ScanLocation.MakeRandData(),
-            scanItem.ID
+            new LocationData(),
+            scanItem
         );
 
         // Completing the scan and warping
-        RegionID scanCompletedRegion = data.LookupOrCreateRegion(ThisRegions.ScanCompletedRegion(data));
+        RegionID scanCompletedRegion = data.Region_PortalScanCompleted;
         data.AddPath(new Path()
         {
             StartingRegion = keyInsertedRegion,
             EndingRegion = scanCompletedRegion,
-            ReqItem = scanItem.Item.PathReqs,
+            ReqItem = new(Path.RequiredItem.eType.Item, scanItem),
             ReqCount = 1u,
         });
 
-        KeyedItem warpItem = GetDimensionPortalWarpItem(data);
-        data.AddLocation(
-            DimensionPortal_WarpLocation.MakeTag(data),
+        ItemID warpItem = data.Item_DimensionPortalWarp_Instance;
+        data.Locations.CreateValue(
+            data.Location_DimensionPortalWarp_Instance,
             scanCompletedRegion,
-            DimensionPortal_WarpLocation.MakeRandData(),
-            warpItem.ID
+            new LocationData(),
+            warpItem
         );
 
         data.AddPath(new Path()
         {
             StartingRegion = scanCompletedRegion,
-            EndingRegion = data.LookupOrCreateRegion(targetZone.ZoneName),
-            ReqItem = warpItem.Item.PathReqs,
+            EndingRegion = targetZone.Region_Zone,
+            ReqItem = new(Path.RequiredItem.eType.ItemConsumed, warpItem),
             ReqCount = 1u,
         });
     }
@@ -319,17 +252,10 @@ public class DimensionPortalHandler : ArchipelagoFeature
     {
         public static bool Prefix(LG_DimensionPortal __instance)
         {
-            Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
-            if (data.TryLookupLocation(DimensionPortal_ScanLocation.MakeTag(data), out var loc))
-            {
-                if (StateTracker.Get().NotifyFoundLocation(loc.ID, null).RandData.IsTreatedAsRandom)
-                    return false;
-            }
-            else
-            {
-                FeatureLogger.Error("Failed to check dimension portal scan location!");
-            }
-            return true;
+            Zone.Data data = Zone.Data.GetFromZone(__instance.SpawnNode.m_zone);
+            LocationID id = data.Location_DimensionPortalScan_Instance;
+            Location loc = StateTracker.Get().NotifyFoundLocation(id, null);
+            return !loc.RandData.IsTreatedAsRandom;
         }
     }
 
@@ -341,17 +267,14 @@ public class DimensionPortalHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_DimensionPortal __instance)
         {
-            Zone.Data data = Zone.Data.FromZone(__instance.SpawnNode.m_zone);
-            if (data.TryLookupLocation(DimensionPortal_WarpLocation.MakeTag(data), out var loc))
+            Zone.Data data = Zone.Data.GetFromZone(__instance.SpawnNode.m_zone);
+            LocationID id = data.Location_DimensionPortalWarp_Instance;
+            Location loc = data.Locations.LookUpValueChecked(id);
+            if (loc.RandData.IsTreatedAsRandom)
             {
-                if (loc.Location.RandData.IsTreatedAsRandom)
-                {
-                    var notifyFoundLocation = () => { StateTracker.Get().NotifyFoundLocation(loc.ID, null); };
-                    __instance.m_portalChainPuzzleInstance.OnPuzzleSolved = new Il2CppAction(notifyFoundLocation);
-                }
+                var notifyFoundLocation = () => { StateTracker.Get().NotifyFoundLocation(id, null); };
+                __instance.m_portalChainPuzzleInstance.OnPuzzleSolved = new Il2CppAction(notifyFoundLocation);
             }
-            else
-                FeatureLogger.Error("Failed to create association for Dimension Portal Warp Location!");
         }
     }
 }

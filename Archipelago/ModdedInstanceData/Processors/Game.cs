@@ -1,330 +1,688 @@
-﻿using ReTFO.Archipelago.Features;
-using ReTFO.Archipelago.FeaturesAPI;
+﻿using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
+using System.Diagnostics.CodeAnalysis;
 
 public static class Game
 {
+
+    /// <summary>
+    /// Separates core game data into a separate scope object
+    /// </summary>
+    private record class ScopeData
+    {
+        public ScopeData(MidManager manager) => Manager = manager;
+        public MidManager Manager { get; init; }
+        public bool IsComplete { get; set; } = false;
+        public string? Name { get; set; } = null;
+        public TagStorage<RegionID, Region> RegionStorage { get; init; } = new();
+        public TagStorage<LocationID, Location> LocationStorage { get; init; } = new();
+        public TagStorage<ItemID, Item> ItemStorage { get; init; } = new();
+        public List<Path> Paths { get; init; } = new();
+        public List<(RegionID, ItemID)> FloatingItems { get; init; } = new();
+        public List<OptionBase> Options { get; init; } = new();
+    }
+
     /// <summary>
     /// Data for specifically for and about this game. The base data class, which is also where we store all our generated data.
     /// </summary>
     public class Data
     {
         /// <summary>
-        /// Simple reference type to accelerate copying Game.Data and decrease each copy's size
+        /// Controlled access to game data's region storage
         /// </summary>
-        private class StorageType
+        public struct RegionStorageView
         {
-            public bool IsComplete { get; set; } = false;
-            public string? Name { get; set; } = null;
-            public MidManager Manager { get; init; } = new();
-            public Dictionary<string, Expedition.Data> ExpeditionLookup { get; init; } = new();
-            public List<Region> RegionList { get; init; } = new();
-            public Dictionary<string, RegionID> RegionLookup { get; init; } = new();
-            public List<ReadOnlyPath> PathList { get; init; } = new();
-            public List<RandomizationTagDefinition> TagDefinitions { get; init; } = new();
-            public Dictionary<string, RandomizationTag> TagLookup { get; init; } = new();
-            public List<Location> LocationList { get; init; } = new();
-            public Dictionary<RandomizationTag, LocationID> LocationLookup { get; init; } = new();
-            public List<Item> ItemList { get; init; } = new();
-            public Dictionary<RandomizationTag, ItemID> ItemLookup { get; init; } = new();
-            public List<ItemID> FloatingItems { get; init; } = new();
-            public List<OptionBase> Options { get; init; } = new();
-        }
+            public RegionStorageView(Game.Data data) => m_data = data;
+            private readonly Data m_data;
 
-        /// <summary>
-        /// Default constructor makes all-new data
-        /// </summary>
-        public Data(MidManager manager) 
-        {
-            Storage = new()
+            /// <summary>
+            /// Check / register this new region
+            /// </summary>
+            private void RegisterRegion(RegionID id, Region region)
             {
-                Manager = manager
-            };
+                if (m_data.IsComplete)
+                    FeatureLogger.Warning($"Late adding / modifying region: {id} \"{LookUpName(id)}\"");
 
-            // The first region must always be the Menu region
-            LookupOrCreateRegion(MenuRegionName);
-            var item = EmptyItem;
+                if (region.ConnectedPaths.Any())
+                    throw new NotSupportedException(
+                        $"{id} \"{LookUpName(id)}\" created with a connected path."
+                        + "\nAt this time, new regions cannot define connected paths."
+                    );
+
+                foreach (LocationID lid in region.ConnectedLocations)
+                {
+                    if (!m_data.LocationStorage.ContainsID(lid))
+                        throw new NotSupportedException(
+                            $"{id} \"{LookUpName(id)}\" created with undefined connected location {lid}."
+                            + "\nThe connected locations in a region must be well-defined at all times."
+                        );
+
+                    Location? loc = m_data.LocationStorage.LookUpValue(lid);
+                    if (loc == null)
+                        throw new NotSupportedException(
+                            $"{id} \"{LookUpName(id)}\" created with null connected location {lid}."
+                            + "\nThe connected locations in a region must be non-null."
+                        );
+
+                    loc.AddOwningRegionIDs(id);
+                }
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Count"/>
+            public int Count => m_data.RegionStorage.Count;
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllIDs"/>
+            public IEnumerable<RegionID> GetAllIDs() => m_data.RegionStorage.GetAllIDs();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllEntries"/>
+            public IReadOnlyDictionary<RegionID, TagStorage<RegionID, Region>.TagEntry> GetAllEntries() => m_data.RegionStorage.GetAllEntries();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllValues"/>
+            public IReadOnlyDictionary<RegionID, Region> GetAllValues() => m_data.RegionStorage.GetAllValues();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Create"/>
+            public RegionID Create(string name, TagDefinition<RegionID> definition, Region item = default)
+            {
+                RegionID result = m_data.RegionStorage.Create(name, definition, item);
+                RegisterRegion(result, item);
+                return result;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, TItem})"/>
+            public RegionID LookUpOrCreate(string name, Func<TagDefinition<RegionID>> definitionFactory, Region item = default)
+            {
+                TryLookUpOrCreate(out RegionID id, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, TItem})"/>
+            public bool TryLookUpOrCreate(out RegionID result, string name, Func<TagDefinition<RegionID>> definitionFactory, Region item = default)
+            {
+                if (m_data.RegionStorage.TryLookUpOrCreate(out result, name, definitionFactory, item))
+                {
+                    RegisterRegion(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public RegionID LookUpOrCreate(string name, Func<TagDefinition<RegionID>> definitionFactory, Func<Region> valueFactory)
+            {
+                TryLookUpOrCreate(out RegionID id, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public bool TryLookUpOrCreate(out RegionID result, string name, Func<TagDefinition<RegionID>> definitionFactory, Func<Region> valueFactory)
+            {
+                if (m_data.RegionStorage.TryLookUpOrCreate(out result, name, definitionFactory, valueFactory))
+                {
+                    RegisterRegion(result, m_data.RegionStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public RegionID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<RegionID>> definitionFactory, Region item = default)
+            {
+                TryLookUpOrCreate(out RegionID id, data, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public bool TryLookUpOrCreate<TData>(out RegionID result, TData data, string name, Func<TData, TagDefinition<RegionID>> definitionFactory, Region item = default)
+            {
+                if (m_data.RegionStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, item))
+                {
+                    RegisterRegion(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public RegionID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<RegionID>> definitionFactory, Func<TData, Region> valueFactory) where TData : Game.Data
+            {
+                TryLookUpOrCreate(out RegionID id, data, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(out TID, TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public bool TryLookUpOrCreate<TData>(out RegionID result, TData data, string name, Func<TData, TagDefinition<RegionID>> definitionFactory, Func<TData, Region> valueFactory) where TData : Game.Data
+            {
+                if (m_data.RegionStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, valueFactory))
+                {
+                    RegisterRegion(result, m_data.RegionStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpID"/>
+            public bool TryLookUpID(string name, out RegionID id) => m_data.RegionStorage.TryLookUpID(name, out id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpEntry"/>
+            public TagStorage<RegionID, Region>.TagEntry LookUpEntry(RegionID id) => m_data.RegionStorage.LookUpEntry(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpName"/>
+            public string LookUpName(RegionID id) => m_data.RegionStorage.LookUpName(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpDefinition"/>
+            public TagDefinition<RegionID> LookUpDefinition(RegionID id) => m_data.RegionStorage.LookUpDefinition(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValue"/>
+            public Region LookUpValue(RegionID id) => m_data.RegionStorage.LookUpValue(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValueChecked"/>
+            //public Region LookUpValueChecked(RegionID id) => m_data.LocationStorage.LookUpValueChecked(id);
+
+            /// <summary>
+            /// Set the value stored in a region
+            /// </summary>
+            /// <param name="id">ID of the region to modify</param>
+            /// <param name="newValue">The new value to store</param>
+            public void SetData(RegionID id, object? newValue)
+            {
+                Region region = m_data.RegionStorage.LookUpValue(id);
+                if (region.RegionData != null)
+                    FeatureLogger.Warning("Overwriting region data for region: " + LookUpName(id));
+                m_data.RegionStorage.SetValue(id, new(region) { RegionData = newValue });
+            }
+
+            /// <summary>
+            /// Get the region data stored in a particular region. Throws on fail.
+            /// </summary>
+            /// <typeparam name="T">The expected type of the region data</typeparam>
+            /// <param name="id">The ID of the region to fetch the data from</param>
+            /// <returns>The typed region data.</returns>
+            public T GetData<T>(RegionID id) where T : class
+                => m_data.RegionStorage.LookUpValue(id).GetData<T>();
+
+            /// <summary>
+            /// Helper to extract custom data from a region type-safely.
+            /// If the stored data is null, returns false; if the stored data is non-null but cannot
+            ///  be cast to the requested type, throws; else, returns true and sets the result to the value.
+            /// </summary>
+            public bool GetDataAllowNull<T>(RegionID id, [MaybeNullWhen(false)] out T result) where T : class
+                => LookUpValue(id).GetDataAllowNull(out result);
+
+            /// <summary>
+            /// Try to cast a region's RegionData to the requested type; returns true if 
+            ///  successful, false if the data is null or cannot be cast
+            /// </summary>
+            public bool TryGetData<T>(RegionID id, [NotNullWhen(true)] out T? result) where T : class
+                => LookUpValue(id).TryGetData<T>(out result);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.ContainsID(TID)"/>
+            public bool ContainsID(RegionID id) => m_data.RegionStorage.ContainsID(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
+            public bool IsChild(RegionID child, RegionID parent) => m_data.RegionStorage.IsChild(child, parent);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
+            public bool IsChild(RegionID child, ICollection<RegionID> parents) => m_data.RegionStorage.IsChild(child, parents);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
+            public RegionID[] MakeChain(RegionID id) => m_data.RegionStorage.MakeChain(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllParents"/>
+            public HashSet<RegionID> GetAllParents(IEnumerable<RegionID> ids) => m_data.RegionStorage.GetAllParents(ids);
         }
 
         /// <summary>
-        /// Copy constructor copies an existing data
+        /// Controlled access to game data's location storage
+        /// </summary>
+        public struct LocationStorageView
+        {
+            public LocationStorageView(Game.Data data) => m_data = data;
+            private readonly Data m_data;
+
+            /// <summary>
+            /// Check / register this new location
+            /// </summary>
+            private void RegisterLocation(LocationID id, Location? location)
+            {
+                if (m_data.IsComplete)
+                    FeatureLogger.Warning($"Late adding / modifying location: {id} \"{LookUpName(id)}\"");
+
+                if (location == null) return;
+
+                foreach (RegionID rid in location.OwningRegionIDs)
+                {
+                    if (!m_data.RegionStorage.ContainsID(rid))
+                        throw new NotSupportedException(
+                            $"{id} \"{LookUpName(id)}\" created with undefined owning region {rid}."
+                            + "The owning regions in a location must be well-defined at all times."
+                        );
+
+                    m_data.RegionStorage.SetValue(
+                        rid, 
+                        m_data.RegionStorage.LookUpValue(rid).WithAdded(id)
+                    );
+                }
+
+                // Normally, I'd check ItemID here.
+                // However, there is no viable control on ItemID after this point,
+                //  so such a check would be kinda useless.
+                // We will simply allow ItemID to be non-well-defined until I figure
+                //  out a better pattern which lets me secure it
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Count"/>
+            public int Count => m_data.LocationStorage.Count;
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllIDs"/>
+            public IEnumerable<LocationID> GetAllIDs() => m_data.LocationStorage.GetAllIDs();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllEntries"/>
+            public IReadOnlyDictionary<LocationID, TagStorage<LocationID, Location>.TagEntry> GetAllEntries() => m_data.LocationStorage.GetAllEntries();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllValues"/>
+            public IReadOnlyDictionary<LocationID, Location?> GetAllValues() => m_data.LocationStorage.GetAllValues()!;
+
+            /// <inheritdoc cref="TagStorageExtensions.GetAllValuesNonNull"/>
+            public IEnumerable<KeyValuePair<LocationID, Location>> GetAllValuesNonNull() => m_data.LocationStorage.GetAllValuesNonNull();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Create"/>
+            public LocationID Create(string name, TagDefinition<LocationID> definition, Location? item = null)
+            {
+                LocationID result = m_data.LocationStorage.Create(name, definition, item);
+                RegisterLocation(result, item);
+                return result;
+            }
+
+            /// <summary>
+            /// Shortcut to create a new location
+            /// </summary>
+            /// <param name="name">The name of the location</param>
+            /// <param name="definition">Tag definition for the location</param>
+            /// <param name="owningRegions">The location's owning region</param>
+            /// <param name="randData">The location's location data</param>
+            /// <param name="itemId">The item held by the location</param>
+            /// <returns>The created location ID</returns>
+            public LocationID Create(string name, TagDefinition<LocationID> definition, RegionList owningRegions, LocationData randData, ItemID itemId = new())
+                => Create(name, definition, new(owningRegions, randData, itemId));
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, TItem})"/>
+            public LocationID LookUpOrCreate(string name, Func<TagDefinition<LocationID>> definitionFactory, Location? item = null)
+            {
+                TryLookUpOrCreate(out LocationID id, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, TItem})"/>
+            public bool TryLookUpOrCreate(out LocationID result, string name, Func<TagDefinition<LocationID>> definitionFactory, Location? item = null)
+            {
+                if (m_data.LocationStorage.TryLookUpOrCreate(out result, name, definitionFactory, item))
+                {
+                    RegisterLocation(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public LocationID LookUpOrCreate(string name, Func<TagDefinition<LocationID>> definitionFactory, Func<Location> valueFactory)
+            {
+                TryLookUpOrCreate(out LocationID id, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public bool TryLookUpOrCreate(out LocationID result, string name, Func<TagDefinition<LocationID>> definitionFactory, Func<Location> valueFactory)
+            {
+                if (m_data.LocationStorage.TryLookUpOrCreate(out result, name, definitionFactory, valueFactory))
+                {
+                    RegisterLocation(result, m_data.LocationStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public LocationID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, Location? item = null)
+            {
+                TryLookUpOrCreate(out LocationID id, data, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public bool TryLookUpOrCreate<TData>(out LocationID result, TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, Location? item = null)
+            {
+                if (m_data.LocationStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, item))
+                {
+                    RegisterLocation(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public LocationID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, Func<TData, Location> valueFactory) where TData : Game.Data
+            {
+                TryLookUpOrCreate(out LocationID id, data, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(out TID, TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public bool TryLookUpOrCreate<TData>(out LocationID result, TData data, string name, Func<TData, TagDefinition<LocationID>> definitionFactory, Func<TData, Location> valueFactory) where TData : Game.Data
+            {
+                if (m_data.LocationStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, valueFactory))
+                {
+                    RegisterLocation(result, m_data.LocationStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpID"/>
+            public bool TryLookUpID(string name, out LocationID id) => m_data.LocationStorage.TryLookUpID(name, out id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpEntry"/>
+            public TagStorage<LocationID, Location>.TagEntry LookUpEntry(LocationID id) => m_data.LocationStorage.LookUpEntry(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpName"/>
+            public string LookUpName(LocationID id) => m_data.LocationStorage.LookUpName(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpDefinition"/>
+            public TagDefinition<LocationID> LookUpDefinition(LocationID id) => m_data.LocationStorage.LookUpDefinition(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValue"/>
+            public Location? LookUpValue(LocationID id) => m_data.LocationStorage.LookUpValue(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValueChecked"/>
+            public Location LookUpValueChecked(LocationID id) => m_data.LocationStorage.LookUpValueChecked(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.SetValue"/>
+            public void SetValue(LocationID id, Location item)
+            {
+                if (m_data.LocationStorage.LookUpValue(id) != null)
+                    throw new InvalidOperationException($"Cannot overwrite location; currently not supported! Location name: {LookUpName(id)}");
+                if (item == null)
+                    throw new NullReferenceException($"Cannot overwrite location with null value; currently not supported! Location name: {LookUpName(id)}");
+
+                m_data.LocationStorage.SetValue(id, item);
+                RegisterLocation(id, item);
+            }
+
+            /// <summary>
+            /// Create a location value for the provided ID. Throws if it already has a value.
+            /// </summary>
+            /// <param name="id">ID of the location to create a value for</param>
+            /// <param name="owningRegions">List of regions the location is in</param>
+            /// <param name="randData">Location data for the new location</param>
+            /// <param name="item">The item stored in the location, if any</param>
+            public void CreateValue(LocationID id, RegionList owningRegions, LocationData randData, ItemID item = new())
+                => SetValue(id, new Location(owningRegions, randData, item));
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.ContainsID(TID)"/>
+            public bool ContainsID(LocationID id) => m_data.LocationStorage.ContainsID(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
+            public bool IsChild(LocationID child, LocationID parent) => m_data.LocationStorage.IsChild(child, parent);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
+            public bool IsChild(LocationID child, ICollection<LocationID> parents) => m_data.LocationStorage.IsChild(child, parents);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
+            public LocationID[] MakeChain(LocationID id) => m_data.LocationStorage.MakeChain(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllParents"/>
+            public HashSet<LocationID> GetAllParents(IEnumerable<LocationID> ids) => m_data.LocationStorage.GetAllParents(ids);
+        }
+
+        /// <summary>
+        /// Controlled access to game data's item storage
+        /// </summary>
+        public struct ItemStorageView
+        {
+            public ItemStorageView(Game.Data data) => m_data = data;
+            private readonly Data m_data;
+
+            /// <summary>
+            /// Check / register this new item
+            /// </summary>
+            private void RegisterItem(ItemID id, Item? item)
+            {
+                if (m_data.IsComplete)
+                    FeatureLogger.Warning($"Late adding / modifying item: {id} \"{LookUpName(id)}\"");
+
+                if (item == null) return;
+                // There isn't really anything to do, for now
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Count"/>
+            public int Count => m_data.ItemStorage.Count;
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllIDs"/>
+            public IEnumerable<ItemID> GetAllIDs() => m_data.ItemStorage.GetAllIDs();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllEntries"/>
+            public IReadOnlyDictionary<ItemID, TagStorage<ItemID, Item>.TagEntry> GetAllEntries() => m_data.ItemStorage.GetAllEntries();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllValues"/>
+            public IReadOnlyDictionary<ItemID, Item?> GetAllValues() => m_data.ItemStorage.GetAllValues()!;
+
+            /// <inheritdoc cref="TagStorageExtensions.GetAllValuesNonNull"/>
+            public IEnumerable<KeyValuePair<ItemID, Item>> GetAllValuesNonNull() => m_data.ItemStorage.GetAllValuesNonNull();
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.Create"/>
+            public ItemID Create(string name, TagDefinition<ItemID> definition, Item? item = null)
+            {
+                ItemID result = m_data.ItemStorage.Create(name, definition, item);
+                RegisterItem(result, item);
+                return result;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, TItem})"/>
+            public ItemID LookUpOrCreate(string name, Func<TagDefinition<ItemID>> definitionFactory, Item? item = null)
+            {
+                TryLookUpOrCreate(out ItemID id, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, TItem})"/>
+            public bool TryLookUpOrCreate(out ItemID result, string name, Func<TagDefinition<ItemID>> definitionFactory, Item? item = null)
+            {
+                if (m_data.ItemStorage.TryLookUpOrCreate(out result, name, definitionFactory, item))
+                {
+                    RegisterItem(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate(string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public ItemID LookUpOrCreate(string name, Func<TagDefinition<ItemID>> definitionFactory, Func<Item> valueFactory)
+            {
+                TryLookUpOrCreate(out ItemID id, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate(out TID, string, Func{TagDefinition{TID}}, Func{TItem}})"/>
+            public bool TryLookUpOrCreate(out ItemID result, string name, Func<TagDefinition<ItemID>> definitionFactory, Func<Item> valueFactory)
+            {
+                if (m_data.ItemStorage.TryLookUpOrCreate(out result, name, definitionFactory, valueFactory))
+                {
+                    RegisterItem(result, m_data.ItemStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public ItemID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<ItemID>> definitionFactory, Item? item = null)
+            {
+                TryLookUpOrCreate(out ItemID id, data, name, definitionFactory, item);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, TItem)"/>
+            public bool TryLookUpOrCreate<TData>(out ItemID result, TData data, string name, Func<TData, TagDefinition<ItemID>> definitionFactory, Item? item = null)
+            {
+                if (m_data.ItemStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, item))
+                {
+                    RegisterItem(result, item);
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpOrCreate{TData}(TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public ItemID LookUpOrCreate<TData>(TData data, string name, Func<TData, TagDefinition<ItemID>> definitionFactory, Func<TData, Item> valueFactory) where TData : Game.Data
+            {
+                TryLookUpOrCreate(out ItemID id, data, name, definitionFactory, valueFactory);
+                return id;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpOrCreate{TData}(out TID, TData, string, Func{TData, TagDefinition{TID}}, Func{TData, TItem})"/>
+            public bool TryLookUpOrCreate<TData>(out ItemID result, TData data, string name, Func<TData, TagDefinition<ItemID>> definitionFactory, Func<TData, Item> valueFactory) where TData : Game.Data
+            {
+                if (m_data.ItemStorage.TryLookUpOrCreate(out result, data, name, definitionFactory, valueFactory))
+                {
+                    RegisterItem(result, m_data.ItemStorage.LookUpValue(result));
+                    return true;
+                }
+                return false;
+            }
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.TryLookUpID"/>
+            public bool TryLookUpID(string name, out ItemID id) => m_data.ItemStorage.TryLookUpID(name, out id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpEntry"/>
+            public TagStorage<ItemID, Item>.TagEntry LookUpEntry(ItemID id) => m_data.ItemStorage.LookUpEntry(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpName"/>
+            public string LookUpName(ItemID id) => m_data.ItemStorage.LookUpName(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpDefinition"/>
+            public TagDefinition<ItemID> LookUpDefinition(ItemID id) => m_data.ItemStorage.LookUpDefinition(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValue"/>
+            public Item? LookUpValue(ItemID id) => m_data.ItemStorage.LookUpValue(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.LookUpValueChecked"/>
+            public Item LookUpValueChecked(ItemID id) => m_data.ItemStorage.LookUpValueChecked(id)!;
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.SetValue"/>
+            //public void SetValue(ItemID id, Item? item) => m_data.ItemStorage.SetValue(id, item);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.ContainsID(TID)"/>
+            public bool ContainsID(ItemID id) => m_data.ItemStorage.ContainsID(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
+            public bool IsChild(ItemID child, ItemID parent) => m_data.ItemStorage.IsChild(child, parent);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
+            public bool IsChild(ItemID child, ICollection<ItemID> parents) => m_data.ItemStorage.IsChild(child, parents);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
+            public ItemID[] MakeChain(ItemID id) => m_data.ItemStorage.MakeChain(id);
+
+            /// <inheritdoc cref="TagStorage{TID, TItem}.GetAllParents"/>
+            public HashSet<ItemID> GetAllParents(IEnumerable<ItemID> ids) => m_data.ItemStorage.GetAllParents(ids);
+        }
+
+        /// <summary>
+        /// The custom data stored in the region object for this data
+        /// </summary>
+        private readonly ScopeData GameScopeData;
+
+        /// <summary>
+        /// The menu region, which is the origin region
+        /// </summary>
+        public RegionID Region_Menu { get; private init; }
+
+        /// <summary>
+        /// The default filler item. Generally, don't use this
+        /// </summary>
+        public ItemID Item_Empty { get; private init; }
+
+        /// <summary>
+        /// Standard constructor for new data
+        /// </summary>
+        public Data(MidManager manager)
+        {
+            GameScopeData = new(manager);
+            Region_Menu = Regions.Create(
+                "Menu",
+                new("The origin region for GTFO; where the player starts, from which all regions must be reachable", new()),
+                new Region() { RegionData = new WeakReference<ScopeData>(GameScopeData) } // We make the link for consistency's sake, but avoid cyclical referencing
+            );
+            Item_Empty = Items.LookUpOrCreate(
+                "Empty",
+                () => new("An item used to balance randomization during fill.", new()),
+                () => new Item(new() { IsFiller = true })
+            );
+
+        }
+
+        /// <summary>
+        /// Copy constructor
         /// </summary>
         public Data(Data other)
         {
-            Storage = other.Storage;
-        }
-
-        private StorageType Storage { get; init; }
-        public bool IsComplete { get => Storage.IsComplete; set => Storage.IsComplete = value; }
-        public string? Name { get => Storage.Name; set => Storage.Name = value; } // Unique name set AFTER done processing
-        public MidManager Manager => Storage.Manager;
-        private Dictionary<string, Expedition.Data> ExpeditionLookup => Storage.ExpeditionLookup;
-        private List<Region> RegionList => Storage.RegionList;
-        private Dictionary<string, RegionID> RegionLookup => Storage.RegionLookup;
-        private List<ReadOnlyPath> PathList => Storage.PathList;
-        // No dedicated path lookup; use each region's paths list to find relevant paths
-        private List<RandomizationTagDefinition> TagDefinitions => Storage.TagDefinitions;
-        private Dictionary<string, RandomizationTag> TagLookup => Storage.TagLookup;
-        private List<Location> LocationList => Storage.LocationList;
-        private Dictionary<RandomizationTag, LocationID> LocationLookup => Storage.LocationLookup;
-        private List<Item> ItemList => Storage.ItemList;
-        private Dictionary<RandomizationTag, ItemID> ItemLookup => Storage.ItemLookup;
-        private List<ItemID> FloatingItems => Storage.FloatingItems;
-        private List<OptionBase> Options => Storage.Options;
-
-        /// <summary>
-        /// Attempt to register the given expedition data under the provided expedition name.
-        /// </summary>
-        /// <param name="name">The name of the expedition, typically in short form. IE: R1A1</param>
-        /// <param name="data">The data for the expedition.</param>
-        /// <returns>True if successful, false otherwise (the name is already taken)</returns>
-        public bool TryRegisterExpedition(string name, Expedition.Data data)
-        {
-            if (IsComplete) FeatureLogger.Warning($"Adding late expedition: {name}");
-            return ExpeditionLookup.TryAdd(name, data);
+            GameScopeData = other.GameScopeData;
+            Region_Menu = other.Region_Menu;
+            Item_Empty = other.Item_Empty;
         }
 
         /// <summary>
-        /// Get all the expeditions registered to this game data
+        /// If true, data generation is completed for this game
         /// </summary>
-        public IReadOnlyDictionary<string, Expedition.Data> GetAllExpeditions()
-            => ExpeditionLookup;
+        public bool IsComplete { get => GameScopeData.IsComplete; set => GameScopeData.IsComplete = value; }
+        
+        /// <summary>
+        /// The name of the game, uniuqely identifying the item, location, and regionset available
+        /// </summary>
+        public string? Name { get => GameScopeData.Name; set => GameScopeData.Name = value; } // Unique name set AFTER done processing
 
         /// <summary>
-        /// Attempt to look up expedition data by name
+        /// The manager used to generate this data
         /// </summary>
-        /// <param name="name">The name of the expedition</param>
-        /// <param name="data">The data for the expedition</param>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool TryLookupExpedition(string name, [NotNullWhen(true)] out Expedition.Data? data)
-            => ExpeditionLookup.TryGetValue(name, out data);
+        public MidManager Manager => GameScopeData.Manager;
 
         /// <summary>
-        /// Attempts to retrieve a tag by name and parent. On fail, instead creates a new tag.
+        /// Regions stored by this game data
         /// </summary>
-        /// <param name="tagName">The tag's name</param>
-        /// <param name="tagDesc">The tag's description</param>
-        /// <param name="parentResolver">A function which can get the parent of the tag</param>
-        /// <returns>The desired tag</returns>
-        public RandomizationTag LookupOrCreateTag(string tagName, string tagDesc, Func<Game.Data, RandomizationTag>? parentResolver)
-        {
-            if (!TagLookup.TryGetValue(tagName, out RandomizationTag result))
-            {   // Invoke parent resolver first, since it'll likely add new tags and change this tag's index
-                if (IsComplete) FeatureLogger.Warning($"Adding late tag: {tagName}");
-                RandomizationTag parent = parentResolver?.Invoke(this) ?? new();
-                result = new() { AsIndex = TagDefinitions.Count };
-                TagDefinitions.Add(new(tagName, tagDesc, parent));
-                TagLookup.Add(tagName, result);
-            }
-            return result;
-        }
+        public RegionStorageView Regions => new(this);
+        private TagStorage<RegionID, Region> RegionStorage => GameScopeData.RegionStorage;
 
         /// <summary>
-        /// Gets a collection of all tags and their definitions
+        /// Locations stored by this game data
         /// </summary>
-        public IReadOnlyDictionary<RandomizationTag, RandomizationTagDefinition> GetAllTags()
-            => new ReadOnlyListDict<RandomizationTag, RandomizationTagDefinition>(TagDefinitions);
+        public LocationStorageView Locations => new(this);
+        public TagStorage<LocationID, Location> LocationStorage => GameScopeData.LocationStorage;
 
         /// <summary>
-        /// Attempt to look up a randomization tag with the provided name and parent
+        /// Items stored by this game data
         /// </summary>
-        /// <param name="tagName">The name of the tag</param>
-        /// <param name="existingTag">The found tag, if successful; a null tag otherwise</param>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool TryLookupTag(string tagName, out RandomizationTag existingTag)
-            => TagLookup.TryGetValue(tagName, out existingTag);
+        public ItemStorageView Items => new(this);
+        public TagStorage<ItemID, Item> ItemStorage => GameScopeData.ItemStorage;
 
         /// <summary>
-        /// Look up the definition for a tag
+        /// Paths stored by this game data
         /// </summary>
-        /// <param name="tag">The tag to look up</param>
-        /// <returns>The definitino of the tag</returns>
-        public RandomizationTagDefinition LookupTagDef(RandomizationTag tag)
-            => TagDefinitions[tag.AsIndex];
-
-        #region TagMatching
-        /// <summary>
-        /// Test if a tag matches against another tag
-        /// </summary>
-        /// <param name="parent">The parent tag to match against</param>
-        /// <param name="child">The child tag to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool TagMatches(RandomizationTag parent, RandomizationTag child)
-        {
-            // Null tags are invalid for this test
-            if (parent.IsNull) throw new ArgumentNullException(nameof(parent));
-            if (child.IsNull) throw new ArgumentNullException(nameof(child));
-
-            do
-            {
-                if (parent.Equals(child)) return true;
-                child = TagDefinitions[child.AsIndex].Parent;
-            } while (!child.IsNull);
-            return false;
-        }
+        private List<Path> Paths => GameScopeData.Paths;
 
         /// <summary>
-        /// Test if one tag matches against any location tag
+        /// Floating items stored by this game data, currently as tuples along with their regions
         /// </summary>
-        /// <param name="parent">The parent tag to match against</param>
-        /// <param name="loc">The location to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool TagMatches(RandomizationTag parent, Location loc)
-            => TagMatches(parent, loc.NameTag)
-            || (!loc.Tag2.IsNull && TagMatches(parent, loc.Tag2))
-            || (!loc.Tag3.IsNull && TagMatches(parent, loc.Tag3));
+        private List<(RegionID, ItemID)> FloatingItems => GameScopeData.FloatingItems;
 
         /// <summary>
-        /// Test if one tag matches against any item tag
+        /// Options stored by this game data
         /// </summary>
-        /// <param name="parent">The parent tag to match against</param>
-        /// <param name="item">The item to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool TagMatches(RandomizationTag parent, Item item)
-            => TagMatches(parent, item.NameTag)
-            || (!item.Tag2.IsNull && TagMatches(parent, item.Tag2))
-            || (!item.Tag3.IsNull && TagMatches(parent, item.Tag3));
-
-        /// <summary>
-        /// Test if a tag matches against a collection of tags. Ideally, the collection is a HashSet or similar
-        /// </summary>
-        /// <param name="parents">The parent tag to match against</param>
-        /// <param name="child">The child tag to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool TagMatches(ICollection<RandomizationTag> parents, RandomizationTag child)
-        {
-            if (child.IsNull) throw new ArgumentNullException(nameof(child));
-            if (parents.Count == 0) return false;
-            if (parents.Count == 1) return TagMatches(parents.First(), child);
-
-            do
-            {
-                if (parents.Contains(child)) return true;
-                child = TagDefinitions[child.AsIndex].Parent;
-            } while (!child.IsNull);
-            return false;
-        }
-
-        /// <summary>
-        /// Test if any tag in a location matches against a collection of tags.
-        /// </summary>
-        /// <param name="parents">The parent tag to match against</param>
-        /// <param name="loc">The location to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool AnyTagMatches(ICollection<RandomizationTag> parents, Location loc)
-        {
-            if (parents.Count == 0) return false;
-            if (parents.Count == 1) return TagMatches(parents.First(), loc);
-            return TagMatches(parents, loc.NameTag)
-                || (!loc.Tag2.IsNull && TagMatches(parents, loc.Tag2))
-                || (!loc.Tag3.IsNull && TagMatches(parents, loc.Tag3));
-        }
-
-        /// <summary>
-        /// Test if all tags in the location match against a collection of tags
-        /// </summary>
-        /// <param name="parents">The parent tag to match against</param>
-        /// <param name="loc">The location to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool AllTagsMatch(ICollection<RandomizationTag> parents, Location loc)
-        {
-            if (parents.Count == 0) return false;
-            return TagMatches(parents, loc.NameTag)
-                && (loc.Tag2.IsNull || TagMatches(parents, loc.Tag2))
-                && (loc.Tag3.IsNull || TagMatches(parents, loc.Tag3));
-        }
-
-        /// <summary>
-        /// Test if any tag in an item matches against a collection of tags.
-        /// </summary>
-        /// <param name="parents">The parent tag to match against</param>
-        /// <param name="item">The item to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool AnyTagMatches(ICollection<RandomizationTag> parents, Item item)
-        {
-            if (parents.Count == 0) return false;
-            if (parents.Count == 1) return TagMatches(parents.First(), item);
-            return TagMatches(parents, item.NameTag)
-                || (!item.Tag2.IsNull && TagMatches(parents, item.Tag2))
-                || (!item.Tag3.IsNull && TagMatches(parents, item.Tag3));
-        }
-
-        /// <summary>
-        /// Test if all tags in the item match against a collection of tags
-        /// </summary>
-        /// <param name="parents">The parent tag to match against</param>
-        /// <param name="item">The item to test</param>
-        /// <returns>True if the tags match, false otherwise</returns>
-        public bool AllTagsMatch(ICollection<RandomizationTag> parents, Item item)
-        {
-            if (parents.Count == 0) return false;
-            return TagMatches(parents, item.NameTag)
-                && (item.Tag2.IsNull || TagMatches(parents, item.Tag2))
-                && (item.Tag3.IsNull || TagMatches(parents, item.Tag3));
-        }
-        #endregion
-
-        /// <summary>
-        /// Lookup a RegionID; create the region if necessary
-        /// </summary>
-        /// <param name="regionName">The name of the region to get an ID of</param>
-        /// <returns>The ID of the region</returns>
-        public RegionID LookupOrCreateRegion(string regionName)
-        {
-            if (!RegionLookup.TryGetValue(regionName, out RegionID region))
-            {
-                if (IsComplete) FeatureLogger.Warning($"Adding late region: {regionName}");
-                region = new RegionID() { AsIndex = RegionList.Count };
-                RegionList.Add(new Region(regionName));
-                RegionLookup.Add(regionName, region);
-            }
-            return region;
-        }
-
-        /// <summary>
-        /// Get all registered regions
-        /// </summary>
-        public IReadOnlyDictionary<RegionID, Region> GetAllRegions()
-            => new ReadOnlyListDict<RegionID, Region>(RegionList);
-
-        /// <summary>
-        /// Try to look up a region by name
-        /// </summary>
-        /// <param name="regionName">The name of the region to look up</param>
-        /// <param name="region">The found region, or null if no region is found</param>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool TryLookupRegion(string regionName, out KeyedRegion region)
-        {
-            if (RegionLookup.TryGetValue(regionName, out RegionID regionID))
-            {
-                region = new(regionID, LookupRegion(regionID));
-                return true;
-            }
-            else
-            {
-                region = new();
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Get a region by ID
-        /// </summary>
-        /// <param name="id">The ID of the region</param>
-        /// <returns>The region</returns>
-        public ReadOnlyRegion LookupRegion(RegionID id)
-            => LookupRegionProtected(id);
-
-        public Region LookupRegionProtected(RegionID id)
-            => RegionList[id.AsIndex];
+        private List<OptionBase> Options => GameScopeData.Options;
 
         /// <summary>
         /// Set a particular region's reachable status
@@ -332,27 +690,20 @@ public static class Game
         /// <param name="id">ID of the region</param>
         /// <param name="isReachable">The new value for the region's reachable value</param>
         public void SetRegionReachable(RegionID id, bool isReachable)
-        {
-            int index = id.AsIndex;
-            if (index < 0 || index >= RegionList.Count)
-                throw new ArgumentException("Attempted to set reachability for a region which does not exist");
-
-            Span<Region> regions = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(RegionList);
-            regions[id.AsIndex].Reachable = isReachable;
-        }
+            => RegionStorage.SetValue(id, Regions.LookUpValue(id).WithReachable(isReachable));
 
         /// <summary>
         /// Add a new path.
         /// </summary>
         /// <param name="path">The path to add</param>
         /// <returns>The ID of the newly-added path</returns>
-        public PathID AddPath(ReadOnlyPath path)
+        public PathID AddPath(Path path)
         {
             if (IsComplete)
             {
                 FeatureLogger.Warning($"Adding late path: {path.Name ?? "NO NAME"}");
-                FeatureLogger.Warning($"                  From {LookupRegion(path.StartingRegion).Name}");
-                FeatureLogger.Warning($"                    To {LookupRegion(path.EndingRegion).Name}");
+                FeatureLogger.Warning($"            From: {Regions.LookUpName(path.StartingRegion)}");
+                FeatureLogger.Warning($"              To: {Regions.LookUpName(path.EndingRegion)}");
             }
 
             if (path.ReqItem.Type != Path.RequiredItem.eType.None && path.ReqCount <= 0)
@@ -364,17 +715,17 @@ public static class Game
             if (path.EndingRegion.IsNull)
                 throw new ArgumentNullException("Cannot add path; ending region is null!");
 
-            PathID id = new() { AsIndex = PathList.Count };
-            PathList.Add(path);
-            LookupRegionProtected(path.StartingRegion).AddPath(id);
+            PathID id = new() { AsIndex = Paths.Count };
+            Paths.Add(path);
+            RegionStorage.SetValue(path.StartingRegion, Regions.LookUpValue(path.StartingRegion).WithAdded(id));
             return id;
         }
 
         /// <summary>
         /// Gets all paths currently registered
         /// </summary>
-        public IReadOnlyDictionary<PathID, ReadOnlyPath> GetAllPaths()
-            => new ReadOnlyListDict<PathID, ReadOnlyPath>(PathList);
+        public IReadOnlyDictionary<PathID, Path> GetAllPaths()
+            => new ReadOnlyListDict<PathID, Path>(Paths);
 
         /// <summary>
         /// Try to look up a path based on its start and end regions. 
@@ -386,11 +737,11 @@ public static class Game
         /// <remarks>
         /// Multiple paths can exist between any given start and end region. This outputs the first matching path.
         /// </remarks>
-        public bool TryLookupPath(RegionID start, RegionID end, out ReadOnlyPath path)
+        public bool TryLookUpPath(RegionID start, RegionID end, out Path path)
         {
-            ReadOnlyRegion region = LookupRegion(start);
+            Region region = Regions.LookUpValue(start);
             path = region.ConnectedPaths
-                .Select(LookupPath)
+                .Select(LookUpPath)
                 .FirstOrDefault(p => p.EndingRegion.Equals(end));
             return !path.IsNull;
         }
@@ -400,7 +751,7 @@ public static class Game
         /// </summary>
         /// <param name="id">The ID of the path</param>
         /// <returns>The found path object</returns>
-        public ReadOnlyPath LookupPath(PathID id) => PathList[id.AsIndex];
+        public Path LookUpPath(PathID id) => Paths[id.AsIndex];
 
         /// <summary>
         /// Set the required item count for a particular path
@@ -412,161 +763,26 @@ public static class Game
         /// </remarks>
         public void SetPathReqCount(PathID id, uint newCount)
         {
-            if (IsComplete) FeatureLogger.Warning($"Late path req modification: PathID {id.AsId}");
-            Path newPath = PathList[id.AsIndex].MakeMutable();
-            newPath.ReqCount = newCount;
-            PathList[id.AsIndex] = newPath;
+            if (IsComplete) FeatureLogger.Warning($"Late path req modification: PathID {id.ID}");
+            int index = id.AsIndex;
+            Paths[index] = new(Paths[index]) { ReqCount = newCount };
         }
-
-        /// <summary>
-        /// Shortcut to create a new base Location object and add it
-        /// </summary>
-        /// <param name="nameTag">Name tag for the location</param>
-        /// <param name="regions">Regions the location can be found in</param>
-        /// <param name="randData">Rnadomization data for the location</param>
-        /// <returns>The new location's ID, or a null ID if it failed</returns>
-        public LocationID AddLocation(RandomizationTag nameTag, RegionList regions, LocationData randData)
-            => AddLocation(nameTag, regions, randData, new ItemID());
-
-        /// <inheritdoc cref="AddLocation(RandomizationTag, Model.RegionList, LocationData)"/>
-        /// <param name="item">ID of the item in this location, or a null ID for no item</param>
-        public LocationID AddLocation(RandomizationTag nameTag, RegionList regions, LocationData randData, ItemID item)
-            => AddLocation(new Location(nameTag, regions, randData) { ItemID = item });
-
-        /// <summary>
-        /// Try to add a location.
-        /// </summary>
-        /// <param name="location">The location to add</param>
-        /// <returns>The ID of the newly-added location, or a null ID if the location name is taken</returns>
-        public LocationID AddLocation(Location location)
-        {
-            if (location.NameTag.IsNull)
-                throw new ArgumentNullException("Cannot register an item with a null name tag!");
-
-            if (IsComplete) FeatureLogger.Warning($"Adding late location: {LookupTagDef(location.NameTag).Name}");
-
-            if (LocationLookup.ContainsKey(location.NameTag))
-            {
-                FeatureLogger.Error($"Failed to add new location: {LookupTagDef(location.NameTag).Name}");
-                return new();
-            }
-
-            LocationID id = new() { AsIndex = LocationList.Count };
-            LocationList.Add(location);
-            LocationLookup.Add(location.NameTag, id);
-
-            if (location.OwningRegionIDs.Distinct().Count() != location.OwningRegionIDs.Length)
-                FeatureLogger.Error($"Location is contained in the same region multiple times: {LookupTagDef(location.NameTag).Name}");
-
-            foreach (var regionId in location.OwningRegionIDs)
-                RegionList[regionId.AsIndex].AddLocation(id);
-
-            return id;
-        }
-
-        /// <summary>
-        /// Get all locations currently registered
-        /// </summary>
-        public IReadOnlyDictionary<LocationID, Location> GetAllLocations()
-            => new ReadOnlyListDict<LocationID, Location>(LocationList);
-
-        /// <summary>
-        /// Attempt to lookup a location by NameTag
-        /// </summary>
-        /// <param name="nameTag">The NameTag of the location</param>
-        /// <param name="location">The found location</param>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool TryLookupLocation(RandomizationTag nameTag, out KeyedLocation location)
-        {
-            if (LocationLookup.TryGetValue(nameTag, out LocationID id))
-            {
-                location = new(id, LookupLocation(id));
-                return true;
-            }
-            else
-            {
-                location = new();
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Lookup a location by ID
-        /// </summary>
-        /// <param name="id">The ID of the location to be looked up</param>
-        /// <returns>The found location</returns>
-        /// <remarks>If this Game.Data provided the ID, the location is guaranteed to exist</remarks>
-        public Location LookupLocation(LocationID id) => LocationList[id.AsIndex];
-
-        /// <summary>
-        /// Attempts to register a new item.
-        /// </summary>
-        /// <param name="item">The item to add</param>
-        /// <returns>The ID of the newly-added item</returns>
-        public ItemID AddItem(Item item)
-        {
-            if (item.NameTag.IsNull)
-                throw new ArgumentNullException("Cannot register an item with a null name tag!");
-
-            if (IsComplete) FeatureLogger.Warning($"Adding late item: {LookupTagDef(item.NameTag).Name}");
-
-            if (ItemLookup.ContainsKey(item.NameTag))
-            {
-                string name = TagDefinitions[item.NameTag.AsIndex].Name;
-                throw new ArgumentException($"An item with the NameTag {name} is already registered!");
-            }
-
-            ItemID id = new() { AsIndex = ItemList.Count };
-            ItemList.Add(item);
-            ItemLookup.Add(item.NameTag, id);
-            return id;
-        }
-
-        /// <summary>
-        /// Gets all registered items
-        /// </summary>
-        public IReadOnlyDictionary<ItemID, Item> GetAllItems() => new ReadOnlyListDict<ItemID, Item>(ItemList);
-
-        /// <summary>
-        /// Attempt to lookup an item by name.
-        /// </summary>
-        /// <returns>True if successful, false otherwise</returns>
-        public bool TryLookupItem(RandomizationTag name, out KeyedItem item)
-        {
-            if (ItemLookup.TryGetValue(name, out ItemID id))
-            {
-                item = new(id, LookupItem(id));
-                return true;
-
-            }
-            else
-            {
-                item = new();
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Lookup an item by ID
-        /// </summary>
-        /// <param name="name">The name of the item</param>
-        /// <returns>The item</returns>
-        public Item LookupItem(ItemID id) => ItemList[id.AsIndex];
 
         /// <summary>
         /// Adds an item as a floating item, which can be randomized to any empty location.
+        /// The provided scope indicates which region must be randomized for the item to be applicable.
         /// </summary>
-        /// <param name="id">The ID of the item to add</param>
-        public void AddFloatingItem(ItemID id)
+        /// <param name="item">The ID of the item to add</param>
+        /// <param name="scope">The ID of the region used to enabled/disable the item, or a null ID if always in scope</param>
+        public void AddFloatingItem(RegionID scope, ItemID item)
         {
-            if (IsComplete) FeatureLogger.Warning($"Adding late floating item: {LookupTagDef(LookupItem(id).NameTag).Name}");
-            FloatingItems.Add(id);
+            FloatingItems.Add((scope, item));
         }
 
         /// <summary>
         /// Get all registered floating item IDs
         /// </summary>
-        public IReadOnlyCollection<ItemID> GetAllFloatingItemIds() => FloatingItems;
+        public IReadOnlyCollection<(RegionID, ItemID)> GetAllFloatingItems() => FloatingItems;
 
         /// <summary>
         /// Register an option component so users can have an easier time customizing their gameplay.
@@ -585,36 +801,6 @@ public static class Game
         /// </summary>
         public IReadOnlyDictionary<OptionID, OptionBase> GetAllOptions()
             => new ReadOnlyListDict<OptionID, OptionBase>(Options);
-
-        /// <summary>
-        /// Name of the very first region in the game.
-        /// </summary>
-        public const string s_menuRegionName = "Menu";
-
-        /// <inheritdoc cref="s_menuRegionName"/>
-        public string MenuRegionName => s_menuRegionName;
-
-        /// <summary>
-        /// The menu region itself
-        /// </summary>
-        public RegionID MenuRegion => LookupOrCreateRegion(MenuRegionName);
-
-        /// <summary>
-        /// The empty item currently used as filler
-        /// </summary>
-        public KeyedItem EmptyItem
-        {
-            get
-            {
-                RandomizationTag tag = LookupOrCreateTag("Empty", "An item used to balance randomization during fill", this.Tag_Never);
-                if (!TryLookupItem(tag, out var item))
-                {
-                    var instance = new Item(tag, new ItemData() { IsFiller = true });
-                    item = new(AddItem(instance), instance);
-                }
-                return item;
-            }
-        }
 
         /// <summary>
         /// Used as input to UnstuffPlacements
@@ -712,20 +898,11 @@ public static class Game
         /// </summary>
         public void CleanUp()
         {
-            ExpeditionLookup.TrimExcess();
-            RegionList.TrimExcess();
-            RegionLookup.TrimExcess();
-            PathList.TrimExcess();
-            TagDefinitions.TrimExcess();
-            TagLookup.TrimExcess();
-            LocationList.TrimExcess();
-            LocationLookup.TrimExcess();
-            ItemList.TrimExcess();
-            ItemLookup.TrimExcess();
+            RegionStorage.TrimExcess();
+            LocationStorage.TrimExcess();
+            ItemStorage.TrimExcess();
+            Paths.TrimExcess();
             FloatingItems.TrimExcess();
-
-            foreach (var region in RegionList)
-                region.CleanUp();
         }
 
     }

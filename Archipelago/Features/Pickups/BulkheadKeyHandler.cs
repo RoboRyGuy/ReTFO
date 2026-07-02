@@ -21,11 +21,51 @@ public static class BulkheadKeyHandler_Tags
 {
     extension (Game.Data gameData)
     {
-        public TagResolver Tag_BulkheadKeyLocations
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Bulkhead Key Locations", "Locations checked by picking up bulkhead keys", gd.Tag_SmallPickupLocations));
+        /// <summary>
+        /// Parent of all bulkhead key locations
+        /// </summary>
+        public LocationID Location_BulkheadKeys
+            => LocationID.From(gameData, "Bulkhead Key Locations", data => new("Locations checked by picking up bulkhead keys", data.Location_SmallPickups));
 
-        public TagResolver Tag_BulkheadKeyItems
-            => new TagResolver(gameData, gd => gd.LookupOrCreateTag("Bulkhead Key Items", "The bulkhead key item itself", gd.Tag_SmallPickupItems));
+        /// <summary>
+        /// Parent of all bulkhead key items
+        /// </summary>
+        public ItemID Item_BulkheadKeys
+            => ItemID.From(gameData, "Bulkhead Key Items", data => new("The bulkhead key item itself", data.Item_SmallPickups));
+    }
+
+    extension (Expedition.Data data)
+    {
+        /// <summary>
+        /// Bulkhead key for a particular expedition
+        /// </summary>
+        public ItemID Item_BulkheadKey_Instance
+            => ItemID.From(
+                data,
+                $"{data.ExpeditionName} Bulkhead Key",
+                data => new("The bulkhead key for a particular expedition", data.Item_BulkheadKeys),
+                new BulkheadKeyHandler.BulkheadKeyItem(data.Region_Expedition)
+            );
+    }
+
+    extension (Layer.Data data)
+    {
+        /// <summary>
+        /// Parent tag of bulkhead key locations in a layer
+        /// </summary>
+        public LocationID Location_BulkheadKey_ByLayer
+            => LocationID.From(data, $"{data.LayerName} Bulkhead Key Locations", data => new("Bulkhead key locations in a particular layer of a particular expedition", data.Location_BulkheadKeys));
+
+        /// <summary>
+        /// A particular bulkhead key spawn location
+        /// </summary>
+        /// <param name="count">1-indexed count of which spawn this is for the layer</param>
+        public LocationID Location_BulkheadKey_Instance(int count)
+            => LocationID.From(
+                data, 
+                $"{data.LayerName} Bulkhead Key Location #{count}", 
+                data => new("A particular bulkhead key spawn location", data.Location_BulkheadKey_ByLayer)
+            );
     }
 }
 
@@ -43,39 +83,24 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Location class representing a bulkhead key spawn
-    /// </summary>
-    private static class BulkheadKeyLocation
-    {
-        public static TagResolver MakeTag(Layer.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.LayerName} Bulkhead Key Spawn #{count}", "A bulkhead key spawn location", gd.Tag_BulkheadKeyLocations));
-
-        public static LocationData MakeRandData() => new LocationData();
-    }
-
-    /// <summary>
     /// Item class representing a bulkhead key for a particular expedition
     /// </summary>
-    private class BulkheadKeyItem : Item
+    public class BulkheadKeyItem : TerminalItem
     {
-        public BulkheadKeyItem(Expedition.Data data)
-            : base(MakeTag(data), MakeRandData())
+        public BulkheadKeyItem(RegionID expedition)
+            : base(new ItemData() { IsProgression = true, IsRandomLike = true })
         {
-            ExpeditionData = data;
+            ExpeditionRegion = expedition;
         }
 
-        public static TagResolver MakeTag(Expedition.Data data)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ExpeditionName} Bulkhead Key Item", "A bulkhead key for a particular expedition", gd.Tag_BulkheadKeyItems));
+        public RegionID ExpeditionRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true, IsRandomLike = true };
+        public override RegionID TargetRegion => ExpeditionRegion;
 
-        public Expedition.Data ExpeditionData { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ExpeditionData;
-
-        // Not sure how to check this at runtime except maybe by name? Not worth it
-        const uint BULKHEAD_KEY_ID = 146u;
-
+        /// <summary>
+        /// Attempt to spawn the bulkhead key item
+        /// </summary>
+        /// <returns></returns>
         private AsyncItemSpawnWrapper SpawnItemAsync()
         {
             AsyncItemSpawnWrapper wrapper = new();
@@ -94,10 +119,10 @@ public class BulkheadKeyHandler : ArchipelagoFeature
             return wrapper;
         }
 
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null)
+        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null, ItemID itemId = new())
         {
             // If the bulkhead key is not randomized, we want to try and give it directly to the player who found it
-            if (ExpeditionData.IsCurrentlyInExpedition())
+            if (CheckExpedition(stateTracker))
             {
                 if (RandData.IsRandomLike && player != null)
                 {
@@ -109,17 +134,11 @@ public class BulkheadKeyHandler : ArchipelagoFeature
                     });
                     return;
                 }
-                stateTracker.AddItemToTerminal(this);
+                stateTracker.AddItemToTerminal(itemId);
             }
         }
 
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (ExpeditionData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId = new())
         {
             // Isolate these so the lambda can capture them
             var wrapper = SpawnItemAsync();
@@ -137,7 +156,7 @@ public class BulkheadKeyHandler : ArchipelagoFeature
                 {
                     if (SNetwork.SNet.IsMaster)
                     {
-                        stateTracker.AddItemToTerminal(this);
+                        stateTracker.AddItemToTerminal(itemId);
                         wrapper.QueueDespawn();
                         FeatureLogger.Error("Failed to spawn key item while spawning bulkhead keycard!");
                         terminal.AddLine("<#F00>Failed to retrieve key! It has been re-added to terminal system.</color>");
@@ -152,18 +171,9 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Get a bulkhead key item for the provided expedition
+    /// ID of a bulkhead key in vanilla
     /// </summary>
-    /// <param name="data">The expedition to get the key for</param>
-    /// <returns>The shared bulkhead key item</returns>
-    public static KeyedItem GetBulkheadKeyItem(Expedition.Data data)
-    {
-        if (data.TryLookupItem(BulkheadKeyItem.MakeTag(data), out var item))
-            return item;
-
-        Item newItem = new BulkheadKeyItem(data);
-        return new KeyedItem(data.AddItem(newItem), newItem);
-    }
+    const uint BULKHEAD_KEY_ID = 146u;
 
     // Add bulkhead keys from layer data
     [Layer.Callback]
@@ -171,19 +181,20 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     {
         if (data.LayerDatas == null) return;
 
-        KeyedItem item = GetBulkheadKeyItem(data);
+        ItemID item = data.Item_BulkheadKey_Instance;
         for (int i = 0; i < data.LayerDatas.BulkheadKeyPlacements.Count; i++)
         {
             // R7C3 Main and R5C1 secondary both have an empty placement (for some reason)
-            if (!data.LayerDatas.BulkheadKeyPlacements[i].Any())
-                continue;
-
-            data.AddLocation(
-                BulkheadKeyLocation.MakeTag(data, i + 1),
-                data.PlacementsToZoneRegions(data.LayerDatas.BulkheadKeyPlacements[i]).Select(info => info.Region).Distinct().ToArray(),
-                BulkheadKeyLocation.MakeRandData(),
-                item.ID
-            );
+            // Skipping them should prevent bad locations from being generated
+            if (data.LayerDatas.BulkheadKeyPlacements[i].Any())
+            {
+                data.Locations.CreateValue(
+                    data.Location_BulkheadKey_Instance(i + 1),
+                    data.PlacementsToZoneRegions(data.LayerDatas.BulkheadKeyPlacements[i]).Select(i => i.Region).ToArray(),
+                    new LocationData(),
+                    item
+                );
+            }
         }
     }
 
@@ -193,15 +204,16 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     [Game.Callback]
     public void AddOptions(Game.Data data)
     {
-        data.AddOption(new OptionWhiteOrBlacklist()
-        {
-            DisplayName = "Bulkhead Key Randomization",
-            Description = "Enables randomization of bulkhead key cards" + OptionWhiteOrBlacklist.DESC_SUFFIX,
-            Category = PickupHelper.PICKUPS_OPTION_CATEGORY,
-            Condition = new(),
-            DefaultValue = 0,
-            Tag = data.Tag_BulkheadKeyItems,
-        });
+        ItemID tag = data.Item_BulkheadKeys;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Bulkhead Key Randomization",
+            description: "Enables randomization of bulkhead key cards." + OptionTagOption.DESC_SUFFIX,
+            category: PickupHelper.PICKUPS_OPTION_CATEGORY,
+            categorySort: Option.MakeSortKey(data, tag),
+            condition: new(),
+            defaultValue: 1,
+            tag: tag
+        ));
     }
 
     /// <summary>
@@ -215,15 +227,13 @@ public class BulkheadKeyHandler : ArchipelagoFeature
             // I kinda have no good option other than to brute force this...
             // Basically: If the placemnet for this item is the same (by reference) as one in the bulkhead keys placement list, it's a bulkhead key
             if (__instance.m_layer.m_buildData.m_layerGameData == null) return;
-            Layer.Data layerData = Layer.Data.FromLayer(__instance.m_layer);
+            Layer.Data layerData = Layer.Data.GetFromLayer(__instance.m_layer);
             for (int i = 0; i < __instance.m_layer.m_buildData.m_layerGameData.BulkheadKeyPlacements.Count; i++)
             {
                 if (__instance.m_layer.m_buildData.m_layerGameData.BulkheadKeyPlacements[i].Any(p => p.Pointer == placementData.Pointer))
                 {
-                    if (layerData.TryLookupLocation(BulkheadKeyLocation.MakeTag(layerData, i + 1), out var loc))
-                        PickupHelper.AssociateItem(keyItem.keyPickupCore, loc.ID);
-                    else
-                        FeatureLogger.Error($"Failed to create association for bulkhead key location in layer: {layerData.LayerName}");
+                    LocationID loc = layerData.Location_BulkheadKey_Instance(i + 1);
+                    PickupHelper.AssociateItem(keyItem.keyPickupCore, loc);
                     return;
                 }
             }

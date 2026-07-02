@@ -15,7 +15,6 @@ using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 using UnityEngine;
-using UnityEngine.UIElements;
 using BigInteger = System.Numerics.BigInteger;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;

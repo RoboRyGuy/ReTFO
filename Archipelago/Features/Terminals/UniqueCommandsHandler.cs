@@ -10,6 +10,16 @@ namespace ReTFO.Archipelago.Features.Terminals;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using SickDev.CommandSystem;
+
+public static class UniqueCommandsHandler_Tags
+{
+    extension (Terminal.Data data)
+    {
+        public RegionID Region_TerminalCommand(CustomTerminalCommand command)
+            => RegionID.From(data, $"{data.TerminalName} {command.Command}", data => new("Region entered by executing a particular custom command on a terminal", data.Region_Terminal));
+    }
+}
 
 [EnableFeatureByDefault, AutomatedFeature]
 public class UniqueCommandsHandler : ArchipelagoFeature
@@ -34,12 +44,11 @@ public class UniqueCommandsHandler : ArchipelagoFeature
     {
         foreach (var command in data.TerminalUniqueCommands)
         {
-            string name = GetUniqueCommandRegionName(data, command);
-            RegionID commandRegion = data.LookupOrCreateRegion(name);
-            data.ProcessEvents(commandRegion, name, command.CommandEvents ??= new(1));
+            RegionID commandRegion = data.Region_TerminalCommand(command);
+            data.ProcessEvents(commandRegion, command.CommandEvents ??= new(1));
             data.AddPath(new Path()
             {
-                StartingRegion = data.LookupOrCreateRegion(data.TerminalName),
+                StartingRegion = data.Region_Terminal,
                 EndingRegion = commandRegion,
             });
         }
@@ -63,14 +72,10 @@ public class UniqueCommandsHandler : ArchipelagoFeature
 
             if (cmd >= TERM_Command.UniqueCommand1 && cmd <= TERM_Command.UniqueCommand5)
                 StateTracker.Get().NotifyFoundRegion(
-                    GetUniqueCommandRegionName(terminal, terminal.TerminalUniqueCommands[(int)cmd - (int)TERM_Command.UniqueCommand1]),
+                    terminal.Region_TerminalCommand(terminal.TerminalUniqueCommands[(int)cmd - (int)TERM_Command.UniqueCommand1]),
                     __instance.m_terminal.m_syncedInteractionSource
                 );
         }
     }
-
-    public static string GetUniqueCommandRegionName(Terminal.Data data, CustomTerminalCommand command)
-        => $"{data.TerminalName} {command.Command}";
-
 }
 

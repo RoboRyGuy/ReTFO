@@ -18,26 +18,51 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Diagnostics;
 
 public static class GatherSmallItemsHandler_Tags
 { 
     extension (Game.Data data)
     {
-        public TagResolver Tag_GatherItemsLocations
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Small Objective Items Spawn Locations", "Locations checked by picking up small objective items (for example, PIDs)", gd.Tag_SmallPickupLocations));
+        public LocationID Location_GatherItems
+            => LocationID.From(data, "Small Objective Items Spawn Locations", data => new("Locations checked by picking up small objective items (for example, PIDs)", data.Location_SmallPickups));
 
-        public TagResolver Tag_GatherItemsItems
-            => new TagResolver(data, gd => gd.LookupOrCreateTag("Small Objective Items", "Items granting progress toward a \"Gather Small Items\" objective", gd.Tag_SmallPickupItems));
+        public ItemID Item_GatherItems
+            => ItemID.From(data, "Small Objective Items", data => new("Items granting progress toward a \"Gather Small Items\" objective", data.Item_SmallPickups));
     }
 
-    extension (Objective.Data data)
+    public static Objective.Data Checked(Objective.Data data)
     {
-        public TagResolver Tag_GatherItemsItems_PerObjective
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName(null)} Small Objective Items", "Items granting progress toward a particular objective", gd.Tag_GatherItemsItems));
+        const eWardenObjectiveType CHECK_TYPE = eWardenObjectiveType.GatherSmallItems;
+        if (data.Objective.Type != CHECK_TYPE)
+            FeatureLogger.Warning($"Fetched an ID for the wrong objective type. Desired: {Enum.GetName(CHECK_TYPE)}, actual: {Enum.GetName(data.Objective.Type)}");
+        return data;
+    }
+
+
+    extension(Objective.Data data)
+    {
+        public RegionID Region_GatheredItems(int count)
+            => RegionID.From(Checked(data), $"{data.ObjectiveName} Found {count} Items", data => new("Region enetered when a certain number of small objective items are found", data.Region_Objective));
+
+        public LocationID Location_GatherItems_PerObjective
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Small Objective Locations", data => new("Gather Items locations for a particular objective", data.Location_GatherItems));
+
+        public ItemID Item_GatherItems_PerObjective
+            => ItemID.From(Checked(data), $"{data.ObjectiveName} Small Objective Items", data => new("Items granting progress toward a particular objective", data.Item_GatherItems));
+
+
+        public LocationID Location_GatherItems_Instance(int count)
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Small Objective Location #{count}", data => new("A particular Gather Items locations", data.Location_GatherItems_PerObjective));
+
+        public ItemID Item_GatherItems_Instance(int count)
+            => ItemID.From(
+                Checked(data), 
+                $"{data.ObjectiveName} Small Objective Item #{count}", 
+                data => new("A particular Gather Items item", data.Item_GatherItems_PerObjective),
+                new GatherSmallItemsHandler.GatherSmall_Item(data.Region_Objective, count)
+            );
     }
 }
-
 
 [EnableFeatureByDefault, AutomatedFeature, InjectToIl2Cpp]
 public class GatherSmallItemsHandler : ArchipelagoFeature
@@ -54,97 +79,41 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
-    // Implementation of common static methods for objective handlers
-    private static class This
-    {
-        // Which objective This is for
-        public const eWardenObjectiveType ObjectiveType
-            = eWardenObjectiveType.GatherSmallItems;
-
-        // Summary for This objective
-        public static string ObjectiveSummary(Objective.Data data)
-        {
-            CheckIsCorrectObjective(data);
-            ItemDataBlock item = ItemDataBlock.GetBlock(data.Objective.Gather_ItemId);
-            if (item == null)
-                FeatureLogger.Error($"Failed to find gather item datablock for objective: {data.ObjectiveName(null)}");
-            return $"Gather {data.Objective.Gather_RequiredCount}x \"{item?.publicName ?? "null!"}\"";
-        }
-
-        // True if This is the correct objective
-        public static bool IsCorrectObjective(Objective.Data data)
-            => data.Objective.Type == ObjectiveType;
-
-        // Assert This is the correct objective, and log an error if it is not
-        public static void CheckIsCorrectObjective(Objective.Data data)
-        {
-            if (!IsCorrectObjective(data))
-                FeatureLogger.Error($"Wrong objective type! Expected {Enum.GetName(ObjectiveType)}, got {data.Objective.Type}");
-        }
-    }
-
-    // Regions used by this objective type
-    private static class ThisRegions
-    {
-        // Region entered when items are found
-        public static string FoundItem(Objective.Data data, int count)
-            => $"{data.ObjectiveName()} Found {count} Items";
-    }
-
-    // Location where a small item can be found
-    private static class GatherSmall_SpawnLocation
-    {
-        public static TagResolver MakeTag(Objective.Data data, int count)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} Spawn Spot #{count}", "A particular small objective pickup spawn location", gd.Tag_GatherItemsLocations));
-
-        public static LocationData MakeRandData() => new LocationData() { };
-    }
-
     // The actual small item
-    private class GatherSmall_Item : Item
+    public class GatherSmall_Item : TerminalItem
     {
-        public GatherSmall_Item(Objective.Data data, bool isEmpty)
-            : base(MakeTag(data, isEmpty), MakeRandData())
+        public GatherSmall_Item(RegionID objective, int count)
+            : base(new ItemData() { IsProgression = true })
         {
-            ObjectiveData = data;
-            IsEmpty = isEmpty;
+            ObjectiveRegion = objective;
+            Count = count;
         }
 
-        public static TagResolver MakeTag(Objective.Data data, bool isEmpty)
-            => new TagResolver(data, gd => gd.LookupOrCreateTag($"{data.ObjectiveName()} {(isEmpty ? "Empty " : "Pickup")}", "A particular small objective pickup item", data.Tag_GatherItemsItems_PerObjective));
+        public RegionID ObjectiveRegion { get; private init; }
 
-        public static ItemData MakeRandData() => new ItemData() { IsProgression = true };
+        public int Count { get; private init; }
 
-        public override Path.RequiredItem PathReqs => new(Path.RequiredItem.eType.Category, ObjectiveData.Tag_GatherItemsItems_PerObjective);
+        public override RegionID TargetRegion => ObjectiveRegion;
 
-        public Objective.Data ObjectiveData { get; set; }
-
-        public bool IsEmpty { get; set; }
-
-        public override Expedition.Data? RequiredExpedition => ObjectiveData;
-
-        public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player)
+        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
-            if (!IsEmpty && ObjectiveData.IsCurrentlyInExpedition())
-                stateTracker.AddItemToTerminal(this);
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
+            int numEmpty = CalcEmptySpots(data, out _);
+            if (Count > numEmpty) 
+                base.OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
         }
 
-        public override void OnStartExpeditionWithItem(StateTracker stateTracker, Expedition.Data data)
-        {
-            if (!IsEmpty && ObjectiveData.IsSameExpedition(data))
-                stateTracker.AddItemToTerminal(this);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal)
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
         {
             AsyncItemSpawnWrapper? wrapper = new();
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
             pItemData itemData = new()
             {
-                itemID_gearCRC = ObjectiveData.Objective.Gather_ItemId,
+                itemID_gearCRC = data.Objective.Gather_ItemId,
                 originCourseNode = new(),
-                originLayer = ObjectiveData.LayerType,
+                originLayer = data.LayerType,
             };
-            itemData.originCourseNode.Set(ObjectiveData.GetLG_Layer()!.m_zones[0].m_courseNodes[0]);
+            itemData.originCourseNode.Set(data.GetLG_Layer()!.m_zones[0].m_courseNodes[0]);
             if (SNetwork.SNet.IsMaster)
             { 
                 ItemReplicationManager.SpawnItem(
@@ -171,7 +140,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 {
                     if (SNetwork.SNet.IsMaster)
                     {
-                        stateTracker.AddItemToTerminal(this);
+                        stateTracker.AddItemToTerminal(itemId);
                         FeatureLogger.Error("Failed to spawn small pickup!");
                         terminal.AddLine("<#F00>Failed to retrieve small pickup! It has been re-added to terminal system.</color>");
                         wrapper.QueueDespawn();
@@ -180,21 +149,12 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 }
 
                 keyItem.SetupFromLevelgen(0, true);
-                keyItem._SpawnNode_k__BackingField = ObjectiveData.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
+                keyItem._SpawnNode_k__BackingField = data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
                 keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
 
                 terminal.AddLine($"Pickup \"{keyItem.PublicName}\" has been given to {player.NickName}");
             };
         }
-    }
-
-    public static KeyedItem GetItem(Objective.Data data, bool isEmpty)
-    {
-        if (data.TryLookupItem(GatherSmall_Item.MakeTag(data, isEmpty), out var item))
-            return item;
-
-        Item newItem = new GatherSmall_Item(data, isEmpty);
-        return new(data.AddItem(newItem), newItem);
     }
 
     // Compares two ZonePlacement datas to see if they refer to the same zone
@@ -204,7 +164,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             => x?.LocalIndex == y?.LocalIndex && x?.DimensionIndex == y?.DimensionIndex;
 
         public int GetHashCode(ZonePlacementData obj)
-            => Tuple.Create(obj.LocalIndex, obj.DimensionIndex).GetHashCode();
+            => (obj.LocalIndex, obj.DimensionIndex).GetHashCode();
     }
 
     // Calculate how many empty spawn locations we'll have. Outputs the zone placement data for reference as well
@@ -221,7 +181,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         }
 
         if (data.Objective.Gather_MaxPerZone <= 0)
-            throw new ArgumentException($"{data.ObjectiveName()}: Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
+            throw new ArgumentException($"{data.ObjectiveName}: Expected positive MaxPerZone, got {data.Objective.Gather_MaxPerZone}");
         int numSpawnSpots = placements.Count * data.Objective.Gather_MaxPerZone;
         int numMissing = numSpawnSpots - data.Objective.Gather_SpawnCount;
         if (numMissing < 0) numMissing = 0; // This occurs on R7C2 overload, for example. We could handle it... TODO
@@ -232,25 +192,24 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
     [Objective.Callback]
     public void HandleGatherSmallItemsObjective(Objective.Data data)
     {
-        if (!This.IsCorrectObjective(data))
+        if (data.Objective.Type != eWardenObjectiveType.GatherSmallItems)
             return;
 
         // Placing spawn spots as pickups in the world
         int numMissing = CalcEmptySpots(data, out var placements);
-        KeyedItem actualItem = GetItem(data, false);
-        KeyedItem falseItem = numMissing > 0 ? GetItem(data, true) : default;
         int count = 0;
         foreach (var placement in placements)
         {
             // When creating associations, it's easier to assume the last numMissing spots are empty (as opposed to the first numMissing)
-            RegionID spotRegion = data.LookupOrCreateRegion(data.FindZoneByPlacement(placement).ZoneName);
+            RegionID spotRegion = data.FindZoneByPlacement(placement).Region_Zone;
             for (int i = 0; i < data.Objective.Gather_MaxPerZone; i++)
             {
-                data.AddLocation(
-                    GatherSmall_SpawnLocation.MakeTag(data, ++count),
+                ++count;
+                data.Locations.CreateValue(
+                    data.Location_GatherItems_Instance(count),
                     spotRegion,
-                    GatherSmall_SpawnLocation.MakeRandData(),
-                    (count <= numMissing ? falseItem : actualItem).ID
+                    new LocationData(),
+                    data.Item_GatherItems_Instance(count)
                 );
             }
         }
@@ -262,27 +221,31 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             RegionList placement = data.PlacementsToZoneRegions(placements).Select(info => info.Region).ToList();
             while (count < data.Objective.Gather_SpawnCount)
             {
-                data.AddLocation(
-                    GatherSmall_SpawnLocation.MakeTag(data, ++count),
+                ++count;
+                data.Locations.CreateValue(
+                    data.Location_GatherItems_Instance(count),
                     placement,
-                    GatherSmall_SpawnLocation.MakeRandData(),
-                    (count <= numMissing ? falseItem : actualItem).ID
+                    new LocationData(),
+                    data.Item_GatherItems_Instance(count)
                 );
             }
         }
 
         // "Found item #0" starts after finding the first numMissing spots, and exists to make the loop easier to write
-        string regionName = ThisRegions.FoundItem(data, 0);
-        RegionID region = data.LookupOrCreateRegion(regionName);
+        RegionID region = data.Region_GatheredItems(0);
+        ItemID category = data.Item_GatherItems_PerObjective;
         Path firstPath = new()
         {
-            StartingRegion = data.ObjectiveStartRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = region,
         };
         if (numMissing > 0)
         {
-            firstPath.ReqItem = actualItem.Item.PathReqs;
-            firstPath.ReqCount = (uint)numMissing;
+            firstPath = new(firstPath)
+            {
+                ReqItem = new(Path.RequiredItem.eType.Category, category),
+                ReqCount = (uint)numMissing,
+            };
         }
         data.AddPath(firstPath);
 
@@ -292,13 +255,12 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         for (int i = 1; i <= data.Objective.Gather_SpawnCount; i++)
         {
             // Add the region and chain it to the previous ones
-            regionName = ThisRegions.FoundItem(data, i);
-            region = data.LookupOrCreateRegion(regionName);
+            region = data.Region_GatheredItems(i);
             data.AddPath(new Path()
             {
                 StartingRegion = last, 
                 EndingRegion = region,
-                ReqItem = actualItem.Item.PathReqs,
+                ReqItem = new(Path.RequiredItem.eType.Category, category),
                 ReqCount = 1u,
             });
             last = region;
@@ -308,7 +270,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 SharedObjectiveHandler.AddObjectiveCompleteItem(data, region);
 
             // Process events
-            eventWrapper.Process(region, regionName, true);
+            eventWrapper.Process(region, true);
 
             // This early exit prevents some regions from being added. I've decided I want those regions
             //if (i >= requiredCount && eventWrapper.IsDone) break;
@@ -337,70 +299,58 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_Distribute_WardenObjective __instance, int chainIndex)
         {
-            Objective.Data data = Layer.Data.FromLayer(__instance.m_layer).GetObjectiveDatas().ElementAt(chainIndex);
-            if (This.IsCorrectObjective(data))
+            Objective.Data data = Layer.Data.GetFromLayer(__instance.m_layer).GetObjectiveDatas().ElementAt(chainIndex);
+            if (data.Objective.Type != eWardenObjectiveType.GatherSmallItems)
+                return;
+
+            // Placement lookup for placements
+            // Key: Zone.Pointer, Value: Tuple of (Zone placement index, count of placements actually spawned in that zone)
+            Dictionary<IntPtr, (int, int)> placementCounts = new();
+            int count = 0;
+            int numMissing = CalcEmptySpots(data, out var placements);
+            foreach (var placement in placements)
             {
-                // Placement lookup for placements
-                // Key: Zone.Pointer, Value: Tuple of (Zone placement index, count of placements actually spawned in that zone)
-                Dictionary<IntPtr, Tuple<int, int>> placementCounts = new();
-                int count = 0;
-                int numMissing = CalcEmptySpots(data, out var placements);
-                foreach (var placement in placements)
+                LG_Zone zone = data.FindZoneByPlacement(placement).GetLG_Zone()!;
+                placementCounts.Add(zone.Pointer, (count++, 0));
+            }
+
+            // Some useful numbers
+            int maxPerZone = __instance.m_dataBlockData.Gather_MaxPerZone;
+            int maxNormal = placements.Count * maxPerZone;
+            int spawnCount = __instance.m_dataBlockData.Gather_SpawnCount;
+            var jobQueue = LG_Factory.Current.m_currentBatch.Jobs;
+            var ourHead = jobQueue._head + jobQueue._size - spawnCount;
+            var jobs = Enumerable.Range(ourHead, spawnCount).Select(i => jobQueue._array[i]);
+
+            foreach (var baseJob in jobs)
+            {
+                // Update the spawn count
+                LG_Distribute_PickupItemsPerZone job = baseJob.Cast<LG_Distribute_PickupItemsPerZone>();
+                var counts = placementCounts[job.m_zone.Pointer];
+                placementCounts[job.m_zone.Pointer] = counts = (counts.Item1, counts.Item2 + 1);
+
+                // Calulcate which location actually spawned here.
+                // If it's a normal spawn, we can cal its index normally; otherwise, we need to pull one of the overflow
+                if (counts.Item2 > maxPerZone)
+                    count = ++maxNormal;
+                else
+                    count = counts.Item1 * maxPerZone + counts.Item2;
+
+                // Associate!
+                PickupHelper.AssociateDistributionWithLocation(job, data.Location_GatherItems_Instance(count));
+            }
+
+            // For any spots that didn't spawn, we need to attach our comp to help us check it later
+            foreach (var pair in placementCounts)
+            {
+                if (pair.Value.Item2 < maxPerZone)
                 {
-                    LG_Zone zone = data.FindZoneByPlacement(placement).GetLG_Zone()!;
-                    placementCounts.Add(zone.Pointer, Tuple.Create(count++, 0));
-                }
-
-                // Some useful numbers
-                int maxPerZone = __instance.m_dataBlockData.Gather_MaxPerZone;
-                int maxNormal = placements.Count * maxPerZone;
-                int spawnCount = __instance.m_dataBlockData.Gather_SpawnCount;
-                var jobQueue = LG_Factory.Current.m_currentBatch.Jobs;
-                var ourHead = jobQueue._head + jobQueue._size - spawnCount;
-                var jobs = Enumerable.Range(ourHead, spawnCount).Select(i => jobQueue._array[i]);
-
-                foreach (var baseJob in jobs)
-                {
-                    // Update the spawn count
-                    LG_Distribute_PickupItemsPerZone job = baseJob.Cast<LG_Distribute_PickupItemsPerZone>();
-                    var counts = placementCounts[job.m_zone.Pointer];
-                    counts = Tuple.Create(counts.Item1, counts.Item2 + 1);
-                    placementCounts[job.m_zone.Pointer] = counts;
-
-                    // Calulcate which location actually spawned here.
-                    // If it's a normal spawn, we can cal its index normally; otherwise, we need to pull one of the overflow
-                    if (counts.Item2 > maxPerZone)
-                        count = ++maxNormal;
-                    else
-                        count = counts.Item1 * maxPerZone + counts.Item2;
-
-                    if (!data.TryLookupLocation(GatherSmall_SpawnLocation.MakeTag(data, count), out var loc))
-                    {
-                        FeatureLogger.Error("Failed to lookup small gather item during association!");
-                        continue;
-                    }
-
-                    // Associate!
-                    PickupHelper.AssociateDistributionWithLocation(job, loc.ID);
-                }
-
-                // For any spots that didn't spawn, we need to attach our comp to help us check it later
-                foreach (var pair in placementCounts)
-                {
-                    if (pair.Value.Item2 < maxPerZone)
-                    {
-                        LG_Zone zone = new(pair.Key);
-                        count = pair.Value.Item2;
-                        var comp = zone.gameObject.AddComponent<GatherSmall_FreeLcoationsComp>();
-                        comp.LocationIDs = new(maxPerZone - count);
-                        while (count++ < maxPerZone)
-                        {
-                            if (data.TryLookupLocation(GatherSmall_SpawnLocation.MakeTag(data, pair.Value.Item1 * maxPerZone + count), out var loc))
-                                comp.LocationIDs.Add(loc.ID);
-                            else
-                                FeatureLogger.Error("Failed to find location(s) while generating free locations comp");
-                        }
-                    }
+                    LG_Zone zone = new(pair.Key);
+                    count = pair.Value.Item2;
+                    var comp = zone.gameObject.AddComponent<GatherSmall_FreeLcoationsComp>();
+                    comp.LocationIDs = new(maxPerZone - count);
+                    while (count++ < maxPerZone)
+                        comp.LocationIDs.Add(data.Location_GatherItems_Instance(pair.Value.Item1 * maxPerZone + count));
                 }
             }
         }
