@@ -12,6 +12,12 @@ using System.Collections;
 
 public static class Expedition
 {
+    extension (Game.Data data)
+    {
+        public RegionID Region_AllExpeditions
+            => RegionID.From(data, "All Expeditions", data => new("Parent region of all expedition regions", new()));
+    }
+
     private record class ScopeData
     {
         public ScopeData(RundownDataBlock rundown, eRundownTier expeditionTier, int expeditionIndex)
@@ -52,7 +58,7 @@ public static class Expedition
             string name = $"{GetExpeditionFromRundown(rundown, expeditionTier, expeditionIndex).GetShortName(expeditionIndex)}";
             Region_Expedition = Regions.LookUpOrCreate(
                 data, name,
-                data => new("A region for a particular expedition", data.Region_Menu)
+                data => new("A region for a particular expedition", data.Region_AllExpeditions)
             );
 
             if (!data.Regions.GetDataAllowNull(Region_Expedition, out ExpeditionScopeData!))

@@ -360,6 +360,4 @@ public struct LocationData
     /// behaviour in patches, this is typically the check that should be used.
     /// </summary>
     public bool IsTreatedAsRandom => IsRandomized || IsRandomlike;
-
-    public LocationData AsNew => new(m_value & ~(eType.IsWhitelisted | eType.IsBlacklisted | eType.IsReachable | eType.IsRandomized | eType.IsRandomlike));
 }

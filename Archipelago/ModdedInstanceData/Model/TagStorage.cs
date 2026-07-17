@@ -50,17 +50,19 @@ public struct TagStorage<TID, TItem>
         /// <summary>
         /// The name of the entry
         /// </summary>
+        [DataMember(Name = "name")]
         public string Name { get; init; }
 
         /// <summary>
         /// The definition of the tag for the entry
         /// </summary>
+        [DataMember(Name = "definition")]
         public TagDefinition<TID> Definition { get; init; }
 
         /// <summary>
         /// The value stored in the entry, if any
         /// </summary>
-        [AllowNull, MaybeNull]
+        [AllowNull, MaybeNull, DataMember(Name = "value")]
         public TItem Value { get; init; }
     }
 

@@ -23,6 +23,7 @@ using AP = Archipelago.MultiClient.Net;
 
 namespace ReTFO.Archipelago.Features;
 
+using HarmonyLib;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -245,13 +246,13 @@ public partial class StateTracker : ArchipelagoFeature
         Game.Data data = GameData;
         CurrentState = eState.FakeConnect;
         RootSeed = 0;
-        RegionWhitelist = [ data.Region_Menu ];
+        RegionWhitelist = [ data.Region_AllExpeditions ];
         RegionBlacklist = [];
         LocationWhitelist = [ data.Location_All ];
         LocationBlacklist = [ ];
         ItemWhitelist = [ data.Item_All ];
         //ItemBlacklist = [ data.Item_Scans, data.Item_Warps, data.Item_ExpeditionUnlocks, data.Item_LobbySlotUnlocks ];
-        ItemBlacklist = [ data.Item_Scans, data.Item_ExpeditionUnlocks, data.Item_LobbySlotUnlocks ];
+        ItemBlacklist = [ data.Item_Scans, data.Item_FloatingExpeditionUnlocks, data.Item_LobbySlotUnlocks ];
         //FilledEmptyLocations = new(); // Created below
         GoalItemCounts = new();
         SkippableGoalCount = 0;
@@ -509,63 +510,77 @@ public partial class StateTracker : ArchipelagoFeature
 
         try
         {
+            /*
+            root_seed
+            region_whitelist
+            region_blacklist
+            location_whitelist
+            location_blacklist
+            item_whitelist
+            item_blacklist
+            filled_empty_locations
+            goal_items
+            skippable_goal_count 
+             */
+
             RootSeed = (long)(
-                loginSuccessful.SlotData.GetValueOrDefault("RootSeed", null)
-                ?? throw new NullReferenceException("Failed to retrieve RootSeed from slot data")
+                loginSuccessful.SlotData.GetValueOrDefault("root_seed", null)
+                ?? throw new NullReferenceException("Failed to retrieve root_seed from slot data")
             );
 
             RegionWhitelist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("RegionWhitelist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("region_whitelist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new RegionID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve RegionWhitelist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve region_whitelist from slot data")
             );
 
             RegionBlacklist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("RegionBlacklist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("region_blacklist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new RegionID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve RegionBlacklist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve region_blacklist from slot data")
             );
 
             LocationWhitelist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("LocationWhitelist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("location_whitelist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new LocationID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve LocationWhitelist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve location_whitelist from slot data")
             );
 
             LocationBlacklist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("LocationBlacklist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("location_blacklist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new LocationID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve LocationBlacklist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve location_blacklist from slot data")
             );
 
             ItemWhitelist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("ItemWhitelist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("item_whitelist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new ItemID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve ItemWhitelist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve item_whitelist from slot data")
             );
 
             ItemBlacklist = new(
-                (loginSuccessful.SlotData.GetValueOrDefault("ItemBlacklist", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("item_blacklist", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<long>>()?.Select(l => new ItemID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve ItemBlacklist from slot data")
+                    ?? throw new NullReferenceException("Failed to retrieve item_blacklist from slot data")
             );
 
-            FilledEmptyLocations = (loginSuccessful.SlotData.GetValueOrDefault("FilledEmptyLocations", null) as Newtonsoft.Json.Linq.JArray)?
+            FilledEmptyLocations = (loginSuccessful.SlotData.GetValueOrDefault("filled_empty_locations", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<List<long>>>()?.Select(l => (new LocationID() { ID = checked((uint)l[0]) }, new ItemID() { ID = checked((uint)l[1]) }))?
                     .ToList()
-                    ?? throw new NullReferenceException("Failed to retrieve FilledEmptyLocations from slot data");
+                    ?? throw new NullReferenceException("Failed to retrieve filled_empty_locations from slot data");
 
-            IEnumerable<ItemID> rawGoalItems = (loginSuccessful.SlotData.GetValueOrDefault("GoalItems", null) as Newtonsoft.Json.Linq.JArray)?
-                    .ToObject<List<long>>()?.Select(l => new ItemID() { ID = checked((uint)l) })
-                    ?? throw new NullReferenceException("Failed to retrieve GoalItems from slot data");
+            IEnumerable<(ItemID, long)> rawGoalItems = 
+                (loginSuccessful.SlotData.GetValueOrDefault("goal_items", null) as Newtonsoft.Json.Linq.JArray)?
+                    .ToObject<List<List<long>>>()?.Select(l => (new ItemID() { ID = checked((uint)l[0]) }, l[1]))
+                    ?? throw new NullReferenceException("Failed to retrieve goal_items from slot data");
 
             GoalItemCounts = new();
-            foreach (var id in rawGoalItems) 
-                GoalItemCounts[id] = GoalItemCounts.GetValueOrDefault(id, 0) + 1;
+            foreach (var pair in rawGoalItems)
+                GoalItemCounts[pair.Item1] = checked((int)pair.Item2);
 
             SkippableGoalCount = (int)(long)(
-                loginSuccessful.SlotData.GetValueOrDefault("SkippableGoalCount", null)
-                ?? throw new NullReferenceException("Failed to retrieve SkippableGoalCount from slot data")
+                loginSuccessful.SlotData.GetValueOrDefault("skippable_goal_count", null)
+                ?? throw new NullReferenceException("Failed to retrieve skippable_goal_count from slot data")
             );
 
             if (GoalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
@@ -640,23 +655,28 @@ public partial class StateTracker : ArchipelagoFeature
         ItemsInTerminalSystem.Clear();
         QueuedItemReplacements.Clear();
 
-        // Reset rand data
-        foreach (var entry in data.Items.GetAllValuesNonNull())
-            entry.Value.UpdateRandomization(false, false);
-
         // Identify reachable regions and locations
+        foreach (var id in data.Regions.GetAllIDs())
+            data.SetRegionRandomized(id, false);
+
         HashSet<RegionID> reachableRegions = new HashSet<RegionID>();
         foreach (var id in RegionWhitelist)
         {
-            if (!data.Regions.IsChild(id, RegionBlacklist)) reachableRegions.Add(id);
+            if (!data.Regions.IsChild(id, RegionBlacklist))
+            {
+                reachableRegions.Add(id);
+                data.SetRegionRandomized(id, true);
+            }
         }
         foreach (var id in data.Regions.GetAllIDs())
         {
             if (data.Regions.LookUpDefinition(id).AllParents.Any(reachableRegions.Contains) && !RegionBlacklist.Contains(id))
+            {
                 reachableRegions.Add(id);
+                data.SetRegionRandomized(id, true);
+            }
         }
-        foreach (var id in reachableRegions)
-            if (!data.Regions.LookUpValue(id).Reachable) reachableRegions.Remove(id);
+        reachableRegions.RemoveWhere(r => !data.Regions.LookUpValue(r).Reachable);
 
 
         HashSet<RegionID> reachableRegionIDs = data.Regions.GetAllValues()
@@ -862,7 +882,7 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="regionId">ID of the region which was found</param>
     /// <param name="player">Player who found the region, or null if too inconvenient to identify</param>
-    /// <param name="skipInteraction">If true, skip sending the interactino over SNet</param>
+    /// <param name="skipInteraction">If true, skip sending the interaction over SNet. Typically reserved for internal use</param>
     public void NotifyFoundRegion(RegionID regionId, PlayerAgent? player, bool skipInteraction = false)
     {
         Game.Data data = GameData; 
@@ -1075,7 +1095,7 @@ public partial class StateTracker : ArchipelagoFeature
             newExpedition.ExcludeFromMatchmaking = true;
             newExpedition.ExcludeFromProgression = false;
             newExpedition.Descriptive.ProgressionVisualStyle = eProgressionVisualStyle.Normal;
-            newExpedition.Accessibility = eExpeditionAccessibility.AlwaysAllow; // Will be overwritten by expedition unlock item
+            newExpedition.Accessibility = eExpeditionAccessibility.AlwayBlock; // Will be overwritten by expedition unlock item
             newExpedition.HideOnLocked = false; // R8 right-side expeditions
             newExpedition.UnlockedByExpedition = new() { Tier = eRundownTier.TierA, Exp = 0 };
             newExpeditions.Enqueue(newExpedition);
@@ -1553,6 +1573,8 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
+            var namedCounts = CollectedItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => pair.Value);
+            int i = 0;
         }
 
         if (ConnectTask?.IsCompleted ?? false)

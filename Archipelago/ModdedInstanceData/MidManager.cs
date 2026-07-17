@@ -154,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
     { 
-        { "os2wxWxv1I5a61i-5BOVTSOZRsPZTKDH_KUTMzoOQdQ=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "ALkUpOLXnrJaHl4U53QZUeYuSoLlAdmuHnzroqYXyk8=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -343,6 +343,44 @@ public class MidManager
     private static extern string SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, nint hToken = 0);
     private static Guid DownloadsGUID => new("374DE290-123F-4565-9164-39C4925E467B");
 
+    [DataContract]
+    private struct JsonKeyValue<T, U>
+    {
+        public JsonKeyValue(T id, U value)
+        {
+            ID = id;
+            Value = value;
+        }
+
+        [DataMember(Name = "id")]
+        public T ID { get; init; }
+
+        [DataMember(Name = "value")]
+        public U Value { get; init; }
+    }
+
+    private static JsonKeyValue<T, U> MakeJsonKeyValue<T, U>(KeyValuePair<T, U> source)
+        => new(source.Key, source.Value);
+
+    [DataContract]
+    private struct FloatingItem
+    {
+        public FloatingItem(RegionID region, ItemID item)
+        {
+            Region = region;
+            Item = item;
+        }
+
+        [DataMember(Name = "region")]
+        public RegionID Region { get; init; }
+
+        [DataMember(Name = "item")]
+        public ItemID Item { get; init; }
+
+        public static FloatingItem Make((RegionID, ItemID) pair)
+            => new(pair.Item1, pair.Item2);
+    }
+
     /// <summary>
     /// Export game data as a JSON file to the designated path.
     /// </summary>
@@ -364,28 +402,46 @@ public class MidManager
         {
             name = gameData.Name,
             version = Version.Parse(Plugin.Version),
-            regions = gameData.Regions.GetAllEntries(),
-            locations = gameData.Locations.GetAllEntries(),
-            items = gameData.Items.GetAllEntries(),
-            paths = gameData.GetAllPaths().ToList(),
-            floating_items = gameData.GetAllFloatingItems(),
-            options = gameData.GetAllOptions().ToList(),
+            regions = gameData.Regions.GetAllEntries().Select(MakeJsonKeyValue),
+            locations = gameData.Locations.GetAllEntries().Select(MakeJsonKeyValue),
+            items = gameData.Items.GetAllEntries().Select(MakeJsonKeyValue),
+            paths = gameData.GetAllPaths().Select(MakeJsonKeyValue),
+            floating_items = gameData.GetAllFloatingItems().Select(FloatingItem.Make),
+            options = gameData.GetAllOptions().Select(MakeJsonKeyValue),
         };
 
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
         settings.Converters.Add(new Clonesoft.Json.Converters.StringEnumConverter());
-        settings.Converters.Add(new SimplifiedListConverter<long>(20));   // Compress long lists of longs (unpacked IDs) for readability
+        settings.Converters.Add(new SimplifiedListConverter<uint>(20));   // Compress long lists of uints (unpacked IDs) for readability
+        settings.Converters.Add(new SimplifiedListConverter<long>(15));   // Compress long lists of longs (option values) for readability
         settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
         settings.Converters.Add(new IdConverter());                       // Convert IDs to longs
-        //Type[] containerTypes = [ 
-        //    typeof(KeyedRandomizationTag), typeof(KeyedRegion), typeof(ReadOnlyRegion), typeof(KeyedPath), 
-        //    typeof(ReadOnlyPath), typeof(KeyedLocation), typeof(KeyedItem), typeof(KeyedOption) 
-        //];
-        //Type[] inlinedTypes = [ 
-        //    typeof(RandomizationTagDefinition), typeof(ReadOnlyRegion), typeof(Region), typeof(ReadOnlyPath), 
-        //    typeof(Path), typeof(Location), typeof(Item), typeof(OptionBase) 
-        //];
-        //settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
+        Type[] containerTypes = [
+            typeof(JsonKeyValue<RegionID, TagStorage<RegionID, Region>.TagEntry>),
+            typeof(JsonKeyValue<LocationID, TagStorage<LocationID, Location>.TagEntry>),
+            typeof(JsonKeyValue<ItemID, TagStorage<ItemID, Item>.TagEntry>),
+            typeof(JsonKeyValue<PathID, Path>),
+            typeof(JsonKeyValue<OptionID, OptionBase>),
+            typeof(TagStorage<RegionID, Region>.TagEntry),
+            typeof(TagStorage<LocationID, Location>.TagEntry),
+            typeof(TagStorage<ItemID, Item>.TagEntry),
+            typeof(Location),
+            typeof(Item),
+        ];
+        Type[] inlinedTypes = [ 
+            typeof(TagStorage<RegionID, Region>.TagEntry),
+            typeof(TagStorage<LocationID, Location>.TagEntry),
+            typeof(TagStorage<ItemID, Item>.TagEntry),
+            typeof(TagDefinition<RegionID>),
+            typeof(TagDefinition<LocationID>),
+            typeof(TagDefinition<ItemID>),
+            typeof(Path),
+            typeof(OptionBase),
+            typeof(Region),
+            typeof(ItemData),
+            typeof(LocationData),
+        ];
+        settings.Converters.Add(new InlineConverter(containerTypes, inlinedTypes));
         string json = JsonConvert.SerializeObject(dumpData, settings);
         File.WriteAllText(filename, json);
         FeatureLogger.Success($"MID data saved to: {filename}");
@@ -539,6 +595,9 @@ public class MidManager
         // Count of which items have been obtained by exact category
         Dictionary<ItemID, uint> categoryCounts = new();
 
+        // Count of how many times a growing path targets have been encountered
+        Dictionary<ItemID, uint> growthCounts = new();
+
         // Extended region data used for performing processing
         List<ExtendedRegionData> regionData = Enumerable.Repeat<ExtendedRegionData>(new(), gameData.Regions.GetAllEntries().Count).ToList();
 
@@ -623,22 +682,32 @@ public class MidManager
                 }
 
                 // Checks if a specific req item for the current path can be satisfied
-                bool checkTraversable(Path.RequiredItem req, uint reqCount)
+                bool checkTraversable(Path.PathReq req, uint reqCount)
                 {
-                    if (req.Type == Path.RequiredItem.eType.None) return true;
-                    else if (req.Type == Path.RequiredItem.eType.Blocked) return false;
+                    if (req.Type == Path.PathReq.eType.None) return true;
+                    else if (req.Type == Path.PathReq.eType.Blocked) return false;
 
                     // Fetch counts from relevant dicts
                     uint availableCount, usedCount;
                     (availableCount, usedCount) = req.Type switch
                     {
-                        Path.RequiredItem.eType.Item         => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
-                        Path.RequiredItem.eType.ItemConsumed => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
-                        Path.RequiredItem.eType.Category     => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
+                        Path.PathReq.eType.Item            => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
+                        Path.PathReq.eType.ItemConsumed    => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
+                        Path.PathReq.eType.ItemGrowing     => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
+                        Path.PathReq.eType.Category        => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
+                        Path.PathReq.eType.CategoryGrowing => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
                         _ => throw new NotSupportedException($"Unexpected path requirement type: {(int)req.Type}")
                     };
 
-                    if (availableCount < (reqCount + usedCount))
+                    // Accounting for growth requiremnets
+                    if (req.Type == Path.PathReq.eType.ItemGrowing || req.Type == Path.PathReq.eType.CategoryGrowing)
+                    {
+                        uint grownCount = growthCounts.GetValueOrDefault(req.Target, 0u);
+                        if (availableCount < (reqCount + usedCount + grownCount))
+                            return false;
+                        growthCounts[req.Target] = grownCount + reqCount;
+                    }
+                    else if (availableCount < (reqCount + usedCount))
                         return false; // Insufficient items to pass
 
                     // Perform processing if relevant / necessary
@@ -646,7 +715,7 @@ public class MidManager
                     {
                         // Updating used counts
                         ExtendedRegionData newData = new(regionData[path.StartingRegion.AsIndex]);
-                        if (req.Type == Path.RequiredItem.eType.ItemConsumed)
+                        if (req.Type == Path.PathReq.eType.ItemConsumed)
                         {
                             // Update both dicts with the consumed counts
                             newData.UsedItemCounts = newData.UsedItemCounts == null ? new(1) : new(newData.UsedItemCounts);
@@ -668,6 +737,7 @@ public class MidManager
                         if (doProcessing)
                             gameData.SetPathReqCount(queuedPaths[i], usedCount + reqCount);
                     }
+
                     return true;
                 }
 
@@ -765,14 +835,14 @@ public class MidManager
             ConsoleManager.SetConsoleColor(ConsoleColor.Red);
             ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.ID:000}] {gameData.Regions.LookUpName(path.EndingRegion)}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
-            if (path.ReqItem.Type == Path.RequiredItem.eType.None)
+            if (path.ReqItem.Type == Path.PathReq.eType.None)
                 ConsoleManager.ConsoleStream.WriteLine($"  No required item");
-            else if (path.ReqItem.Type == Path.RequiredItem.eType.Item || path.ReqItem.Type == Path.RequiredItem.eType.ItemConsumed)
+            else if (path.ReqItem.Type == Path.PathReq.eType.Item || path.ReqItem.Type == Path.PathReq.eType.ItemConsumed)
                 ConsoleManager.ConsoleStream.WriteLine($"  Item:  {usedItemCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
-            else if (path.ReqItem.Type == Path.RequiredItem.eType.Category)
+            else if (path.ReqItem.Type == Path.PathReq.eType.Category)
                 ConsoleManager.ConsoleStream.WriteLine($"  Cats:  {usedCatsCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
-            if (path.AlternateItem.Type != Path.RequiredItem.eType.Blocked)
-                if (path.AlternateItem.Type == Path.RequiredItem.eType.None)
+            if (path.AlternateItem.Type != Path.PathReq.eType.Blocked)
+                if (path.AlternateItem.Type == Path.PathReq.eType.None)
                     ConsoleManager.ConsoleStream.WriteLine($"  Alt:   Not blocked");
                 else
                     ConsoleManager.ConsoleStream.WriteLine($"  Alt:   001x {gameData.Items.LookUpName(path.AlternateItem.Target)}");
@@ -787,21 +857,21 @@ public class MidManager
 
                 bool meetsMain = path.ReqItem.Type switch
                 {
-                    Path.RequiredItem.eType.None => true,
-                    Path.RequiredItem.eType.Blocked => false,
-                    Path.RequiredItem.eType.Item => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.RequiredItem.eType.ItemConsumed => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.RequiredItem.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.ReqItem.Target),
+                    Path.PathReq.eType.None => true,
+                    Path.PathReq.eType.Blocked => false,
+                    Path.PathReq.eType.Item => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.PathReq.eType.ItemConsumed => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.PathReq.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.ReqItem.Target),
                     _ => throw new NotSupportedException("Unexpected path req type!"),
                 };
 
                 bool meetsAlt = path.AlternateItem.Type switch
                 {
-                    Path.RequiredItem.eType.None => true,
-                    Path.RequiredItem.eType.Blocked => false,
-                    Path.RequiredItem.eType.Item => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.RequiredItem.eType.ItemConsumed => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.RequiredItem.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.AlternateItem.Target),
+                    Path.PathReq.eType.None => true,
+                    Path.PathReq.eType.Blocked => false,
+                    Path.PathReq.eType.Item => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.PathReq.eType.ItemConsumed => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
+                    Path.PathReq.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.AlternateItem.Target),
                     _ => throw new NotSupportedException("Unexpected path req type!"),
                 };
 

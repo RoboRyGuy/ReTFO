@@ -23,7 +23,6 @@ public abstract class OptionUnaryOperation : OptionOperation
 /// <summary>
 /// If the input is zero, outputs zero; otherwise, outputs 1
 /// </summary>
-[DataContract]
 public class OptionToBoolOperation : OptionUnaryOperation
 {
     public OptionToBoolOperation(OptionParameter param) : base(param) { }
@@ -34,7 +33,6 @@ public class OptionToBoolOperation : OptionUnaryOperation
 /// <summary>
 /// Outputs the bool opposite of the input
 /// </summary>
-[DataContract]
 public class OptionNotOperation : OptionUnaryOperation
 {
     public OptionNotOperation(OptionParameter param) : base(param) { }
@@ -45,7 +43,6 @@ public class OptionNotOperation : OptionUnaryOperation
 /// <summary>
 /// Multiplies the input by -1
 /// </summary>
-[DataContract]
 public class OptionNegateOperation : OptionUnaryOperation
 {
     public OptionNegateOperation(OptionParameter param) : base(param) { }
@@ -56,7 +53,6 @@ public class OptionNegateOperation : OptionUnaryOperation
 /// <summary>
 /// Divides 1 by the input
 /// </summary>
-[DataContract]
 public class OptionReciprocalOperation : OptionUnaryOperation
 {
     public OptionReciprocalOperation(OptionParameter param) : base(param) { }
@@ -207,6 +203,16 @@ public class OptionDivideOperation : OptionBinaryOperation
     public OptionDivideOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
 
     public override Option.eType Type => Option.eType.Divide;
+}
+
+/// <summary>
+/// Gets the value of the specified bit, 0-inexed from least significant to most; outputs either one or zero
+/// </summary>
+public class OptionGetBitOperation : OptionBinaryOperation
+{
+    public OptionGetBitOperation(OptionParameter lParam, OptionParameter rParam) : base(lParam, rParam) { }
+
+    public override Option.eType Type => Option.eType.GetBit;
 }
 
 /// <summary>

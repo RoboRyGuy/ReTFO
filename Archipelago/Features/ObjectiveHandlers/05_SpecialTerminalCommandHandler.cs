@@ -99,7 +99,7 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = commandExecutedRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, item),
+            ReqItem = new(Path.PathReq.eType.Item, item),
             ReqCount = 1u,
         });
 

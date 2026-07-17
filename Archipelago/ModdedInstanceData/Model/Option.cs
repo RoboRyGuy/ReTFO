@@ -1,7 +1,5 @@
-﻿using ReTFO.Archipelago.Utilities;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text;
@@ -26,6 +24,7 @@ public static class Option
         Toggle,
         Choice,
         Range,
+        MultiChoice,
 
         // ====================================================================
         // Operations
@@ -47,6 +46,7 @@ public static class Option
         Subtract,
         Multiply,
         Divide,
+        GetBit,
         LinearMap,
 
         // ====================================================================
@@ -55,10 +55,12 @@ public static class Option
         AddToSet,
         AddCountToDict,
         AddAllToDict,
+        RaiseError,
 
         // ====================================================================
         // Special
 
+        IsFakeGeneration,
         RegionTagOption,
         LocationTagOption,
         ItemTagOption,
@@ -376,6 +378,15 @@ public class OptionChoice : OptionInput
 {
     public OptionChoice(
         string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition
+    ) : base(displayName, description, category, categorySort, defaultValue, condition)
+    {
+        ChoiceNames = new();
+        ChoiceValues = new();
+    }
+
+    public OptionChoice(
+        string displayName, string description, string category,
         uint[] categorySort, long defaultValue, OptionID condition,
         List<string> choiceNames, List<long> choiceValues
     ) : base(displayName, description, category, categorySort, defaultValue, condition) 
@@ -390,13 +401,13 @@ public class OptionChoice : OptionInput
     /// Names for the choices available for selection
     /// </summary>
     [DataMember(Name = "choice_names")]
-    public List<string> ChoiceNames { get; init; } = new();
+    public List<string> ChoiceNames { get; init; }
 
     /// <summary>
     /// The values to associate with the above choices, matched by index
     /// </summary>
     [DataMember(Name = "choice_values")]
-    public List<long> ChoiceValues { get; init; } = new();
+    public List<long> ChoiceValues { get; init; }
 }
 
 /// <summary>
@@ -428,6 +439,46 @@ public class OptionRange : OptionInput
     /// </summary>
     [DataMember(Name = "max")]
     public float Max { get; init; }
+}
+
+/// <summary>
+/// An option input allowing users to select one or more values from a set of values
+/// </summary>
+[DataContract]
+public class OptionMultiChoice : OptionInput
+{
+    public OptionMultiChoice(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition
+    ) : base(displayName, description, category, categorySort, defaultValue, condition)
+    {
+        ChoiceNames = new();
+        ChoiceValues = new();
+    }
+
+    public OptionMultiChoice(
+        string displayName, string description, string category,
+        uint[] categorySort, long defaultValue, OptionID condition,
+        List<string> choiceNames, List<long> choiceValues
+    ) : base(displayName, description, category, categorySort, defaultValue, condition)
+    {
+        ChoiceNames = choiceNames ;
+        ChoiceValues = choiceValues;
+    }
+
+    public override Option.eType Type => Option.eType.MultiChoice;
+
+    /// <summary>
+    /// Names for the choices available for selection
+    /// </summary>
+    [DataMember(Name = "choice_names")]
+    public List<string> ChoiceNames { get; init; }
+
+    /// <summary>
+    /// The values to associate with the above choices, matched by index
+    /// </summary>
+    [DataMember(Name = "choice_values")]
+    public List<long> ChoiceValues { get; init; }
 }
 
 /// <summary>
@@ -546,6 +597,28 @@ public class OptionAddAll : OptionEffect
 }
 
 /// <summary>
+/// An option effect which raises an error, stopping server-side generation.
+/// This can be used to validate settings at generation time.
+/// </summary>
+[DataContract]
+public class OptionRaiseError : OptionEffect
+{
+    public OptionRaiseError(OptionID condition, string message)
+        : base(condition)
+    {
+        Message = message;
+    }
+
+    public override Option.eType Type => Option.eType.RaiseError;
+
+    /// <summary>
+    /// The error message to raise
+    /// </summary>
+    [DataMember(Name = "message")]
+    public string Message { get; init; }
+}
+
+/// <summary>
 /// A special option which creates a choice field allowing users to whitelist,
 ///  blacklist, or ignore a tag. This also applies the effect.
 /// Option values: 0 = Whitelisted, 1 = None, 2 = Blacklist
@@ -575,6 +648,18 @@ public abstract class OptionTagOption : OptionInput
     /// </summary>
     [DataMember(Name = "tag")]
     public OptionParameter Tag { get; init; }
+}
+
+/// <summary>
+/// A special option used to test if generation is fake or not,
+/// allowing special behavior when Universal Tracker is being used
+/// to create paths and such.
+/// Do not use this; instead, fetch the instance via <see cref="Features.CommonTagsHandler_Tags.get_Option_IsFakeGeneration(Game.Data)"/>
+/// </summary>
+[DataContract]
+public class OptionIsFakeGeneration : OptionBase
+{
+    public override Option.eType Type => Option.eType.IsFakeGeneration;
 }
 
 /// <inheritdoc cref="OptionTagOption"/>

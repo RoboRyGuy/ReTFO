@@ -120,7 +120,7 @@ public class CollectHSUHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = scanStartedRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, scanItem),
+            ReqItem = new(Path.PathReq.eType.Item, scanItem),
             ReqCount = 1u
         });
 

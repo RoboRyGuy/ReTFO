@@ -2,8 +2,8 @@
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using LevelGeneration;
 using Player;
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Features.Pickups;
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
@@ -16,6 +16,7 @@ using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
+using PlayFab.ClientModels;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -59,7 +60,7 @@ public static class RetrieveBigItemsHandler_Tags
                 Checked(data),
                 $"{data.ObjectiveName} Big Retrieval Item #{count}",
                 data => new("A particular big retrieval item", data.Item_BigRetrievals_ByObjective),
-                new RetrieveBigItemsHandler.BigRetrieval_Item(data.Region_Objective, count)
+                new RetrieveBigItemsHandler.BigRetrieval_Item(data, count)
             );
     }
 }
@@ -81,12 +82,12 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
     }
 
     // Big retrieval item itself - note that despite this being usable as a normal item, we disallow it by changing its name
-    public class BigRetrieval_Item : TerminalItem
+    public class BigRetrieval_Item : BigPickupHandler.BigPickupItem
     {
-        public BigRetrieval_Item(RegionID objective, int count)
-            : base(new ItemData() { IsProgression = true })
+        public BigRetrieval_Item(Objective.Data objective, int count)
+            : base(objective.Region_Expedition, ItemDataBlock.GetBlock(objective.Objective.Retrieve_Items[count - 1]))
         {
-            ObjectiveRegion = objective;
+            ObjectiveRegion = objective.Region_Objective;
             ItemIndex = count - 1;
         }
 
@@ -102,43 +103,14 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
 
         public override RegionID TargetRegion => ObjectiveRegion;
 
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
+        protected override AsyncItemSpawnWrapper TrySpawnAsync()
         {
-            // Isolating these for the lambda just in case
-            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
-            ItemDataBlock itemDataBlock = ItemDataBlock.GetBlock(data.Objective.Retrieve_Items[ItemIndex]);
-            string itemName = $"Big Pickup #{itemDataBlock.persistentID} \"{itemDataBlock.publicName}\"";
-            var wrapper = new AsyncItemSpawnWrapper();
-            ItemReplicationManager.SpawnItem(
-                new pItemData() { itemID_gearCRC = itemDataBlock.persistentID },
-                new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
-                ItemMode.Pickup,
-                Vector3.zero,
-                Quaternion.identity,
-                null,
-                null
-            );
-            var player = terminal.m_syncedInteractionSource;
-            var node = terminal.SpawnNode;
-            var trans = BigPickupHandler.CalcBigObjectPointNearTerminal(terminal);
+            var wrapper = base.TrySpawnAsync();
 
-            yield return () =>
+            void SetupObjectiveCarryItem(ISyncedItem item)
             {
-                terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving {itemName}", 2f);
-            };
-
-            yield return () =>
-            {
-                CarryItemPickup_Core? carryItem = wrapper.Item?.TryCast<CarryItemPickup_Core>();
-                if (carryItem == null)
-                {
-                    // Effectively timed out. If it successfully spawns after now, we don't want it anymore
-                    wrapper.QueueDespawn();
-                    FeatureLogger.Error($"Failed to spawn {itemName}!");
-                    stateTracker.AddItemToTerminal(itemId);
-                    terminal.AddLine($"<#F00>Failed to retrieve {itemName}! It has been re-added to terminal system.</color>");
-                    return;
-                }
+                Objective.Data data = new(StateTracker.Get().GameData, ObjectiveRegion);
+                CarryItemPickup_Core carryItem = item.Cast<CarryItemPickup_Core>();
 
                 carryItem.SpawnNode = data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
                 carryItem.Set_pItemData(new pItemData()
@@ -171,17 +143,10 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
 
                 // Swap our new item into the objective item array
                 items[ItemIndex] = carryItem.Cast<iWardenObjectiveItem>();
+            }
 
-                carryItem.m_sync.AttemptPickupInteraction(
-                    ePickupItemInteractionType.Place,
-                    player.Owner, default,
-                    trans.Item1, trans.Item2,
-                    node, true, true
-                );
-                carryItem.m_navMarkerPlacer.SetMarkerVisible(true);
-                carryItem.m_terminalItem.PlayPing();
-                terminal.AddLine($"{itemName} has been placed somewhere nearby");
-            };
+            wrapper.AddSpawnCallback(SetupObjectiveCarryItem);
+            return wrapper;
         }
     }
 
@@ -216,7 +181,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.RequiredItem.eType.Category, category),
+                ReqItem = new(Path.PathReq.eType.Category, category),
                 ReqCount = (uint)i,
             });
             last = newRegion;

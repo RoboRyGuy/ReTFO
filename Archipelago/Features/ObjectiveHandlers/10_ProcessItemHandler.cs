@@ -117,7 +117,7 @@ public class ProcessItemHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = collectItemRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, startItem),
+            ReqItem = new(Path.PathReq.eType.Item, startItem),
             ReqCount = 1u,
         });
 
@@ -136,7 +136,7 @@ public class ProcessItemHandler : ArchipelagoFeature
         {
             StartingRegion = collectItemRegion,
             EndingRegion = processedItemRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, processorItem),
+            ReqItem = new(Path.PathReq.eType.Item, processorItem),
             ReqCount = 1u,
         });
 

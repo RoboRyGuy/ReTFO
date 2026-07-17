@@ -98,7 +98,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
             Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
-            int numEmpty = CalcEmptySpots(data, out _);
+            uint numEmpty = CalcEmptySpots(data, out _);
             if (Count > numEmpty) 
                 base.OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
         }
@@ -167,8 +167,8 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             => (obj.LocalIndex, obj.DimensionIndex).GetHashCode();
     }
 
-    // Calculate how many empty spawn locations we'll have. Outputs the zone placement data for reference as well
-    public static int CalcEmptySpots(Objective.Data data, out List<ZonePlacementData> placements)
+    // Calculate how many empty spawn locations we'll have. Outputs the calculated zone placement data for reference as well
+    public static uint CalcEmptySpots(Objective.Data data, out List<ZonePlacementData> placements)
     {
         if (data.ObjectiveData.ZonePlacementDatas.Count == 0)
             placements = new(1) { new() };
@@ -185,7 +185,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         int numSpawnSpots = placements.Count * data.Objective.Gather_MaxPerZone;
         int numMissing = numSpawnSpots - data.Objective.Gather_SpawnCount;
         if (numMissing < 0) numMissing = 0; // This occurs on R7C2 overload, for example. We could handle it... TODO
-        return numMissing;
+        return (uint)numMissing;
     }
 
     // Objective requiring picking up a certain number of small items
@@ -196,7 +196,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             return;
 
         // Placing spawn spots as pickups in the world
-        int numMissing = CalcEmptySpots(data, out var placements);
+        uint numMissing = CalcEmptySpots(data, out var placements);
         int count = 0;
         foreach (var placement in placements)
         {
@@ -243,8 +243,8 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         {
             firstPath = new(firstPath)
             {
-                ReqItem = new(Path.RequiredItem.eType.Category, category),
-                ReqCount = (uint)numMissing,
+                ReqItem = new(Path.PathReq.eType.Category, category),
+                ReqCount = numMissing,
             };
         }
         data.AddPath(firstPath);
@@ -260,8 +260,8 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last, 
                 EndingRegion = region,
-                ReqItem = new(Path.RequiredItem.eType.Category, category),
-                ReqCount = 1u,
+                ReqItem = new(Path.PathReq.eType.Category, category),
+                ReqCount = numMissing + (uint)i,
             });
             last = region;
 
@@ -307,7 +307,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             // Key: Zone.Pointer, Value: Tuple of (Zone placement index, count of placements actually spawned in that zone)
             Dictionary<IntPtr, (int, int)> placementCounts = new();
             int count = 0;
-            int numMissing = CalcEmptySpots(data, out var placements);
+            CalcEmptySpots(data, out var placements); // We actually just need the placements data here...
             foreach (var placement in placements)
             {
                 LG_Zone zone = data.FindZoneByPlacement(placement).GetLG_Zone()!;
@@ -330,7 +330,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                 placementCounts[job.m_zone.Pointer] = counts = (counts.Item1, counts.Item2 + 1);
 
                 // Calulcate which location actually spawned here.
-                // If it's a normal spawn, we can cal its index normally; otherwise, we need to pull one of the overflow
+                // If it's a normal spawn, we can calc its index normally; otherwise, we need to pull one of the overflow
                 if (counts.Item2 > maxPerZone)
                     count = ++maxNormal;
                 else

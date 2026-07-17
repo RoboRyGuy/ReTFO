@@ -74,7 +74,7 @@ public class SurvivalHandler : ArchipelagoFeature
         {
             path = new(path)
             {
-                ReqItem = new(Path.RequiredItem.eType.Category, data.Item_CompleteObjective_Instance),
+                ReqItem = new(Path.PathReq.eType.Category, data.Item_CompleteObjective_Instance),
                 ReqCount = (uint)data.ObjectiveIndex,
             };
         }

@@ -149,7 +149,7 @@ public class LockLobbySlotsHandler : ArchipelagoFeature
     {
         // Define the items
         for (int i = 1; i < SNet.Slots.CharacterSlots.Count; i++)
-            data.AddFloatingItem(data.Region_Always, data.Item_LobbySlotUnlock_Instance(i));
+            data.AddFloatingItem(data.Region_Menu, data.Item_LobbySlotUnlock_Instance(i));
 
         // Add the options
         ItemID tag = data.Item_LobbySlotUnlocks;

@@ -92,6 +92,9 @@ public static class CommonTagsHandler_Tags
         /// </summary>
         public ItemID Item_Codes
             => ItemID.From(data, "Code Items", data => new("Items representing codes of some kind; for example, terminal passwords and reactor codes.", data.Item_All));
+
+        public OptionID Option_IsFakeGeneration
+            => ArchipelagoFeatureHelper.GetFeature<CommonTagsHandler>().Option_IsFakeGeneration(data);
     }
 }
 
@@ -107,6 +110,10 @@ public class CommonTagsHandler : ArchipelagoFeature
         get => m_featureLogger ?? Plugin.Get().Logger;
         set => m_featureLogger = value;
     }
+
+    private OptionID m_isFakeGeneration = new();
+    public OptionID Option_IsFakeGeneration(Game.Data data)
+        => m_isFakeGeneration.IsNull ? (m_isFakeGeneration = data.AddOption(new OptionIsFakeGeneration())) : m_isFakeGeneration;
 
     [Game.Callback]
     public void AddTagOptions(Game.Data data)

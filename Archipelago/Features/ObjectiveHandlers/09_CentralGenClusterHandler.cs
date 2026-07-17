@@ -214,7 +214,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = foundGenClusterRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, clusterItem),
+            ReqItem = new(Path.PathReq.eType.Item, clusterItem),
             ReqCount = 1u,
         });
 
@@ -228,7 +228,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, cellItem),
+                ReqItem = new(Path.PathReq.eType.ItemConsumed, cellItem),
                 ReqCount = 1u,
             });
             last = newRegion;
@@ -249,7 +249,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = last,
             EndingRegion = scanRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, scanItem),
+            ReqItem = new(Path.PathReq.eType.Item, scanItem),
             ReqCount = 1u,
         });
 

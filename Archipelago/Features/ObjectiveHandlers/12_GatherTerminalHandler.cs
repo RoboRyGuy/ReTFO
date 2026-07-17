@@ -154,7 +154,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.RequiredItem.eType.Category, gatherCategory),
+                ReqItem = new(Path.PathReq.eType.Category, gatherCategory),
                 ReqCount = (uint)i,
             });
             last = newRegion;

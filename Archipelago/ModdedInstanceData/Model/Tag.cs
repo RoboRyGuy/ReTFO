@@ -3,18 +3,21 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
 /// <summary>
 /// The definition of a tag; all elements of a tag other than its name
 /// </summary>
+[DataContract]
 public readonly record struct TagDefinition<TID>
     where TID : struct, ITagID
 {
     /// <summary>
     /// Short description of the tag and what it matches
     /// </summary>
+    [DataMember(Name = "description")]
     public string Description { get; private init; }
 
     /// <summary>
@@ -30,6 +33,7 @@ public readonly record struct TagDefinition<TID>
     /// <summary>
     /// Helper to get enumeration of all parents
     /// </summary>
+    [DataMember(Name = "parents")]
     public IEnumerable<TID> AllParents => (OtherParents ?? Enumerable.Empty<TID>()).Prepend(Parent);
 
     public TagDefinition(string description, TID parent)

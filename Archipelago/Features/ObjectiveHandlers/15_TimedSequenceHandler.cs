@@ -168,7 +168,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = startRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, mainTerminalItem),
+            ReqItem = new(Path.PathReq.eType.Item, mainTerminalItem),
             ReqCount = 1u,
         });
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceStart.Count >= i)
@@ -188,7 +188,7 @@ public class TimedSequenceHandler : ArchipelagoFeature
         {
             StartingRegion = startRegion,
             EndingRegion = succeedRegion,
-            ReqItem = new(Path.RequiredItem.eType.Category, data.Item_TimedSequenceVerifies),
+            ReqItem = new(Path.PathReq.eType.Category, data.Item_TimedSequenceVerifies),
             ReqCount = (uint)count,
         });
         if (data.Objective.TimedTerminalSequence_EventsOnSequenceDone.Count >= i)

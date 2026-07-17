@@ -46,7 +46,7 @@ public class UseTerminalHandler : ArchipelagoFeature
         {
             path = new(path)
             {
-                ReqItem = new(Path.RequiredItem.eType.Category, data.Item_TerminalPasswords_ByTerminal),
+                ReqItem = new(Path.PathReq.eType.Category, data.Item_TerminalPasswords_ByTerminal),
                 ReqCount = (uint)data.TerminalStartingStateData.PasswordPartCount,
             };
         }

@@ -2,16 +2,16 @@
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Processors;
 
+using ReTFO.Archipelago.Features;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
-using System.Diagnostics.CodeAnalysis;
 
 public static class Game
 {
-
     /// <summary>
     /// Separates core game data into a separate scope object
     /// </summary>
@@ -615,8 +615,8 @@ public static class Game
             GameScopeData = new(manager);
             Region_Menu = Regions.Create(
                 "Menu",
-                new("The origin region for GTFO; where the player starts, from which all regions must be reachable", new()),
-                new Region() { RegionData = new WeakReference<ScopeData>(GameScopeData) } // We make the link for consistency's sake, but avoid cyclical referencing
+                new("The origin region for GTFO; where the player starts, from which all regions must be reachable", this.Region_Always),
+                new Region() { RegionData = GameScopeData }
             );
             Item_Empty = Items.LookUpOrCreate(
                 "Empty",
@@ -693,6 +693,14 @@ public static class Game
             => RegionStorage.SetValue(id, Regions.LookUpValue(id).WithReachable(isReachable));
 
         /// <summary>
+        /// Set a particular region's randomization status
+        /// </summary>
+        /// <param name="id">ID of the region</param>
+        /// <param name="isRandomized">The new value for the region's randomized value</param>
+        public void SetRegionRandomized(RegionID id, bool isRandomized)
+            => RegionStorage.SetValue(id, Regions.LookUpValue(id).WithRandomized(isRandomized));
+
+        /// <summary>
         /// Add a new path.
         /// </summary>
         /// <param name="path">The path to add</param>
@@ -706,7 +714,7 @@ public static class Game
                 FeatureLogger.Warning($"              To: {Regions.LookUpName(path.EndingRegion)}");
             }
 
-            if (path.ReqItem.Type != Path.RequiredItem.eType.None && path.ReqCount <= 0)
+            if (path.ReqItem.Type != Path.PathReq.eType.None && path.ReqCount <= 0)
                 FeatureLogger.Warning("Adding path with non-None path requirement but it has a reqcount of 0!");
 
             if (path.StartingRegion.IsNull)

@@ -319,7 +319,13 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         /// </summary>
         public void SetupWithData(LG_ComputerTerminal terminal)
         {
-            m_foundParts = new(terminal.m_passwordLinkerJob.m_passwordParts);
+            if (terminal.m_passwordLinkerJob == null)
+            {
+                m_foundParts = new(1);
+                m_foundParts[0] = true;
+            }
+            else
+                m_foundParts = new(terminal.m_passwordLinkerJob?.m_passwordParts ?? 1);
             HeaderText = $"{terminal.m_terminalItem.TerminalItemKey} Password";
             ScopeTarget = new(
                 terminal.SpawnNode.m_zone.DimensionIndex,
@@ -369,7 +375,6 @@ public class TerminalPasswordHandler : ArchipelagoFeature
             UpdateInternal(terminal);
         }
 
-
         /// <summary>
         /// Create the formatted text used to display this terminal's password
         /// </summary>
@@ -379,7 +384,7 @@ public class TerminalPasswordHandler : ArchipelagoFeature
         {
             string password = terminal.m_password;
 
-            int partCount = terminal.m_passwordLinkerJob.m_passwordParts;
+            int partCount = terminal.m_passwordLinkerJob?.m_passwordParts ?? 0;
             if (partCount == 0) return password; // It's free!
 
             int perPartCount = password.Length / partCount;

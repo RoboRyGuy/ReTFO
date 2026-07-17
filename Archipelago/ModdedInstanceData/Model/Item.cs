@@ -8,6 +8,7 @@ using System.Runtime.Serialization;
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Runtime.InteropServices;
 
 /// <summary>
 /// Represents an item in GTFO. Some examples include:
@@ -154,11 +155,16 @@ public abstract class TerminalItem : ExpeditionItem
 /// <summary>
 /// Simple wrapper used to identify an ID for specifically an item
 /// </summary>
-[DataContract]
+[StructLayout(LayoutKind.Explicit, Size = sizeof(uint)), DataContract]
 public struct ItemID : ITagID, IEquatable<ItemID>, IComparable<ItemID>
 {
-    [DataMember(Name = "id")]
-    public uint ID { get; init; }
+    [FieldOffset(0), DataMember(Name = "id")]
+    private readonly uint m_ID;
+    public uint ID 
+    { 
+        get => m_ID; 
+        init => m_ID = value; 
+    }
 
     public bool IsNull => ID == 0;
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }

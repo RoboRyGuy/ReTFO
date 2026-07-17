@@ -208,7 +208,7 @@ public class LockGearHandler : ArchipelagoFeature
             if (!block.internalEnabled) continue;
 
             ItemID gearItem = data.Item_Gear_Instance(new GearIDRange(block.GearJSON));
-            data.AddFloatingItem(data.Region_Always, gearItem);
+            data.AddFloatingItem(data.Region_Menu, gearItem);
 
             // Skip items in categories which cannot be randomized, so their options don't get generated
             if (data.Items.IsChild(gearItem, data.Item_Never))
@@ -286,7 +286,7 @@ public class LockGearHandler : ArchipelagoFeature
             displayName: $"Starting {slotName}",
             description:
                 "The chosen gear item is guaranteed to be unlocked at start (in addition to the randomly-selected gear items)."
-                + " You may also choose \"none\" to not add an item.",
+                + " You may also choose \"None\" to not add an item.",
             category: GEAR_OPTION_CATEGORY,
             categorySort: slotSort,
             defaultValue: new ItemID().ID,

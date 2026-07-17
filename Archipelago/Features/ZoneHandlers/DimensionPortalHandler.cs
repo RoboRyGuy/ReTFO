@@ -208,7 +208,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Zone,
             EndingRegion = keyInsertedRegion,
-            ReqItem = new(Path.RequiredItem.eType.ItemConsumed, data.Item_BigPickup_MWP),
+            ReqItem = new(Path.PathReq.eType.ItemConsumed, data.Item_BigPickup_MWP),
             ReqCount = 1u
         });
 
@@ -226,7 +226,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = keyInsertedRegion,
             EndingRegion = scanCompletedRegion,
-            ReqItem = new(Path.RequiredItem.eType.Item, scanItem),
+            ReqItem = new(Path.PathReq.eType.Item, scanItem),
             ReqCount = 1u,
         });
 
@@ -242,7 +242,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = scanCompletedRegion,
             EndingRegion = targetZone.Region_Zone,
-            ReqItem = new(Path.RequiredItem.eType.ItemConsumed, warpItem),
+            ReqItem = new(Path.PathReq.eType.ItemConsumed, warpItem),
             ReqCount = 1u,
         });
     }

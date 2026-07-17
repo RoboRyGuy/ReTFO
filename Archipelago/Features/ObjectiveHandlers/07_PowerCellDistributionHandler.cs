@@ -149,7 +149,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = cellRegion,
-                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, cellItem),
+                ReqItem = new(Path.PathReq.eType.ItemConsumed, cellItem),
                 ReqCount = 1u,
             });
 
@@ -159,7 +159,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             {
                 StartingRegion = cellRegion,
                 EndingRegion = genRegion,
-                ReqItem = new(Path.RequiredItem.eType.ItemConsumed, genItem),
+                ReqItem = new(Path.PathReq.eType.ItemConsumed, genItem),
                 ReqCount = 1u,
             });
             last = genRegion;

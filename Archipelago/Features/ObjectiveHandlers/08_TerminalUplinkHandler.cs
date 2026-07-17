@@ -153,8 +153,8 @@ public class TerminalUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = foundTerminalRegion,
-                ReqItem = new(Path.RequiredItem.eType.Category, terminalCategory),
-                ReqCount = 1u,
+                ReqItem = new(Path.PathReq.eType.Category, terminalCategory),
+                ReqCount = (uint)i,
             });
 
             data.Locations.CreateValue(
@@ -169,8 +169,8 @@ public class TerminalUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = foundTerminalRegion,
                 EndingRegion = completionRegion,
-                ReqItem = new(Path.RequiredItem.eType.Category, completionCategory),
-                ReqCount = 1u,
+                ReqItem = new(Path.PathReq.eType.Category, completionCategory),
+                ReqCount = (uint)i,
             });
             last = completionRegion;
             eventWrapper.Process(completionRegion);

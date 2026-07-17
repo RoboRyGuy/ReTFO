@@ -1,7 +1,9 @@
 ﻿using ReTFO.Archipelago.Utilities;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
@@ -33,16 +35,14 @@ public readonly struct Path : INullable
         Name = source.Name;
         StartingRegion = source.StartingRegion;
         EndingRegion = source.EndingRegion;
-        ReqItem = source.ReqItem;
-        ReqCount = source.ReqCount;
-        AlternateItem = source.AlternateItem;
+        Reqs = source.Reqs;
     }
 
     /// <summary>
     /// Simple requires need to traverse a path
     /// </summary>
-    [DataContract]
-    public readonly struct RequiredItem : INullable
+    [StructLayout(LayoutKind.Explicit), DataContract]
+    public readonly struct PathReq : INullable
     {
         /// <summary>
         /// Type of requirements possibly needed
@@ -71,34 +71,165 @@ public readonly struct Path : INullable
             ItemConsumed,
 
             /// <summary>
+            /// Requires a specific type of item. During the server-side generation, the requirements for this
+            /// path type are increased by the sum of all previously-encountered RequiredItems with the same target.
+            /// </summary>
+            ItemGrowing,
+
+            /// <summary>
             /// Requires a certain number of items which are all children of one shared category ID.
             /// This includes items in the provided category.
             /// </summary>
             Category,
+
+            /// <summary>
+            /// Requires a specific category of item. During the server-side generation, the requirements for this
+            /// path type are increased by the sum of all previously-encountered growing RequiredItems with the same target.
+            /// </summary>
+            CategoryGrowing,
+
+            /// <summary>
+            /// Used by <see cref="MultiPathReq"/> to indicate that it contains an array of values.
+            /// </summary>
+            MultiReq,
         }
 
         /// <summary>
-        /// Constructs a path requirements struct using the given target and target type
+        /// Constructs a path requirements struct using the given target
         /// </summary>
-        public RequiredItem(eType type, ItemID target)
+        public PathReq(eType type, ItemID target, uint count)
         {
+            if (type == PathReq.eType.MultiReq)
+                throw new InvalidOperationException($"Cannot assign a target of type {nameof(PathReq.eType.MultiReq)} to a PathReq!");
+
             Type = type;
             Target = target;
+            Count = count;
         }
 
         /// <summary>
         /// The type of requirement this represents
         /// </summary>
-        [DataMember(Name = "type")]
-        public eType Type { get; private init; } = eType.None;
+        [FieldOffset(0), DataMember(Name = "type")]
+        public readonly eType Type = eType.None;
 
         /// <summary>
         /// The tag utilized to identify the target
         /// </summary>
-        [DataMember(Name = "target")]
-        public ItemID Target { get; private init; } = new();
+        [FieldOffset(sizeof(eType)), DataMember(Name = "target")]
+        public readonly ItemID Target = new();
+
+        /// <summary>
+        /// The number of target(s) that must be acquired
+        /// </summary>
+        [FieldOffset(sizeof(eType) + sizeof(uint)), DataMember(Name = "count")]
+        public readonly uint Count = 1u;
 
         public bool IsNull => Type == eType.None;
+    }
+
+    /// <summary>
+    /// A variation of PathReq which acts as a union of PathReq and PathReq[]
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit)]
+    public readonly struct MultiPathReq : IEnumerable<PathReq>
+    {
+        public MultiPathReq(PathReq.eType type, ItemID target, uint count)
+        {
+            if (type == PathReq.eType.MultiReq)
+                throw new InvalidOperationException($"Cannot manually assign a target of type {nameof(PathReq.eType.MultiReq)} to a MultiPathReq!");
+
+            Type = type;
+            Target = target;
+            Count = count;
+        }
+
+        public MultiPathReq(PathReq[] reqs)
+        {
+            Type = PathReq.eType.MultiReq;
+            Reqs = reqs;
+        }
+
+        [FieldOffset(0)]
+        private readonly PathReq.eType Type;
+        
+        [FieldOffset(sizeof(PathReq.eType))]
+        private readonly ItemID Target;
+
+        [FieldOffset(sizeof(PathReq.eType) + sizeof(uint))]
+        private readonly uint Count;
+
+        [FieldOffset(sizeof(PathReq.eType))]
+        private readonly PathReq[] Reqs = null!;
+
+        private class Enumerator : IEnumerator<PathReq>
+        {
+            public Enumerator(PathReq[] s) => source = s;
+            PathReq[] source;
+            int position = -1;
+
+            public PathReq Current => source[position];
+            object IEnumerator.Current => Current;
+            public bool MoveNext() => position++ < source.Length;
+            public void Reset() => position = -1;
+            public void Dispose() { }
+        }
+
+        public IEnumerator<PathReq> GetEnumerator()
+            => new Enumerator(Type == PathReq.eType.MultiReq ? Reqs : [new PathReq(Type, Target, Count)]);
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        /// <summary>
+        /// Creates a new copy of this path req with the inputted requirement added to it.
+        /// If the requirement's target is in the list of already-required targets:
+        ///  - If the type does not match, raises an error.
+        ///  - If the type matches, increases the existing req's count by newReq's count
+        /// Otherwise, it is appended to the list of targets.
+        /// </summary>
+        public MultiPathReq WithAdded(PathReq newReq)
+        {
+            if (Type != PathReq.eType.MultiReq)
+            {
+                if (Target.Equals(newReq.Target))
+                {
+                    if (Type != newReq.Type)
+                        throw new InvalidOperationException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
+                    return new MultiPathReq(Type, Target, Count + newReq.Count);
+                }
+                else
+                {
+                    return new MultiPathReq(new PathReq[]
+                    {
+                        new PathReq(Type, Target, Count),
+                        newReq
+                    });
+                }
+            }
+            else
+            {
+                int existingIndex;
+                for (existingIndex = 0; existingIndex < Reqs.Length; existingIndex++)
+                    if (Reqs[existingIndex].Target.Equals(newReq.Target)) break;
+
+                if (existingIndex < Reqs.Length)
+                {
+                    if (Reqs[existingIndex].Type != newReq.Type)
+                        throw new InvalidOperationException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
+                    PathReq[] arr = new PathReq[Reqs.Length];
+                    Reqs.CopyTo(arr, 0);
+                    arr[existingIndex] = new(newReq.Type, newReq.Target, Reqs[existingIndex].Count + newReq.Count);
+                    return new MultiPathReq(arr);
+                }
+                else
+                {
+                    PathReq[] arr = new PathReq[Reqs.Length + 1];
+                    Reqs.CopyTo(arr, 0);
+                    Reqs[existingIndex] = newReq;
+                    return new MultiPathReq(arr);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -146,27 +277,10 @@ public readonly struct Path : INullable
     public RegionID EndingRegion { get; init; } = new();
 
     /// <summary>
-    /// Requirements for accessing this path
+    /// Requirements for accessing this path. These are AND-ed together
     /// </summary>
-    [DataMember(Name = "req_item")]
-    public RequiredItem ReqItem { get; init; } = new(RequiredItem.eType.None, new ItemID());
-
-    /// <summary>
-    /// How many ReqItems are needed to traverse this path.
-    /// </summary>
-    [DataMember(Name = "req_count")]
-    public uint ReqCount { get; init; } = 0;
-
-    /// <summary>
-    /// Alternate item required to traverse this path
-    /// <list type="=bullet">
-    ///  <item>If ReqItem.Isnull, then this is ignored (by design)</item>
-    ///  <item>The alternate item is assumed to only require one count to traverse the path; it is assumed to be a uniuqe item</item>
-    ///  <item>This is intended for situations such as door unlock events (since all zone doors can be force unlocked via an event)</item>
-    /// </list>
-    /// </summary>
-    [DataMember(Name = "alt_item")]
-    public RequiredItem AlternateItem { get; init; } = new(RequiredItem.eType.Blocked, new ItemID());
+    [DataMember(Name = "reqs")]
+    public MultiPathReq Reqs { get; init; } = new(PathReq.eType.None, new ItemID(), 1u);
 
     /// <summary>
     /// If this path is null. Considered true if the starting and ending region are the same.

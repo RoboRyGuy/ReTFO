@@ -31,16 +31,40 @@ public readonly struct Region
     /// </summary>
     public Region(Region other)
     {
-        Reachable = other.Reachable;
+        m_data = other.m_data;
         ConnectedPaths = other.ConnectedPaths;         // Note that this copies elements to our owned array
         ConnectedLocations = other.ConnectedLocations; // Note that this copies elements to our owned array
         RegionData = other.RegionData;
     }
 
+    private enum eData
+    {
+        None = 0,
+        IsReachable = 1 << 0,
+        IsRandomized = 1 << 1,
+    }
+
+    private readonly eData m_data = 0;
+
     /// <summary>
-    /// Whether this region is reachable, typically populated during the graph traversal checks.
+    /// Whether this region is reachable, populated during <see cref="MidManager.DoGraphTraversal(Game.Data, bool, bool)"/>
     /// </summary>
-    public bool Reachable { get; init; } = false;
+    [DataMember(Name = "reachable")]
+    public bool Reachable
+    {
+        get => (m_data & eData.IsReachable) != eData.None;
+        init => m_data = value ? (m_data | eData.IsReachable) : (m_data & ~eData.IsReachable);
+    }
+
+    /// <summary>
+    /// Whether this region is randomized, populated from the reigon whitelist and blacklist
+    /// during <see cref="Features.StateTracker.SetupMultiworld"/>
+    /// </summary>
+    public bool Randomized
+    {
+        get => (m_data & eData.IsRandomized) != eData.None;
+        init => m_data = value ? (m_data | eData.IsRandomized) : (m_data & ~eData.IsRandomized);
+    }
 
     /// <summary>
     /// All paths starting in this region
@@ -66,6 +90,7 @@ public readonly struct Region
     /// <summary>
     /// Custom region data, typically used by game data or similar
     /// </summary>
+    //[DataMember(Name = "region_data")] // Too many serialization problems :/
     public object? RegionData { get; init; }
 
     /// <summary>
@@ -73,6 +98,12 @@ public readonly struct Region
     /// </summary>
     public Region WithReachable(bool newValue)
         => new(this) { Reachable = newValue };
+
+    /// <summary>
+    /// Creates a new region with the requested randomization
+    /// </summary>
+    public Region WithRandomized(bool newValue)
+        => new(this) { Randomized = newValue };
 
     /// <summary>
     /// Creates a new region with the listed paths added to its connected paths array

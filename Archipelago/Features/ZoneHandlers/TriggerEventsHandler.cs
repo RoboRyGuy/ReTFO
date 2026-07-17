@@ -95,10 +95,10 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 }
 
                 // Identify the item needed to trigger the event. Again, using a simple override to identify this
-                Path.RequiredItem reqs = new(Path.RequiredItem.eType.None, new());
+                Path.PathReq reqs = new(Path.PathReq.eType.None, new());
                 if (PathReqsOverride.TryGetValue(trigger, out var itemGetter))
                 {
-                    reqs = new(Path.RequiredItem.eType.ItemConsumed, itemGetter.Invoke(data));
+                    reqs = new(Path.PathReq.eType.ItemConsumed, itemGetter.Invoke(data));
                 }
 
                 // Process the events

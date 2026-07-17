@@ -1,6 +1,5 @@
 ﻿using Clonesoft.Json;
 using Clonesoft.Json.Serialization;
-using ReTFO.Archipelago.ModdedInstanceData.Model;
 using System;
 using System.Linq;
 

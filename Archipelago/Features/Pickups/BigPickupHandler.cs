@@ -6,23 +6,14 @@ using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
-using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.Pickups;
 
-using FluffyUnderware.DevTools.Extensions;
-using HarmonyLib;
-using Il2CppInterop.Runtime;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using SNetwork;
-using System.Linq;
-using System.Runtime.InteropServices;
-using TheArchive.Utilities;
 
 public static class BigPickupHandler_Tags
 {
@@ -102,10 +93,9 @@ public class BigPickupHandler : ArchipelagoFeature
 
         /// <summary>
         /// Immediately attempt to spawn the related big pickup.
-        /// Spawning must be async because the host must approve it.
         /// </summary>
-        /// <returns>A wrapper around the spawn attempt. This will later contain the item if it successfully spawns.</returns>
-        private AsyncItemSpawnWrapper TrySpawnAsync()
+        /// <returns>A wrapper around the spawn attempt. This can be used to access the item once it spawns</returns>
+        protected virtual AsyncItemSpawnWrapper TrySpawnAsync()
         {
             var wrapper = new AsyncItemSpawnWrapper();
 
@@ -133,6 +123,10 @@ public class BigPickupHandler : ArchipelagoFeature
                 null
             );
 
+            wrapper.AddSpawnCallback(
+                item => item.TryCast<CarryItemPickup_Core>()?.ItemCuller.OnFactoryCullingSetupDone(originNode.m_cullNode)
+            );
+
             return wrapper;
         }
 
@@ -140,7 +134,7 @@ public class BigPickupHandler : ArchipelagoFeature
         {
             if (CheckExpedition(stateTracker))
             {
-                if (RandData.IsRandomLike && player != null)
+                if (player != null)
                 {
                     // Give it directly to the player
                     void AttemptPickup(ISyncedItem item)
@@ -164,7 +158,6 @@ public class BigPickupHandler : ArchipelagoFeature
 
             yield return () =>
             {
-                StateTracker.Get().AddItemToTerminal(itemId);
                 terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving {itemName}", 2f);
             };
 
@@ -181,7 +174,6 @@ public class BigPickupHandler : ArchipelagoFeature
                     return;
                 }
 
-                carryItem.ItemCuller.OnFactoryCullingSetupDone(node.m_cullNode);
                 carryItem.m_sync.AttemptPickupInteraction(
                     ePickupItemInteractionType.Place,
                     player.Owner, default, 

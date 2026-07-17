@@ -5,6 +5,7 @@ using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.Utilities;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TheArchive.Core.Attributes.Feature;
@@ -16,7 +17,6 @@ namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using System.Collections;
 
 public static class ReactorStartupHandler_Tags
 {
@@ -181,7 +181,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
     }
 
     // Item representing a reactor code for a particular wave
-    public class ReactorStartup_CodeItem : TerminalItem
+    public class ReactorStartup_CodeItem : ExpeditionItem
     {
         public ReactorStartup_CodeItem(RegionID objective, int count)
             : base(new ItemData() { IsProgression = true })
@@ -218,11 +218,9 @@ public class ReactorStartupHandler : ArchipelagoFeature
             stateTracker.AddItemToTerminal(itemId);
             foreach (var reactor in GetReactors(stateTracker))
             {
+                ProgressionObjective_ReactorStartup.NotifyFoundCode(reactor, Index);
                 if (reactor.m_stateReplicator.State.stateCount == (Index + 1))
-                {
                     reactor.CurrentStateOverrideCode = reactor.GetOverrideCodes()[Index];
-                    ProgressionObjective_ReactorStartup.Update(reactor);
-                }
             }
         }
 
@@ -306,7 +304,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
         // For each wave, there will be a "survive wave" region
         RegionID last = data.Region_Objective;
-        Path.RequiredItem reqItem = new(Path.RequiredItem.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
+        Path.PathReq reqItem = new(Path.PathReq.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
         count = 0;
         foreach (var wave in data.Objective.ReactorWaves.Iter())
         {
@@ -335,7 +333,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
             // Verification (code and code placement)
             ItemID codeItem = data.Item_ReactorStartupCode_Instance(count);
-            reqItem = new(Path.RequiredItem.eType.Category, codeItem); // Queue code as needed for next region
+            reqItem = new(Path.PathReq.eType.Category, codeItem); // Queue code as needed for next region
             if (wave.VerifyInOtherZone)
             {
                 Zone.Data codeZone = data.FindZoneByIndex(wave.ZoneForVerification)
@@ -375,7 +373,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 ReqItem = reqItem,
                 ReqCount = checked((uint)count)
             });
-            reqItem = new(Path.RequiredItem.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
+            reqItem = new(Path.PathReq.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
             last = completeStartupRegion;
             eventWrapper.Process(completeStartupRegion);
         }
@@ -493,8 +491,8 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 if (!data.Objective.ReactorWaves[count - 1].VerifyInOtherZone)
                 {
                     id = data.Location_ReactorStartupCode_Instance(count);
-                    stateTracker.NotifyFoundLocation(id, null);
-                    ProgressionObjective_ReactorStartup.NotifyFoundCode(__instance, count - 1);
+                    if (!stateTracker.NotifyFoundLocation(id, null).RandData.IsTreatedAsRandom);
+                        ProgressionObjective_ReactorStartup.NotifyFoundCode(__instance, count - 1);
                 }
             }
             else if (interaction.type == eReactorInteraction.Finish_startup)
@@ -653,7 +651,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
         /// </summary>
         public void SetupInternal(LG_WardenObjective_Reactor reactor)
         {
-            m_obtainedCodes = new(reactor.GetOverrideCodes().Count);
+            m_obtainedCodes = new(reactor.m_waveCountMax);
             LayerType layer = reactor.OriginLayer; // Where the objective originated
             int count = reactor.WardenObjectiveChainIndex + 1;
 
@@ -688,18 +686,16 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 FeatureLogger.Warning("Failed to update reactor startup UI; code count is out of bounds!");
             else
                 m_obtainedCodes[codeIndex] = true;
+            UpdateInternal(reactor);
         }
 
         /// <summary>
         /// Create the formatted text used to display this reactor's codes
         /// </summary>
-        /// <param name="data">Objective data for the startup objective</param>
         /// <param name="reactor">The specific reactor that is currently being started up</param>
         /// <returns></returns>
         private string MakeFormattedText(LG_WardenObjective_Reactor reactor)
         {
-            StateTracker stateTracker = StateTracker.Get();
-
             int currentWave = Math.Max(reactor.m_stateReplicator.State.stateCount, 1);
             int maxWaves = reactor.m_waveCountMax;
             string formatCode(string code, int index)

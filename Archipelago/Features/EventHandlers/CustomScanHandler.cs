@@ -147,7 +147,7 @@ public class CustomScanHandler : ArchipelagoFeature
                 {
                     StartingRegion = data.Region_Zone,
                     EndingRegion = scanRegion,
-                    ReqItem = new(Path.RequiredItem.eType.Item, item),
+                    ReqItem = new(Path.PathReq.eType.Item, item),
                     ReqCount = count,
                 });
 
