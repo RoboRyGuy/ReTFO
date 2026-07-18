@@ -751,12 +751,12 @@ public partial class StateTracker : ArchipelagoFeature
         };
 
         int i;
-        i = 0; result.RegionWhitelist   = new uint[RegionWhitelist.Count];   foreach (var id in RegionWhitelist)   result.RegionWhitelist[i++]   = id.ID;
-        i = 0; result.RegionBlacklist   = new uint[RegionBlacklist.Count];   foreach (var id in RegionBlacklist)   result.RegionBlacklist[i++]   = id.ID;
-        i = 0; result.LocationWhitelist = new uint[LocationWhitelist.Count]; foreach (var id in LocationWhitelist) result.LocationWhitelist[i++] = id.ID;
-        i = 0; result.LocationBlacklist = new uint[LocationBlacklist.Count]; foreach (var id in LocationBlacklist) result.LocationBlacklist[i++] = id.ID;
-        i = 0; result.ItemWhitelist     = new uint[ItemWhitelist.Count];     foreach (var id in ItemWhitelist)     result.ItemWhitelist[i++]     = id.ID;
-        i = 0; result.ItemBlacklist     = new uint[ItemBlacklist.Count];     foreach (var id in ItemBlacklist)     result.ItemBlacklist[i++]     = id.ID;
+        i = 0; result.RegionWhitelist   = new uint[m_regionWhitelist.Count];   foreach (var id in m_regionWhitelist)   result.RegionWhitelist[i++]   = id.ID;
+        i = 0; result.RegionBlacklist   = new uint[m_regionBlacklist.Count];   foreach (var id in m_regionBlacklist)   result.RegionBlacklist[i++]   = id.ID;
+        i = 0; result.LocationWhitelist = new uint[m_locationWhitelist.Count]; foreach (var id in m_locationWhitelist) result.LocationWhitelist[i++] = id.ID;
+        i = 0; result.LocationBlacklist = new uint[m_locationBlacklist.Count]; foreach (var id in m_locationBlacklist) result.LocationBlacklist[i++] = id.ID;
+        i = 0; result.ItemWhitelist     = new uint[m_itemWhitelist.Count];     foreach (var id in m_itemWhitelist)     result.ItemWhitelist[i++]     = id.ID;
+        i = 0; result.ItemBlacklist     = new uint[m_itemBlacklist.Count];     foreach (var id in m_itemBlacklist)     result.ItemBlacklist[i++]     = id.ID;
 
         return result;
     }
@@ -770,8 +770,8 @@ public partial class StateTracker : ArchipelagoFeature
         pArchipelagoGeneralState result;
 
         int i, j;
-        i = 0; result.FoundLocations        = new uint[FoundLocations.Count];        foreach (var id in FoundLocations)        result.FoundLocations[i++]        = id.ID;
-        i = 0; result.TrashedLocations      = new uint[TrashedLocations.Count];      foreach (var id in TrashedLocations)      result.TrashedLocations[i++]      = id.ID;
+        i = 0; result.FoundLocations        = new uint[m_foundLocations.Count];        foreach (var id in m_foundLocations)        result.FoundLocations[i++]        = id.ID;
+        i = 0; result.TrashedLocations      = new uint[m_trashedLocations.Count];      foreach (var id in m_trashedLocations)      result.TrashedLocations[i++]      = id.ID;
         i = 0; result.ItemsInTerminalSystem = new uint[ItemsInTerminalSystem.Count]; foreach (var id in ItemsInTerminalSystem) result.ItemsInTerminalSystem[i++] = id.Item1.ID;
         
         i = 0; 
@@ -899,8 +899,8 @@ public partial class StateTracker : ArchipelagoFeature
         var gameData = MidManager.GetProcessedGameData();
 
         // We only add to checked locations - no need to notify
-        FoundLocations.UnionWith(state.FoundLocations.Select(id => new LocationID() { ID = id }));
-        TrashedLocations.UnionWith(state.TrashedLocations.Select(id => new LocationID() { ID = id }));
+        m_foundLocations.UnionWith(state.FoundLocations.Select(id => new LocationID() { ID = id }));
+        m_trashedLocations.UnionWith(state.TrashedLocations.Select(id => new LocationID() { ID = id }));
 
         // Reset terminal items
         ItemsInTerminalSystem.Clear();
@@ -911,9 +911,9 @@ public partial class StateTracker : ArchipelagoFeature
             .ToDictionary(g => new ItemID() { ID = g.Key }, g => g.Count());
 
         // Sync item counts
-        foreach (var key in ActualItemCounts.Keys.Union(newItemCounts.Keys)) 
+        foreach (var key in m_collectedItemCounts.Keys.Union(newItemCounts.Keys)) 
         {
-            int count = ActualItemCounts.GetValueOrDefault(key, 0);
+            int count = m_collectedItemCounts.GetValueOrDefault(key, 0);
             int newCount = newItemCounts.GetValueOrDefault(key, 0);
 
             if (isRecall)
@@ -948,7 +948,7 @@ public partial class StateTracker : ArchipelagoFeature
 
                 // Note we intentionally truncate the actual item count as a form of lazy rollover support
                 ItemID itemId = new() { ID = interaction.Value };
-                int actualItemCount = (ushort)ActualItemCounts.GetValueOrDefault(itemId, 0);
+                int actualItemCount = (ushort)m_collectedItemCounts.GetValueOrDefault(itemId, 0);
                 while (actualItemCount++ < interaction.Count)
                     CollectItem(itemId, skipInteraction: true);
                 break;
@@ -969,7 +969,7 @@ public partial class StateTracker : ArchipelagoFeature
                 break;
 
             case pArchipelagoInteraction.eType.EmptyTrash:
-                TrashedLocations.Clear();
+                m_trashedLocations.Clear();
                 break;
 
             case pArchipelagoInteraction.eType.CheckRegion:

@@ -95,10 +95,10 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 }
 
                 // Identify the item needed to trigger the event. Again, using a simple override to identify this
-                Path.PathReq reqs = new(Path.PathReq.eType.None, new());
+                Path.MultiPathReq reqs = new();
                 if (PathReqsOverride.TryGetValue(trigger, out var itemGetter))
                 {
-                    reqs = new(Path.PathReq.eType.ItemConsumed, itemGetter.Invoke(data));
+                    reqs = new(Path.eType.ItemConsumed, itemGetter.Invoke(data), 1u);
                 }
 
                 // Process the events
@@ -107,8 +107,7 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 data.AddPath(new Path() {
                     StartingRegion = sourceZone.Region_Zone,
                     EndingRegion = eventRegion,
-                    ReqItem = reqs,
-                    ReqCount = reqs.IsNull ? 0u : 1u,
+                    Reqs = reqs,
                 });
                 Event.Data eventData = data.ProcessEvents(eventRegion, fauxList, eventStart, eventEnd - eventStart);
 

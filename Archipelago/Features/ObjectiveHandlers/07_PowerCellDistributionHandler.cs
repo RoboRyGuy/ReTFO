@@ -41,9 +41,6 @@ public static class PowerCellDistributionHandler_Tags
 
     extension(Objective.Data data)
     {
-        public RegionID Region_PowercellDistributionCellFound(int count)
-            => RegionID.From(data, $"{data.ObjectiveName} Obtained {count} Cells", data => new("Region entered by obtaining a particular number of cells during a powercell distribution objective", data.Region_Objective));
-
         public RegionID Region_PowercellDistributionGeneratorPowered(int count)
             => RegionID.From(data, $"{data.ObjectiveName} Powered {count} Generators", data => new("Region entered by powering a specific number of cells during a powercell distribution objective", data.Region_Objective));
 
@@ -127,10 +124,10 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             }
         }
 
-        // TODO: This objective has somewhat complicated cell implications, ie if doors are locked by cells. Can't think of any issues in vanilla, off the top of my head
         // For each gen needed, create two regions: One checks for access to cells, the other to gens
         List<List<RegionID>> regionSets = data.ObjectiveToZoneRegionSets(data.Objective.PowerCellsToDistribute).ToList();
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
+        ItemID genCategory = data.Item_PowerCellDistributionGens_PerObjective;
         RegionID last = data.Region_Objective;
         for (int i = 1; i <= data.Objective.PowerCellsToDistribute; i++)
         {
@@ -143,24 +140,16 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
                 genItem
             );
 
-            // Check that we have enough cells
-            RegionID cellRegion = data.Region_PowercellDistributionCellFound(i);
-            data.AddPath(new Path()
-            {
-                StartingRegion = last,
-                EndingRegion = cellRegion,
-                ReqItem = new(Path.PathReq.eType.ItemConsumed, cellItem),
-                ReqCount = 1u,
-            });
-
-            // Check that we've found enough gens
+            // Add a region for finding and powering a gen
             RegionID genRegion = data.Region_PowercellDistributionGeneratorPowered(i);
             data.AddPath(new Path()
             {
-                StartingRegion = cellRegion,
+                StartingRegion = last,
                 EndingRegion = genRegion,
-                ReqItem = new(Path.PathReq.eType.ItemConsumed, genItem),
-                ReqCount = 1u,
+                Reqs = new(
+                    new(Path.eType.ItemConsumed, cellItem, 1u),
+                    new(Path.eType.Category, genCategory, (uint)i)
+                )
             });
             last = genRegion;
 

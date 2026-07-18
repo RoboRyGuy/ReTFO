@@ -101,14 +101,7 @@ public class Plugin : BasePlugin
         foreach (Type type in types)
         {
             if (type.GetCustomAttribute<HarmonyPatch>() == null) continue;
-            try
-            {
-                harmony.PatchAll(type);
-            }
-            catch
-            {
-                throw;
-            }
+            harmony.PatchAll(type);
             PatchRecursive(type.GetNestedTypes(AccessTools.all));
         }
     }

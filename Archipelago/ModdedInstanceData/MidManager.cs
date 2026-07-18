@@ -154,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; set; } = new() 
     { 
-        { "ALkUpOLXnrJaHl4U53QZUeYuSoLlAdmuHnzroqYXyk8=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "xddj0OpT14z2lmo9dBfHD-BSASJtIvF7kAXMww7F0pM=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -644,9 +644,29 @@ public class MidManager
         // Item helpers
         uint itemCount(ItemID item) => itemCounts.GetValueOrDefault(item, 0u);
         uint catsCount(ItemID item) => categoryCounts.GetValueOrDefault(item, 0u);
+        uint getCount(Path.PathReq req)
+            => req.Type switch
+            {
+                Path.eType.Item            => itemCount(req.Target),
+                Path.eType.ItemConsumed    => itemCount(req.Target),
+                Path.eType.ItemGrowing     => itemCount(req.Target),
+                Path.eType.Category        => catsCount(req.Target),
+                Path.eType.CategoryGrowing => catsCount(req.Target),
+                _ => throw new NotSupportedException($"Unexpected path requirement type: {(int)req.Type}")
+            };
 
         uint usedItemCount(RegionID region, ItemID item) => gameData.IsComplete ? 0u : regionData[region.AsIndex].UsedItemCounts?.GetValueOrDefault(item, 0u) ?? 0u;
         uint usedCatsCount(RegionID region, ItemID item) => gameData.IsComplete ? 0u : regionData[region.AsIndex].UsedCategoryCounts?.GetValueOrDefault(item, 0u) ?? 0u;
+        uint getUsedCount(RegionID region, Path.PathReq req)
+            => req.Type switch
+            {
+                Path.eType.Item            => usedItemCount(region, req.Target),
+                Path.eType.ItemConsumed    => usedItemCount(region, req.Target),
+                Path.eType.ItemGrowing     => usedItemCount(region, req.Target),
+                Path.eType.Category        => usedCatsCount(region, req.Target),
+                Path.eType.CategoryGrowing => usedCatsCount(region, req.Target),
+                _ => throw new NotSupportedException($"Unexpected path requirement type: {(int)req.Type}")
+            };
 
         // Floating items are auto-collected - we assumed they'll be randomized somewhere they are logically guaranteed reachable
         // For simplicity, we just collect all items
@@ -682,70 +702,72 @@ public class MidManager
                 }
 
                 // Checks if a specific req item for the current path can be satisfied
-                bool checkTraversable(Path.PathReq req, uint reqCount)
+                bool checkTraversable(Path.PathReq req)
                 {
-                    if (req.Type == Path.PathReq.eType.None) return true;
-                    else if (req.Type == Path.PathReq.eType.Blocked) return false;
-
                     // Fetch counts from relevant dicts
-                    uint availableCount, usedCount;
-                    (availableCount, usedCount) = req.Type switch
-                    {
-                        Path.PathReq.eType.Item            => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
-                        Path.PathReq.eType.ItemConsumed    => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
-                        Path.PathReq.eType.ItemGrowing     => (itemCount(req.Target), usedItemCount(path.StartingRegion, req.Target)),
-                        Path.PathReq.eType.Category        => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
-                        Path.PathReq.eType.CategoryGrowing => (catsCount(req.Target), usedCatsCount(path.StartingRegion, req.Target)),
-                        _ => throw new NotSupportedException($"Unexpected path requirement type: {(int)req.Type}")
-                    };
+                    uint availableCount = getCount(req);
+                    uint usedCount = getUsedCount(path.StartingRegion, req);
 
-                    // Accounting for growth requiremnets
-                    if (req.Type == Path.PathReq.eType.ItemGrowing || req.Type == Path.PathReq.eType.CategoryGrowing)
+                    // Accounting for growth requirements
+                    if (req.Type == Path.eType.ItemGrowing || req.Type == Path.eType.CategoryGrowing)
                     {
                         uint grownCount = growthCounts.GetValueOrDefault(req.Target, 0u);
-                        if (availableCount < (reqCount + usedCount + grownCount))
+                        if (availableCount < (req.Count + usedCount + grownCount))
                             return false;
-                        growthCounts[req.Target] = grownCount + reqCount;
                     }
-                    else if (availableCount < (reqCount + usedCount))
+                    else if (availableCount < (req.Count + usedCount))
                         return false; // Insufficient items to pass
-
-                    // Perform processing if relevant / necessary
-                    if (!gameData.IsComplete)
-                    {
-                        // Updating used counts
-                        ExtendedRegionData newData = new(regionData[path.StartingRegion.AsIndex]);
-                        if (req.Type == Path.PathReq.eType.ItemConsumed)
-                        {
-                            // Update both dicts with the consumed counts
-                            newData.UsedItemCounts = newData.UsedItemCounts == null ? new(1) : new(newData.UsedItemCounts);
-                            newData.UsedItemCounts[req.Target] = usedCount + reqCount;
-
-                            var usedCatsDict = newData.UsedCategoryCounts = newData.UsedCategoryCounts == null ? new() : new(newData.UsedCategoryCounts);
-                            void updateUsedRecursive(ItemID id)
-                            {
-                                if (id.IsNull) return;
-                                usedCatsDict[id] = usedCatsDict.GetValueOrDefault(id, 0u) + reqCount;
-                                foreach (var parent in gameData.Items.LookUpDefinition(id).AllParents)
-                                    updateUsedRecursive(parent);
-                            }
-                            updateUsedRecursive(req.Target);
-                        }
-                        regionData[path.EndingRegion.AsIndex] = newData;
-
-                        // Update the path's req count directly
-                        if (doProcessing)
-                            gameData.SetPathReqCount(queuedPaths[i], usedCount + reqCount);
-                    }
 
                     return true;
                 }
 
-                if (checkTraversable(path.AlternateItem, 1u) || checkTraversable(path.ReqItem, path.ReqCount))
+                if (path.Reqs.IsNone || path.Reqs.All(checkTraversable))
                 {
                     setReachable(path.EndingRegion);
                     ++newCount;
                     Region endingRegion = gameData.Regions.LookUpValue(path.EndingRegion);
+
+                    // Perform processing if relevant / necessary
+                    if (!gameData.IsComplete)
+                    {
+                        // Updating used counts and consumed items
+                        ExtendedRegionData newData = new(regionData[path.StartingRegion.AsIndex]);
+                        if (path.Reqs.Any(r => r.Type == Path.eType.ItemConsumed))
+                        {
+                            newData.UsedItemCounts = newData.UsedItemCounts == null ? new(1) : new(newData.UsedItemCounts);
+                            var usedCatsDict = newData.UsedCategoryCounts = newData.UsedCategoryCounts == null ? new() : new(newData.UsedCategoryCounts);
+                            
+                            // Helper which updates the categories dict recursively
+                            void updateUsedRecursive(ItemID id, uint reqCount)
+                            {
+                                if (id.IsNull) return;
+                                usedCatsDict[id] = usedCatsDict.GetValueOrDefault(id, 0u) + reqCount;
+                                foreach (var parent in gameData.Items.LookUpDefinition(id).AllParents)
+                                    updateUsedRecursive(parent, reqCount);
+                            }
+                            
+                            foreach (var req in path.Reqs.Where(r => r.Type == Path.eType.ItemConsumed))
+                            {
+                                // Update both dicts with the consumed counts
+                                newData.UsedItemCounts[req.Target] = usedItemCount(path.StartingRegion, req.Target) + req.Count;
+                                updateUsedRecursive(req.Target, req.Count);
+                            }
+                        }
+                        regionData[path.EndingRegion.AsIndex] = newData;
+
+                        // Update growing path requirements
+                        foreach (var req in path.Reqs.Where(r => r.Type == Path.eType.ItemGrowing || r.Type == Path.eType.CategoryGrowing))
+                            growthCounts[req.Target] = growthCounts.GetValueOrDefault(req.Target, 0u) + req.Count;
+
+                        // Update the path's req counts
+                        if (doProcessing)
+                        {
+                            gameData.AddPathReq(
+                                queuedPaths[i],
+                                path.Reqs.Select(r => new Path.PathReq(r.Type, r.Target, getUsedCount(path.StartingRegion, r))).ToArray()
+                            );
+                        }
+                    }
 
                     // Collect all locations newly available because of this region
                     foreach (var loc in endingRegion.ConnectedLocations.Select(gameData.Locations.LookUpValueChecked))
@@ -835,17 +857,15 @@ public class MidManager
             ConsoleManager.SetConsoleColor(ConsoleColor.Red);
             ConsoleManager.ConsoleStream.WriteLine($"  End:   [{path.EndingRegion.ID:000}] {gameData.Regions.LookUpName(path.EndingRegion)}");
             ConsoleManager.SetConsoleColor(ConsoleColor.Yellow);
-            if (path.ReqItem.Type == Path.PathReq.eType.None)
-                ConsoleManager.ConsoleStream.WriteLine($"  No required item");
-            else if (path.ReqItem.Type == Path.PathReq.eType.Item || path.ReqItem.Type == Path.PathReq.eType.ItemConsumed)
-                ConsoleManager.ConsoleStream.WriteLine($"  Item:  {usedItemCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
-            else if (path.ReqItem.Type == Path.PathReq.eType.Category)
-                ConsoleManager.ConsoleStream.WriteLine($"  Cats:  {usedCatsCount(path.StartingRegion, path.ReqItem.Target) + path.ReqCount:000}x {gameData.Items.LookUpName(path.ReqItem.Target)}");
-            if (path.AlternateItem.Type != Path.PathReq.eType.Blocked)
-                if (path.AlternateItem.Type == Path.PathReq.eType.None)
-                    ConsoleManager.ConsoleStream.WriteLine($"  Alt:   Not blocked");
-                else
-                    ConsoleManager.ConsoleStream.WriteLine($"  Alt:   001x {gameData.Items.LookUpName(path.AlternateItem.Target)}");
+            
+            if (path.Reqs.IsNone)
+                ConsoleManager.ConsoleStream.WriteLine($"  Reqs: None");
+            else
+            {
+                ConsoleManager.ConsoleStream.WriteLine($"  Reqs:");
+                foreach (var req in path.Reqs)
+                    ConsoleManager.ConsoleStream.WriteLine($"  - {Enum.GetName(req.Type)}: ({getCount(req)}-{getUsedCount(path.StartingRegion, req)})/{req.Count} {gameData.Items.LookUpName(req.Target)}");
+            }
 
             bool printed2 = false;
             ConsoleManager.ConsoleStream.WriteLine("\n  Potential unfound items which unblock:");
@@ -855,33 +875,22 @@ public class MidManager
                 if (entry.Value.Value.ItemID.IsNull) continue;
                 if (entry.Value.Value.OwningRegionIDs.All(getReachable)) continue; // Item was already collected
 
-                bool meetsMain = path.ReqItem.Type switch
-                {
-                    Path.PathReq.eType.None => true,
-                    Path.PathReq.eType.Blocked => false,
-                    Path.PathReq.eType.Item => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.PathReq.eType.ItemConsumed => path.ReqItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.PathReq.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.ReqItem.Target),
-                    _ => throw new NotSupportedException("Unexpected path req type!"),
-                };
+                bool itemMeetsReq(Path.PathReq req)
+                    => req.Type switch
+                    {
+                        Path.eType.Item => req.Target.Equals(entry.Value.Value.ItemID),
+                        Path.eType.ItemConsumed => req.Target.Equals(entry.Value.Value.ItemID),
+                        Path.eType.ItemGrowing => req.Target.Equals(entry.Value.Value.ItemID),
+                        Path.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, req.Target),
+                        Path.eType.CategoryGrowing => gameData.Items.IsChild(entry.Value.Value.ItemID, req.Target),
+                        _ => throw new NotSupportedException("Unexpected path req type!"),
+                    };
 
-                bool meetsAlt = path.AlternateItem.Type switch
-                {
-                    Path.PathReq.eType.None => true,
-                    Path.PathReq.eType.Blocked => false,
-                    Path.PathReq.eType.Item => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.PathReq.eType.ItemConsumed => path.AlternateItem.Target.Equals(entry.Value.Value.ItemID),
-                    Path.PathReq.eType.Category => gameData.Items.IsChild(entry.Value.Value.ItemID, path.AlternateItem.Target),
-                    _ => throw new NotSupportedException("Unexpected path req type!"),
-                };
 
-                if (meetsMain || meetsAlt)
+                if (path.Reqs.Any(itemMeetsReq))
                 {
                     printed2 = true;
                     ConsoleManager.ConsoleStream.WriteLine();
-                    if (meetsMain && meetsAlt) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Main, Alt");
-                    else if (meetsMain) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Main");
-                    else if (meetsAlt) ConsoleManager.ConsoleStream.WriteLine($"    Reqs: Alt");
                     ConsoleManager.ConsoleStream.WriteLine($"    Item: [{entry.Value.Value.ItemID.ID}] {gameData.Items.LookUpName(entry.Value.Value.ItemID)}");
                     ConsoleManager.ConsoleStream.WriteLine($"    Loc:  [{entry.Key.ID}] {gameData.Locations.LookUpName(entry.Key)}");
 

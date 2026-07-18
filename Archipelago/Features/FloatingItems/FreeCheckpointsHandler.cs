@@ -90,8 +90,26 @@ public class FreeCheckpointsHandler : ArchipelagoFeature
         }
     }
 
+    [Game.Callback]
+    public void AddCheckpointOption(Game.Data data)
+    {
+        ItemID tag = data.Item_FreeCheckpoints;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Free Checkpoint Randomization",
+            description:
+                "Controls randomization of the \"free\" checkpoint item in all expeditions. Once found, this item can be used"
+                + " once per expedition attempt to trigger a checkpoint at any terminal. If disabled, it will not be obtainable."
+                + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            Option.MakeSortKey(data, tag),
+            0u,
+            new(),
+            tag
+        ));
+    }
+
     [Expedition.Callback]
-    public void AddExpeditionUnlock(Expedition.Data data)
+    public void AddCheckpointItems(Expedition.Data data)
     {
         data.AddFloatingItem(data.Region_Expedition, data.Item_FreeCheckpoint_ByExpedition);
     }

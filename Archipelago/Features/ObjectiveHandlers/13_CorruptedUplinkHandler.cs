@@ -168,8 +168,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = foundRegion,
-                ReqItem = new(Path.PathReq.eType.Category, terminalCategory),
-                ReqCount = (uint)(2 * i),
+                Reqs = new(Path.eType.Category, terminalCategory, (uint)(2 * i)),
             });
 
             // Place completion item in that region
@@ -186,8 +185,7 @@ public class CorruptedUplinkHandler : ArchipelagoFeature
             {
                 StartingRegion = foundRegion,
                 EndingRegion = completionRegion,
-                ReqItem = new(Path.PathReq.eType.Category, completionCategory),
-                ReqCount = (uint)i,
+                Reqs = new(Path.eType.Category, completionCategory, (uint)i),
             });
             last = completionRegion;
             eventWrapper.Process(completionRegion);

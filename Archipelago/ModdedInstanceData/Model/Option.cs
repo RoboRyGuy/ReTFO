@@ -99,7 +99,7 @@ public static class Option
     /// <summary>
     /// A default category for options you may use
     /// </summary>
-    public const string DEFAULT_OPTION_CATEGORY = "Game Options";
+    public const string DEFAULT_OPTION_CATEGORY = "Randomization Options";
 
     /// <summary>
     /// A warning message which should be appended to the description of any input
@@ -619,6 +619,18 @@ public class OptionRaiseError : OptionEffect
 }
 
 /// <summary>
+/// A special option used to test if generation is fake or not,
+/// allowing special behavior when Universal Tracker is being used
+/// to create paths and such.
+/// Do not use this; instead, fetch the instance via <see cref="Features.CommonTagsHandler_Tags.get_Option_IsFakeGeneration(Game.Data)"/>
+/// </summary>
+[DataContract]
+public class OptionIsFakeGeneration : OptionBase
+{
+    public override Option.eType Type => Option.eType.IsFakeGeneration;
+}
+
+/// <summary>
 /// A special option which creates a choice field allowing users to whitelist,
 ///  blacklist, or ignore a tag. This also applies the effect.
 /// Option values: 0 = Whitelisted, 1 = None, 2 = Blacklist
@@ -648,18 +660,6 @@ public abstract class OptionTagOption : OptionInput
     /// </summary>
     [DataMember(Name = "tag")]
     public OptionParameter Tag { get; init; }
-}
-
-/// <summary>
-/// A special option used to test if generation is fake or not,
-/// allowing special behavior when Universal Tracker is being used
-/// to create paths and such.
-/// Do not use this; instead, fetch the instance via <see cref="Features.CommonTagsHandler_Tags.get_Option_IsFakeGeneration(Game.Data)"/>
-/// </summary>
-[DataContract]
-public class OptionIsFakeGeneration : OptionBase
-{
-    public override Option.eType Type => Option.eType.IsFakeGeneration;
 }
 
 /// <inheritdoc cref="OptionTagOption"/>

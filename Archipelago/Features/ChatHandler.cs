@@ -102,7 +102,7 @@ public class ChatHandler : ArchipelagoFeature
     /// Constructs a hex color string with one digit per color
     /// </summary>
     public static string ColorToHex(AP.Models.Color color)
-        => $"#{(color.R >> 4).ToString("X1")}{(color.G >> 4).ToString("X1")}{(color.B >> 4).ToString("X1")}";
+        => $"#{color.R >> 4:X1}{color.G >> 4:X1}{color.B >> 4:X1}";
 
     /// <summary>
     /// Receive a message from SNet. Intended solely for proxy clients.

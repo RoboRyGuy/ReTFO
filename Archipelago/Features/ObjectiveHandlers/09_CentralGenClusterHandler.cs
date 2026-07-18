@@ -214,8 +214,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = foundGenClusterRegion,
-            ReqItem = new(Path.PathReq.eType.Item, clusterItem),
-            ReqCount = 1u,
+            Reqs = new(Path.eType.Item, clusterItem, 1u),
         });
 
         // c) Powering gens with found cells
@@ -228,8 +227,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.PathReq.eType.ItemConsumed, cellItem),
-                ReqCount = 1u,
+                Reqs = new(Path.eType.ItemConsumed, cellItem, 1u),
             });
             last = newRegion;
             eventWrapper.Process(newRegion, true);
@@ -249,8 +247,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
         {
             StartingRegion = last,
             EndingRegion = scanRegion,
-            ReqItem = new(Path.PathReq.eType.Item, scanItem),
-            ReqCount = 1u,
+            Reqs = new(Path.eType.Item, scanItem, 1u),
         });
 
         // Place objective complete item in last region

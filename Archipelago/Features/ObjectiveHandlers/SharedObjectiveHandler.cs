@@ -259,8 +259,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         {
             StartingRegion = layers[2].Region_SectorCleared,
             EndingRegion = peRegion,
-            ReqItem = new(Path.PathReq.eType.Item, layers[1].Item_SectorClear_Instance),
-            ReqCount = 1,
+            Reqs = new(Path.eType.Item, layers[1].Item_SectorClear_Instance, 1u),
         });
 
         data.Locations.CreateValue(
@@ -296,11 +295,10 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Layer,
             EndingRegion = gotoWinRegion,
-            ReqItem = new(Path.PathReq.eType.Category, data.Item_CompleteObjective_Instance),
-            ReqCount = (uint)data.GetObjectiveDatas().Count(),
+            Reqs = new(Path.eType.Category, data.Item_CompleteObjective_Instance, (uint)data.GetObjectiveDatas().Count()),
         });
             
-        // A final region is added with the reward for reaching extraction with the objective complete
+        // The sector clear gets its own region
         RegionID sectorClearedRegion = data.Region_SectorCleared;
 
         // If this is secondary or overload, we'll need main to be clearable. Otherwise, we need to reach extraction
@@ -310,9 +308,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             {
                 StartingRegion = gotoWinRegion,
                 EndingRegion = sectorClearedRegion,
-                ReqItem = new(Path.PathReq.eType.Item, data.Item_Extraction_Instance),
-                ReqCount = 1u,
-                AlternateItem = new(Path.PathReq.eType.Category, data.Item_WinEvent_ByExpedition),
+                Reqs = new(Path.eType.Item, data.Item_Extraction_Instance, 1u),
             });
         }
         else
@@ -321,20 +317,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             {
                 StartingRegion = gotoWinRegion,
                 EndingRegion = sectorClearedRegion,
-                ReqItem = new(Path.PathReq.eType.Item, data.MainLayer.Item_SectorClear_Instance),
-                ReqCount = 1u,
-            });
-        }
-
-        // If using an instant win item, we skip the gotowin region entirely
-        if (data.LayerType.IsMainLayer)
-        {
-            data.AddPath(new()
-            {
-                StartingRegion = data.Region_Layer,
-                EndingRegion = sectorClearedRegion,
-                ReqItem = new(Path.PathReq.eType.Category, data.Item_WinEvent_ByExpedition),
-                ReqCount = 1u,
+                Reqs = new(Path.eType.Item, data.MainLayer.Item_SectorClear_Instance, 1u),
             });
         }
 

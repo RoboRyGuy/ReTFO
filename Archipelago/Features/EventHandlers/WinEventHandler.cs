@@ -1,6 +1,7 @@
 ﻿using GameData;
 using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Features.ObjectiveHandlers;
 using System;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
@@ -124,7 +125,24 @@ public class WinEventHandler : ArchipelagoFeature
         }
     }
 
-    // Add win event items and set up win event locations
+    /// <summary>
+    /// Add paths which can be used by win event items
+    /// </summary>
+    [Expedition.Callback]
+    public void AddInstanceWinPaths(Expedition.Data data)
+    {
+        Layer.Data mainLayer = data.MainLayer;
+        data.AddPath(new()
+        {
+            StartingRegion = mainLayer.Region_Layer,
+            EndingRegion = mainLayer.Region_SectorCleared,
+            Reqs = new(Path.eType.Category, data.Item_WinEvent_ByExpedition, 1u),
+        });
+    }
+
+    /// <summary>
+    /// Add win event items and set up win event locations
+    /// </summary>
     [Event.Callback]
     public void ProcessWinEvents(Event.Data data)
     {

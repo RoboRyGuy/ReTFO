@@ -181,8 +181,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.PathReq.eType.Category, category),
-                ReqCount = (uint)i,
+                Reqs = new(Path.eType.Category, category, (uint)i),
             });
             last = newRegion;
 

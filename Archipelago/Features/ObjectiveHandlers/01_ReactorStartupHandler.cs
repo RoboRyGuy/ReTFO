@@ -304,7 +304,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
         // For each wave, there will be a "survive wave" region
         RegionID last = data.Region_Objective;
-        Path.PathReq reqItem = new(Path.PathReq.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
+        Path.MultiPathReq reqItem = new(Path.eType.Category, data.Item_ReactorStartupReactors_PerObjective, 1u);
         count = 0;
         foreach (var wave in data.Objective.ReactorWaves.Iter())
         {
@@ -316,8 +316,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = surviveRegion,
-                ReqItem = reqItem,
-                ReqCount = 1u,
+                Reqs = reqItem,
             });
             last = surviveRegion;
 
@@ -333,7 +332,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
 
             // Verification (code and code placement)
             ItemID codeItem = data.Item_ReactorStartupCode_Instance(count);
-            reqItem = new(Path.PathReq.eType.Category, codeItem); // Queue code as needed for next region
+            reqItem = new(Path.eType.Category, codeItem, 1u); // Queue code as needed for next region
             if (wave.VerifyInOtherZone)
             {
                 Zone.Data codeZone = data.FindZoneByIndex(wave.ZoneForVerification)
@@ -370,10 +369,9 @@ public class ReactorStartupHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = completeStartupRegion,
-                ReqItem = reqItem,
-                ReqCount = checked((uint)count)
+                Reqs = reqItem,
             });
-            reqItem = new(Path.PathReq.eType.Category, data.Item_ReactorStartupReactors_PerObjective);
+            reqItem = new(Path.eType.Category, data.Item_ReactorStartupReactors_PerObjective, (uint)(count + 1));
             last = completeStartupRegion;
             eventWrapper.Process(completeStartupRegion);
         }
@@ -491,7 +489,7 @@ public class ReactorStartupHandler : ArchipelagoFeature
                 if (!data.Objective.ReactorWaves[count - 1].VerifyInOtherZone)
                 {
                     id = data.Location_ReactorStartupCode_Instance(count);
-                    if (!stateTracker.NotifyFoundLocation(id, null).RandData.IsTreatedAsRandom);
+                    if (!stateTracker.NotifyFoundLocation(id, null).RandData.IsTreatedAsRandom)
                         ProgressionObjective_ReactorStartup.NotifyFoundCode(__instance, count - 1);
                 }
             }

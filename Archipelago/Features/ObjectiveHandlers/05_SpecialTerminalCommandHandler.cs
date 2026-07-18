@@ -99,8 +99,7 @@ public class SpecialTerminalCommandHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = commandExecutedRegion,
-            ReqItem = new(Path.PathReq.eType.Item, item),
-            ReqCount = 1u,
+            Reqs = new(Path.eType.Item, item, 1u),
         });
 
         // Events triggered upon executing the command

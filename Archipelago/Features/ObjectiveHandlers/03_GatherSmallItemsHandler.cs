@@ -234,20 +234,12 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
         // "Found item #0" starts after finding the first numMissing spots, and exists to make the loop easier to write
         RegionID region = data.Region_GatheredItems(0);
         ItemID category = data.Item_GatherItems_PerObjective;
-        Path firstPath = new()
+        data.AddPath(new()
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = region,
-        };
-        if (numMissing > 0)
-        {
-            firstPath = new(firstPath)
-            {
-                ReqItem = new(Path.PathReq.eType.Category, category),
-                ReqCount = numMissing,
-            };
-        }
-        data.AddPath(firstPath);
+            Reqs = numMissing == 0 ? new() : new(Path.eType.Category, category, numMissing),
+        });
 
         // Now for each item, we can add the new region using the 0 region as a starting point
         var eventWrapper = data.MakeOrWrapOnSolveEvents();
@@ -260,8 +252,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             {
                 StartingRegion = last, 
                 EndingRegion = region,
-                ReqItem = new(Path.PathReq.eType.Category, category),
-                ReqCount = numMissing + (uint)i,
+                Reqs = new(Path.eType.Category, category, numMissing + (uint)i),
             });
             last = region;
 

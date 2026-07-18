@@ -432,7 +432,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
 
             foreach (var e in FindExpeditions(stateTracker.GameData)) 
                 e.Accessibility = eExpeditionAccessibility.AlwaysAllow;
-            StateTracker.UpdateLocationCounts(); // Since a new icon is now visible
+            RundownHandler.UpdateAllCounts(); // Since a new icon is now visible
         }
 
         public override void OnItemLost(StateTracker stateTracker, ItemID itemId = new())
@@ -442,7 +442,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
 
             foreach (var e in FindExpeditions(stateTracker.GameData)) 
                 e.Accessibility = eExpeditionAccessibility.AlwayBlock;
-            StateTracker.UpdateLocationCounts(); // Since a new icon is now hidden
+            RundownHandler.UpdateAllCounts(); // Since a new icon is now hidden
         }
     }
 
@@ -466,7 +466,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                 if (Expedition.Data.TryGetFromExpedition(exp, out var result) && regions.Contains(result.Region_Expedition))
                     exp.Accessibility = eExpeditionAccessibility.AlwaysAllow;
             }
-            StateTracker.UpdateLocationCounts(); // Since a new icon is now shown
+            RundownHandler.UpdateAllCounts(); // Since a new icon is now shown
         }
     }
 
@@ -502,8 +502,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             Name = $"{data.ExpeditionName} ITEM Expdition Unlock",
             StartingRegion = data.Region_FloatingExpeditionPaths,
             EndingRegion = data.Region_Expedition,
-            ReqItem = new(Path.PathReq.eType.Item, floatingUnlock),
-            ReqCount = 1u,
+            Reqs = new(Path.eType.Item, floatingUnlock, 1u),
         });
         data.AddFloatingItem(data.Region_Expedition, floatingUnlock);
 
@@ -513,8 +512,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             Name = $"{GetProgressiveSortKey(data)} - {data.ExpeditionName} PROGRESSIVE Expedition Unlock",
             StartingRegion = data.Region_ProgressiveExpeditionPaths,
             EndingRegion = data.Region_Expedition,
-            ReqItem = new(Path.PathReq.eType.ItemGrowing, data.Item_ProgressiveExpeditionUnlock),
-            ReqCount = 1u,
+            Reqs = new(Path.eType.ItemGrowing, data.Item_ProgressiveExpeditionUnlock, 1u),
         });
 
         RegionID progressiveRegion = data.Region_ProgressiveExpeditionUnlock_ByExpedition;
@@ -535,8 +533,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             {
                 StartingRegion = layers[0].Region_SectorCleared,
                 EndingRegion = progressiveRegion,
-                ReqItem = new(Path.PathReq.eType.Item, data.Item_AllowMainOnlyProgression),
-                ReqCount = 1,
+                Reqs = new(Path.eType.Item, data.Item_AllowMainOnlyProgression, 1u),
             });
         }
 

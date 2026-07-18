@@ -18,23 +18,11 @@ public static class ZoneEventsHandler_Tags
         public RegionID Region_OnBossDeathEvents 
             => RegionID.From(data, $"{data.ZoneName} OnBossDeath", data => new("Region entered by killing a boss in a particular zone", data.Region_Zone));
         
-        public RegionID Region_OnDoorScanDoneEvents 
-            => RegionID.From(data, $"{data.ZoneName} OnDoorScanDone", data => new("Region entered by completing a scan to unlock a particular zone door", data.Region_Zone));
-        
-        public RegionID Region_OnDoorScanStartEvents 
-            => RegionID.From(data, $"{data.ZoneName} OnDoorScanStart", data => new("Region entered by starting a scan to unlock a particular zone door", data.Region_Zone));
-        
-        public RegionID Region_OnOpenDoorEvents 
-            => RegionID.From(data, $"{data.ZoneName} OnOpenDoor", data => new("Region entered by opening a particular zone door", data.Region_Zone));
-        
         public RegionID Region_OnPortalWarpEvents 
             => RegionID.From(data, $"{data.ZoneName} OnPortalWarp", data => new("Region entered by trigger a dimsion portal's warp in a particular zone", data.Region_Zone));
         
         public RegionID Region_OnTerminalDeactivateAlarmEvents 
             => RegionID.From(data, $"{data.ZoneName} OnTerminalDeactivateAlarm", data => new("Region entered by executing the DEACTIVATE_ALARMS command associated with a particular zone door's error alarm", data.Region_Zone));
-        
-        public RegionID Region_OnUnlockDoorEvents 
-            => RegionID.From(data, $"{data.ZoneName} OnUnlockDoor", data => new("Region entered by unlocking a particular zone door", data.Region_Zone));
     }
 }
 
@@ -65,14 +53,14 @@ public class ZoneEventsHandler : ArchipelagoFeature
     /// </summary>
     private unsafe struct RegionEventPair
     {
-        public RegionEventPair(delegate*<Zone.Data, RegionID> builder, EventList? events)
+        public RegionEventPair(delegate*<Zone.Data, RegionID> regionFactory, EventList? eventList)
         {
-            IDBuilder = builder;
-            Events = events;
+            RegionFactory = regionFactory;
+            EventList = eventList;
         }
 
-        public readonly delegate*<Zone.Data, RegionID> IDBuilder;
-        public readonly EventList? Events;
+        public readonly delegate*<Zone.Data, RegionID> RegionFactory;
+        public readonly EventList? EventList;
     }
 
     // Triggers some important zone events that don't really have a home elsewhere
@@ -84,24 +72,20 @@ public class ZoneEventsHandler : ArchipelagoFeature
             // Note: Using a delegate* to delay ID creation, preventing unecessary regions from being created
             RegionEventPair[] pairs =
             {
-                new(&ZoneEventsHandler_Tags.get_Region_OnBossDeathEvents,               data.Zone.EventsOnBossDeath ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnDoorScanDoneEvents,            data.Zone.EventsOnDoorScanDone ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnDoorScanStartEvents,           data.Zone.EventsOnDoorScanStart ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnOpenDoorEvents,                data.Zone.EventsOnOpenDoor ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnPortalWarpEvents,              data.Zone.EventsOnPortalWarp ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnTerminalDeactivateAlarmEvents, data.Zone.EventsOnTerminalDeactivateAlarm ),
-                new(&ZoneEventsHandler_Tags.get_Region_OnUnlockDoorEvents,              data.Zone.EventsOnUnlockDoor ),
+                new(&ZoneEventsHandler_Tags.get_Region_OnBossDeathEvents,               data.Zone.EventsOnBossDeath),
+                new(&ZoneEventsHandler_Tags.get_Region_OnPortalWarpEvents,              data.Zone.EventsOnPortalWarp),
+                new(&ZoneEventsHandler_Tags.get_Region_OnTerminalDeactivateAlarmEvents, data.Zone.EventsOnTerminalDeactivateAlarm),
             };
             foreach (var pair in pairs)
             {
-                if (pair.Events?.Any() ?? false)
+                if (pair.EventList?.Any() ?? false)
                 {
-                    RegionID id = pair.IDBuilder(data);
+                    RegionID id = pair.RegionFactory(data);
                     data.AddPath(new Path() {
                         StartingRegion = data.Region_Zone, 
                         EndingRegion = id
                     });
-                    data.ProcessEvents(id, pair.Events!);
+                    data.ProcessEvents(id, pair.EventList!);
                 }
             }
         }

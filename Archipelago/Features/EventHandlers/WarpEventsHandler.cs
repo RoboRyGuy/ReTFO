@@ -147,8 +147,7 @@ public class WarpEventsHandler : ArchipelagoFeature
             {
                 StartingRegion = data.Region_Event,
                 EndingRegion = targetZone.Region_Zone,
-                ReqItem = new(Path.PathReq.eType.Category, targetZone.Item_WarpEvent_ByZone),
-                ReqCount = 1u,
+                Reqs = new(Path.eType.Category, targetZone.Item_WarpEvent_ByZone, 1u),
             });
         }
     }

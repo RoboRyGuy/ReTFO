@@ -10,6 +10,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
+using ReTFO.Archipelago.Features.FloatingItems;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -119,6 +120,25 @@ public class GatherTerminalHandler : ArchipelagoFeature
         }
     }
 
+    [Game.Callback]
+    public void AddGatherCommandOption(Game.Data data)
+    {
+        ItemID tag = data.Item_FreeCheckpoints;
+        data.AddOption(new OptionItemTagOption(
+            displayName: "Gather Terminal Randomization",
+            description:
+                "Controls randomization of Gather Terminal commands. These are commands which are run"
+                + " many times on a variety of terminals, which you need to collect N of to complete"
+                + " the objective. For example, in R6D2."
+                + OptionTagOption.DESC_SUFFIX,
+            category: Option.DEFAULT_OPTION_CATEGORY,
+            Option.MakeSortKey(data, tag),
+            0u,
+            new(),
+            tag
+        ));
+    }
+
     // Objective requiring prisoners enter commands on a variety of terminals throughought the complex
     // Like a blend of GatherSmallItems and SpecialTerminalCommand
     [Objective.Callback]
@@ -154,8 +174,7 @@ public class GatherTerminalHandler : ArchipelagoFeature
             {
                 StartingRegion = last,
                 EndingRegion = newRegion,
-                ReqItem = new(Path.PathReq.eType.Category, gatherCategory),
-                ReqCount = (uint)i,
+                Reqs = new(Path.eType.Category, gatherCategory, (uint)i),
             });
             last = newRegion;
 

@@ -228,8 +228,8 @@ public static class Game
             /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
             public bool IsChild(RegionID child, RegionID parent) => m_data.RegionStorage.IsChild(child, parent);
 
-            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
-            public bool IsChild(RegionID child, ICollection<RegionID> parents) => m_data.RegionStorage.IsChild(child, parents);
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, IReadOnlyCollection{TID})"/>
+            public bool IsChild(RegionID child, IReadOnlyCollection<RegionID> parents) => m_data.RegionStorage.IsChild(child, parents);
 
             /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
             public RegionID[] MakeChain(RegionID id) => m_data.RegionStorage.MakeChain(id);
@@ -430,8 +430,8 @@ public static class Game
             /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
             public bool IsChild(LocationID child, LocationID parent) => m_data.LocationStorage.IsChild(child, parent);
 
-            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
-            public bool IsChild(LocationID child, ICollection<LocationID> parents) => m_data.LocationStorage.IsChild(child, parents);
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, IReadOnlyCollection{TID})"/>
+            public bool IsChild(LocationID child, IReadOnlyCollection<LocationID> parents) => m_data.LocationStorage.IsChild(child, parents);
 
             /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
             public LocationID[] MakeChain(LocationID id) => m_data.LocationStorage.MakeChain(id);
@@ -582,8 +582,8 @@ public static class Game
             /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, TID)"/>
             public bool IsChild(ItemID child, ItemID parent) => m_data.ItemStorage.IsChild(child, parent);
 
-            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, ICollection{TID})"/>
-            public bool IsChild(ItemID child, ICollection<ItemID> parents) => m_data.ItemStorage.IsChild(child, parents);
+            /// <inheritdoc cref="TagStorage{TID, TItem}.IsChild(TID, IReadOnlyCollection{TID})"/>
+            public bool IsChild(ItemID child, IReadOnlyCollection<ItemID> parents) => m_data.ItemStorage.IsChild(child, parents);
 
             /// <inheritdoc cref="TagStorage{TID, TItem}.MakeChain"/>
             public ItemID[] MakeChain(ItemID id) => m_data.ItemStorage.MakeChain(id);
@@ -714,8 +714,8 @@ public static class Game
                 FeatureLogger.Warning($"              To: {Regions.LookUpName(path.EndingRegion)}");
             }
 
-            if (path.ReqItem.Type != Path.PathReq.eType.None && path.ReqCount <= 0)
-                FeatureLogger.Warning("Adding path with non-None path requirement but it has a reqcount of 0!");
+            if (!path.Reqs.IsNone && path.Reqs.Any(r => r.Count == 0))
+                FeatureLogger.Warning("Added path with at least one requirement which requires 0 items!");
 
             if (path.StartingRegion.IsNull)
                 throw new ArgumentNullException("Cannot add path; starting region is null!");
@@ -762,18 +762,33 @@ public static class Game
         public Path LookUpPath(PathID id) => Paths[id.AsIndex];
 
         /// <summary>
-        /// Set the required item count for a particular path
+        /// Add requirement to an existing path.
         /// </summary>
         /// <param name="id">The path to modify</param>
-        /// <param name="newCount">The new count</param>
+        /// <param name="newReq">The new requirement</param>
         /// <remarks>
         /// Used primarily during graph traversal to update direct requirements
         /// </remarks>
-        public void SetPathReqCount(PathID id, uint newCount)
+        public void AddPathReq(PathID id, Path.PathReq newReq)
         {
             if (IsComplete) FeatureLogger.Warning($"Late path req modification: PathID {id.ID}");
             int index = id.AsIndex;
-            Paths[index] = new(Paths[index]) { ReqCount = newCount };
+            Paths[index] = new(Paths[index]) { Reqs = Paths[index].Reqs.WithAdded(newReq) };
+        }
+
+        /// <summary>
+        /// Add requirement to an existing path.
+        /// </summary>
+        /// <param name="id">The path to modify</param>
+        /// <param name="newReqs">The new requirements</param>
+        /// <remarks>
+        /// Used primarily during graph traversal to update direct requirements
+        /// </remarks>
+        public void AddPathReq(PathID id, params Path.PathReq[] newReqs)
+        {
+            if (IsComplete) FeatureLogger.Warning($"Late path req modification: PathID {id.ID}");
+            int index = id.AsIndex;
+            Paths[index] = new(Paths[index]) { Reqs = Paths[index].Reqs.WithAdded(newReqs) };
         }
 
         /// <summary>

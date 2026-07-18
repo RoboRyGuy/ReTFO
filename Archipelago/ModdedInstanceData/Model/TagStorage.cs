@@ -386,7 +386,7 @@ public struct TagStorage<TID, TItem>
     /// <param name="child">The ID to test</param>
     /// <param name="parents">The parents to test against</param>
     /// <returns>True if child is a child of parents, false otherwise</returns>
-    public bool IsChild(TID child, ICollection<TID> parents)
+    public bool IsChild(TID child, IReadOnlyCollection<TID> parents)
     {
         if (child.IsNull) return false;
         if (parents.Contains(child)) return true;

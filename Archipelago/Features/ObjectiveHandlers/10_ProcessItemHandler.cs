@@ -39,9 +39,6 @@ public static class ProcessItemHandler_Tags
 
     extension (Objective.Data data)
     {
-        public RegionID Region_ProcessItemObtained
-            => RegionID.From(Checked(data), $"{data.ObjectiveName} Item Obtained", data => new("Region entered by obtaining the process item objective's unprocessed item.", data.Region_Objective));
-
         public RegionID Region_ProcessItemProcessed
             => RegionID.From(Checked(data), $"{data.ObjectiveName} Item Processed", data => new("Region entered by processing the process item objective's item.", data.Region_Objective));
 
@@ -111,16 +108,6 @@ public class ProcessItemHandler : ArchipelagoFeature
             );
         }
 
-        // Collected item region
-        RegionID collectItemRegion = data.Region_ProcessItemObtained;
-        data.AddPath(new Path()
-        {
-            StartingRegion = data.Region_Objective,
-            EndingRegion = collectItemRegion,
-            ReqItem = new(Path.PathReq.eType.Item, startItem),
-            ReqCount = 1u,
-        });
-
         // Add the processor to the expedition
         ItemID processorItem = data.Item_ProcessItemProcessor_Instance;
         data.Locations.CreateValue(
@@ -134,10 +121,12 @@ public class ProcessItemHandler : ArchipelagoFeature
         RegionID processedItemRegion = data.Region_ProcessItemProcessed;
         data.AddPath(new Path()
         {
-            StartingRegion = collectItemRegion,
+            StartingRegion = data.Region_Objective,
             EndingRegion = processedItemRegion,
-            ReqItem = new(Path.PathReq.eType.Item, processorItem),
-            ReqCount = 1u,
+            Reqs = new(
+                new(Path.eType.Item, startItem, 1u),
+                new(Path.eType.Item, processorItem, 1u)
+            ),
         });
 
         // Events triggered by initiating processing on the small HSU - both sets are always triggered (I think)

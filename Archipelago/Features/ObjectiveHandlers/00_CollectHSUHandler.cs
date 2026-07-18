@@ -120,8 +120,7 @@ public class CollectHSUHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = scanStartedRegion,
-            ReqItem = new(Path.PathReq.eType.Item, scanItem),
-            ReqCount = 1u
+            Reqs = new(Path.eType.Item, scanItem, 1u),
         });
 
         // Events triggered by starting the scan

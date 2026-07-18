@@ -2,8 +2,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
@@ -23,6 +21,51 @@ namespace ReTFO.Archipelago.ModdedInstanceData.Model;
 public readonly struct Path : INullable
 {
     /// <summary>
+    /// Type of requirements possibly needed
+    /// </summary>
+    public enum eType
+    {
+        /// <summary>
+        /// No required item; not assigned. Default value
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// Requires a certain number of a specific item, specified exactly by ID
+        /// </summary>
+        Item,
+
+        /// <summary>
+        /// Requires a certain number of a specific item, specified exactly by ID.
+        /// Passing through the path consumes the specified item, preventing its reuse.
+        /// </summary>
+        ItemConsumed,
+
+        /// <summary>
+        /// Requires a specific type of item. During the server-side generation, the requirements for this
+        /// path type are increased by the sum of all previously-encountered RequiredItems with the same target.
+        /// </summary>
+        ItemGrowing,
+
+        /// <summary>
+        /// Requires a certain number of items which are all children of one shared category ID.
+        /// This includes items in the provided category.
+        /// </summary>
+        Category,
+
+        /// <summary>
+        /// Requires a specific category of item. During the server-side generation, the requirements for this
+        /// path type are increased by the sum of all previously-encountered growing RequiredItems with the same target.
+        /// </summary>
+        CategoryGrowing,
+
+        /// <summary>
+        /// Used by <see cref="MultiPathReq"/> to indicate that it contains an array of values.
+        /// </summary>
+        MultiReq,
+    }
+
+    /// <summary>
     /// Constructs a default (null) path
     /// </summary>
     public Path() { }
@@ -41,66 +84,18 @@ public readonly struct Path : INullable
     /// <summary>
     /// Simple requires need to traverse a path
     /// </summary>
-    [StructLayout(LayoutKind.Explicit), DataContract]
+    [DataContract]
     public readonly struct PathReq : INullable
     {
-        /// <summary>
-        /// Type of requirements possibly needed
-        /// </summary>
-        public enum eType
-        {
-            /// <summary>
-            /// No required item; not assigned. Default value
-            /// </summary>
-            None,
-
-            /// <summary>
-            /// A path req that cannot be met
-            /// </summary>
-            Blocked,
-
-            /// <summary>
-            /// Requires a certain number of a specific item, specified exactly by ID
-            /// </summary>
-            Item,
-
-            /// <summary>
-            /// Requires a certain number of a specific item, specified exactly by ID.
-            /// Passing through the path consumes the specified item, preventing its reuse.
-            /// </summary>
-            ItemConsumed,
-
-            /// <summary>
-            /// Requires a specific type of item. During the server-side generation, the requirements for this
-            /// path type are increased by the sum of all previously-encountered RequiredItems with the same target.
-            /// </summary>
-            ItemGrowing,
-
-            /// <summary>
-            /// Requires a certain number of items which are all children of one shared category ID.
-            /// This includes items in the provided category.
-            /// </summary>
-            Category,
-
-            /// <summary>
-            /// Requires a specific category of item. During the server-side generation, the requirements for this
-            /// path type are increased by the sum of all previously-encountered growing RequiredItems with the same target.
-            /// </summary>
-            CategoryGrowing,
-
-            /// <summary>
-            /// Used by <see cref="MultiPathReq"/> to indicate that it contains an array of values.
-            /// </summary>
-            MultiReq,
-        }
-
         /// <summary>
         /// Constructs a path requirements struct using the given target
         /// </summary>
         public PathReq(eType type, ItemID target, uint count)
         {
-            if (type == PathReq.eType.MultiReq)
-                throw new InvalidOperationException($"Cannot assign a target of type {nameof(PathReq.eType.MultiReq)} to a PathReq!");
+            if (type == eType.MultiReq)
+                throw new InvalidOperationException($"Cannot assign a target of type {nameof(eType.MultiReq)} to a PathReq!");
+            else if (type == eType.None)
+                throw new InvalidOperationException($"A target of type {nameof(eType.None)} is pointless for a PathReq!");
 
             Type = type;
             Target = target;
@@ -110,57 +105,107 @@ public readonly struct Path : INullable
         /// <summary>
         /// The type of requirement this represents
         /// </summary>
-        [FieldOffset(0), DataMember(Name = "type")]
+        [DataMember(Name = "type")]
         public readonly eType Type = eType.None;
 
         /// <summary>
         /// The tag utilized to identify the target
         /// </summary>
-        [FieldOffset(sizeof(eType)), DataMember(Name = "target")]
+        [DataMember(Name = "target")]
         public readonly ItemID Target = new();
 
         /// <summary>
         /// The number of target(s) that must be acquired
         /// </summary>
-        [FieldOffset(sizeof(eType) + sizeof(uint)), DataMember(Name = "count")]
+        [DataMember(Name = "count")]
         public readonly uint Count = 1u;
 
         public bool IsNull => Type == eType.None;
     }
 
     /// <summary>
-    /// A variation of PathReq which acts as a union of PathReq and PathReq[]
+    /// A variation of PathReq which acts as a union of PathReq and PathReq[].
+    /// Unfortuantely, implementing an actual union is too much of a pain, so this is the best we get.
     /// </summary>
-    [StructLayout(LayoutKind.Explicit)]
     public readonly struct MultiPathReq : IEnumerable<PathReq>
     {
-        public MultiPathReq(PathReq.eType type, ItemID target, uint count)
+        /// <summary>
+        /// Creates a path with no requirements
+        /// </summary>
+        public MultiPathReq()
         {
-            if (type == PathReq.eType.MultiReq)
-                throw new InvalidOperationException($"Cannot manually assign a target of type {nameof(PathReq.eType.MultiReq)} to a MultiPathReq!");
+            Type = eType.None;
+            m_target = new();
+            m_count = 0u;
+        }
+
+        /// <summary>
+        /// Creates a path with a single requirement
+        /// </summary>
+        public MultiPathReq(eType type, ItemID target, uint count)
+        {
+            if (type == eType.MultiReq)
+                throw new InvalidOperationException($"Cannot manually assign a target of type {nameof(eType.MultiReq)} to a MultiPathReq!");
 
             Type = type;
-            Target = target;
-            Count = count;
+            m_target = target;
+            m_count = count;
         }
 
-        public MultiPathReq(PathReq[] reqs)
+        public MultiPathReq(PathReq req)
         {
-            Type = PathReq.eType.MultiReq;
-            Reqs = reqs;
+            Type = req.Type;
+            m_target = req.Target;
+            m_count = req.Count;
         }
 
-        [FieldOffset(0)]
-        private readonly PathReq.eType Type;
-        
-        [FieldOffset(sizeof(PathReq.eType))]
-        private readonly ItemID Target;
+        /// <summary>
+        /// Creates a path with a series of requirements
+        /// </summary>
+        public MultiPathReq(params PathReq[] reqs)
+        {
+            if (reqs.Length == 0)
+            {
+                Type = eType.None;
+                m_target = new();
+                m_count = 0u;
+            }
+            else if (reqs.Length == 1)
+            {
+                Type = reqs[0].Type;
+                m_target = reqs[0].Target;
+                m_count = reqs[0].Count;
+            }
+            else
+            {
+                Type = eType.MultiReq;
+                m_reqs = reqs;
+            }
+        }
 
-        [FieldOffset(sizeof(PathReq.eType) + sizeof(uint))]
-        private readonly uint Count;
+        public readonly eType Type;
 
-        [FieldOffset(sizeof(PathReq.eType))]
-        private readonly PathReq[] Reqs = null!;
+        private readonly ItemID m_target;
+
+        private readonly uint m_count;
+
+        private readonly PathReq[] m_reqs = null!;
+
+        /// <summary>
+        /// True if the path has no requirements
+        /// </summary>
+        public bool IsNone => Type == eType.None;
+
+        /// <summary>
+        /// Gets all the individual reqs for this req as an array
+        /// </summary>
+        public PathReq[] Reqs
+            => Type switch
+            {
+                eType.None => [],
+                eType.MultiReq => m_reqs,
+                _ => [new PathReq(Type, m_target, m_count)]
+            };
 
         private class Enumerator : IEnumerator<PathReq>
         {
@@ -170,64 +215,124 @@ public readonly struct Path : INullable
 
             public PathReq Current => source[position];
             object IEnumerator.Current => Current;
-            public bool MoveNext() => position++ < source.Length;
+            public bool MoveNext() => ++position < source.Length;
             public void Reset() => position = -1;
             public void Dispose() { }
         }
 
-        public IEnumerator<PathReq> GetEnumerator()
-            => new Enumerator(Type == PathReq.eType.MultiReq ? Reqs : [new PathReq(Type, Target, Count)]);
-
+        public IEnumerator<PathReq> GetEnumerator() => new Enumerator(Reqs);
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         /// <summary>
         /// Creates a new copy of this path req with the inputted requirement added to it.
         /// If the requirement's target is in the list of already-required targets:
-        ///  - If the type does not match, raises an error.
-        ///  - If the type matches, increases the existing req's count by newReq's count
+        /// - If the type does not match, raises an error.
+        /// - If the type matches, increases the existing req's count by newReq's count
         /// Otherwise, it is appended to the list of targets.
         /// </summary>
         public MultiPathReq WithAdded(PathReq newReq)
         {
-            if (Type != PathReq.eType.MultiReq)
+            if (Type == eType.None)
             {
-                if (Target.Equals(newReq.Target))
+                return new MultiPathReq(newReq.Type, newReq.Target, newReq.Count);
+            }
+            else if (Type != eType.MultiReq)
+            {
+                if (m_target.Equals(newReq.Target))
                 {
                     if (Type != newReq.Type)
-                        throw new InvalidOperationException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
-                    return new MultiPathReq(Type, Target, Count + newReq.Count);
+                        throw new ArgumentException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
+                    return new MultiPathReq(Type, m_target, m_count + newReq.Count);
                 }
                 else
                 {
-                    return new MultiPathReq(new PathReq[]
-                    {
-                        new PathReq(Type, Target, Count),
+                    return new MultiPathReq(
+                        new PathReq(Type, m_target, m_count),
                         newReq
-                    });
+                    );
                 }
             }
             else
             {
-                int existingIndex;
-                for (existingIndex = 0; existingIndex < Reqs.Length; existingIndex++)
-                    if (Reqs[existingIndex].Target.Equals(newReq.Target)) break;
+                int index;
+                for (index = 0; index < m_reqs.Length; index++)
+                    if (m_reqs[index].Target.Equals(newReq.Target)) break;
 
-                if (existingIndex < Reqs.Length)
+                if (index < m_reqs.Length)
                 {
-                    if (Reqs[existingIndex].Type != newReq.Type)
-                        throw new InvalidOperationException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
-                    PathReq[] arr = new PathReq[Reqs.Length];
-                    Reqs.CopyTo(arr, 0);
-                    arr[existingIndex] = new(newReq.Type, newReq.Target, Reqs[existingIndex].Count + newReq.Count);
+                    if (m_reqs[index].Type != newReq.Type)
+                        throw new ArgumentException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
+                    PathReq[] arr = new PathReq[m_reqs.Length];
+                    m_reqs.CopyTo(arr);
+                    arr[index] = new(newReq.Type, newReq.Target, m_reqs[index].Count + newReq.Count);
                     return new MultiPathReq(arr);
                 }
                 else
                 {
-                    PathReq[] arr = new PathReq[Reqs.Length + 1];
-                    Reqs.CopyTo(arr, 0);
-                    Reqs[existingIndex] = newReq;
+                    PathReq[] arr = new PathReq[m_reqs.Length + 1];
+                    m_reqs.CopyTo(arr);
+                    m_reqs[index] = newReq;
                     return new MultiPathReq(arr);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Creates a new copy of this path req with the inputted requirements added to it.
+        /// For each requirement, if the requirement's target is in the list of already-required targets:
+        /// - If the type does not match, raises an error.
+        /// - If the type matches, increases the existing req's count by newReq's count
+        /// Otherwise, it is appended to the list of targets.
+        /// </summary>
+        public MultiPathReq WithAdded(params PathReq[] newReqs)
+        {
+            // See if there are simpler solutions
+            if (newReqs.Length == 0)
+                return this;
+            else if (newReqs.Length == 1)
+                return WithAdded(newReqs[0]);
+
+            // Ensure that none of the new reqs share the same target
+            for (int i = 1; i < newReqs.Length; i++)
+            {
+                for (int j = 0; j < i; j++)
+                    if (newReqs[i].Target.Equals(newReqs[j].Target))
+                        throw new ArgumentException("Cannot add multiple reqs which share a target at once to a MultiPathReq!");
+            }
+
+            if (Type == eType.None)
+            {
+                return new MultiPathReq(newReqs);
+            }
+            else if (Type != eType.MultiReq)
+            {
+                return new MultiPathReq(newReqs).WithAdded(new PathReq(Type, m_target, m_count));
+            }
+            else
+            {
+                int[] indicies = new int[newReqs.Length];
+                int newLength = Reqs.Length;
+                for (int i = 0; i < newReqs.Length; i++)
+                {
+                    for (indicies[i] = 0; indicies[i] < Reqs.Length; indicies[i]++)
+                        if (newReqs[i].Target.Equals(Reqs[indicies[i]].Target)) break;
+                    if (indicies[i] == Reqs.Length) newLength++;
+                }
+
+                PathReq[] arr = new PathReq[newLength];
+                newLength = Reqs.Length;
+                Reqs.CopyTo(arr);
+                for (int i = 0; i < newReqs.Length; i++)
+                {
+                    if (indicies[i] == Reqs.Length)
+                        arr[newLength++] = newReqs[i];
+                    else if (newReqs[i].Type != Reqs[indicies[i]].Type)
+                        throw new ArgumentException($"Cannot add newReq to existing MultiPathReq; targets match, but target types don't match!");
+                    else
+                        arr[indicies[i]] = new(newReqs[i].Type, newReqs[i].Target, Reqs[indicies[i]].Count + newReqs[i].Count);
+                }
+
+                return new MultiPathReq(arr);
             }
         }
     }
@@ -280,7 +385,7 @@ public readonly struct Path : INullable
     /// Requirements for accessing this path. These are AND-ed together
     /// </summary>
     [DataMember(Name = "reqs")]
-    public MultiPathReq Reqs { get; init; } = new(PathReq.eType.None, new ItemID(), 1u);
+    public MultiPathReq Reqs { get; init; } = new();
 
     /// <summary>
     /// If this path is null. Considered true if the starting and ending region are the same.

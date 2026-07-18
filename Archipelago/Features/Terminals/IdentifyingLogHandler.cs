@@ -95,45 +95,37 @@ public class IdentifyingLogHandler : ArchipelagoFeature
             return;
 
         string logTextBlockName = $"{data.TerminalName} Identifying Log";
-        TextDataBlock log = TextDataBlock.GetBlock(logTextBlockName);
-        if (log == null)
+        LanguageData helper = new()
         {
-            LanguageData helper = new()
-            {
-                Translation = $"[{data.TerminalIndex}] {data.TerminalName}",
-                ShouldTranslate = false
-            };
+            Translation = $"[{data.TerminalIndex}] {data.TerminalName}",
+            ShouldTranslate = false
+        };
 
-            log = new IdentifyingLogTextDataBlock()
-            {
-                internalEnabled = true,
-                name = logTextBlockName,
-                SkipLocalization = true,
-                MachineTranslation = true,
-                English = helper.Translation,
-                Description = "",
-                CharacterMetaData = 1,
-                ImportVersion = 1,
-                ExportVersion = 1,
-                TerminalRegion = data.Region_Terminal,
-                French = helper,
-                Italian = helper,
-                German = helper,
-                Spanish = helper,
-                Russian = helper,
-                Portuguese_Brazil = helper,
-                Polish = helper,
-                Japanese = helper,
-                Korean = helper,
-                Chinese_Traditional = helper,
-                Chinese_Simplified = helper,
-            };
-            TextDataBlock.AddBlock(log);
-        }
-        else
+        var log = new IdentifyingLogTextDataBlock()
         {
-            FeatureLogger.Warning("Attmpted to set identifying log twice!");
-        }
+            internalEnabled = true,
+            name = logTextBlockName,
+            SkipLocalization = true,
+            MachineTranslation = true,
+            English = helper.Translation,
+            Description = "",
+            CharacterMetaData = 1,
+            ImportVersion = 1,
+            ExportVersion = 1,
+            TerminalRegion = data.Region_Terminal,
+            French = helper,
+            Italian = helper,
+            German = helper,
+            Spanish = helper,
+            Russian = helper,
+            Portuguese_Brazil = helper,
+            Polish = helper,
+            Japanese = helper,
+            Korean = helper,
+            Chinese_Traditional = helper,
+            Chinese_Simplified = helper,
+        };
+        TextDataBlock.AddBlock(log);
 
         data.TerminalLocalLogs.Capacity = data.TerminalLocalLogs.Count + 1; // Ensure exact sizing
         data.TerminalLocalLogs.Insert(0, new()
