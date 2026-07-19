@@ -197,9 +197,9 @@ public class PickupHelper : ArchipelagoFeature
         StateTracker stateTracker = StateTracker.Get();
         Game.Data data = stateTracker.GameData;
 
-        ContainsLocationPickupComp? comp = item.GetComponent<ContainsLocationPickupComp>();
+        ContainsLocationPickupComp? comp = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>();
         if (comp == null)
-            comp = item.gameObject.AddComponent<ContainsLocationPickupComp>();
+            comp = item.PickupInteraction.gameObject.AddComponent<ContainsLocationPickupComp>();
         else if (!comp.StoredLocation.IsNull)
         {
             int locLength = Math.Max(comp.StoredLocation.ID.ToString().Length, locationId.ID.ToString().Length);
@@ -376,7 +376,7 @@ public class PickupHelper : ArchipelagoFeature
             if (interaction.type != ePickupItemInteractionType.Pickup)
                 return; // We only care about when it's being picked up
 
-            ContainsLocationPickupComp? comp = __instance.GetComponent<ContainsLocationPickupComp>();
+            ContainsLocationPickupComp? comp = __instance.item?.PickupInteraction?.GetComponent<ContainsLocationPickupComp>();
             if (comp == null)
                 return; // Not associated with a location
 
@@ -419,7 +419,7 @@ public class PickupHelper : ArchipelagoFeature
     {
         public static void Postfix(LG_PickupItem_Sync __instance)
         {
-            var comp = __instance.item?.GetComponent<ContainsLocationPickupComp>();
+            var comp = __instance.item?.PickupInteraction?.GetComponent<ContainsLocationPickupComp>();
             if (comp == null) return;
 
             var interact = __instance.item?.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
@@ -431,6 +431,155 @@ public class PickupHelper : ArchipelagoFeature
 
             string backupName = data.Items.LookUpName(loc.ItemID);
             interact.SetName(new Il2CppFunc_string(() => loc.ScoutedItemName ?? backupName));
+        }
+    }
+
+    /// <summary>
+    /// Modify the detailed data result from a query to add multiworld info for an item
+    /// </summary>
+    /// <param name="item">The item to pull multiworld info from</param>
+    /// <param name="detailedData">The detailed info list which will be modified</param>
+    /// <param name="scout">If true, also scouts the location, providing the player with a hint of what it contains</param>
+    public static void ModifyTerminalDetailInfo(ItemInLevel item, Il2CppSystem.Collections.Generic.List<string> detailedData, bool scout = true)
+    {
+        int index = 1;
+        while (index < detailedData.Count && !detailedData[index].StartsWith("----")) ++index;
+
+        ContainsLocationPickupComp comp = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>();
+        if (comp == null)
+            detailedData.Insert(index++, "MULTIWORLD ITEM: -- NONE --");
+        else
+        {
+            StateTracker st = StateTracker.Get();
+            Location loc = st.GameData.Locations.LookUpValueChecked(comp.StoredLocation);
+            detailedData.Insert(index++, $"MULTIWORLD ITEM: ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
+            if (scout) st.ScoutLocation(comp.StoredLocation);
+        }
+    }
+
+    /// <summary>
+    /// The vanilla imlementation for querying key items does not keep a reference to the key. So this func replaces it
+    /// </summary>
+    [InjectToIl2Cpp]
+    public class KeyItemTerminalItemCallback : Il2CppSystem.Object
+    {
+        public KeyItemTerminalItemCallback(IntPtr ptr) : base(ptr)
+            => KeyItem = null!;
+
+        public KeyItemTerminalItemCallback(KeyItemPickup_Core item)
+            : base(ClassInjector.DerivedConstructorPointer<KeyItemTerminalItemCallback>())
+        {
+            ClassInjector.DerivedConstructorBody(this);
+            KeyItem = item;
+        }
+
+        public KeyItemPickup_Core KeyItem { get; private init; }
+        public Il2CppSystem.Collections.Generic.List<string> OnWantDetailedInfo(Il2CppSystem.Collections.Generic.List<string> defaultDetails)
+        {
+            defaultDetails = KeyItemPickup_Core.__c.__9__11_0.Invoke(defaultDetails);
+            ModifyTerminalDetailInfo(KeyItem, defaultDetails);
+            return defaultDetails;
+        }
+
+        public Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>> GetDelegate()
+        {
+            IntPtr ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                this.ObjectClass, false, nameof(OnWantDetailedInfo), typeof(Il2CppSystem.Collections.Generic.List<string>).FullName!, new string[] { typeof(Il2CppSystem.Collections.Generic.List<string>).FullName! }
+            );
+            return new Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>>(this, ptr);
+        }
+
+    }
+
+    /// <summary>
+    /// This property normally sets up the terminal item's detailed info call. We overwrite it with our custom callback
+    /// </summary>
+    [ArchivePatch(typeof(KeyItemPickup_Core), nameof(KeyItemPickup_Core.KeyItem), [typeof(GateKeyItem)], ArchivePatch.PatchMethodType.Setter)]
+    public static class KeyItemPickup_Core__KeyItem__Patch
+    {
+        public static void Postfix(KeyItemPickup_Core __instance)
+        {
+            __instance.m_terminalItem.OnWantDetailedInfo = new KeyItemTerminalItemCallback(__instance).GetDelegate();
+        }
+    }
+
+    /// <summary>
+    /// Modify the query results of carry items
+    /// </summary>
+    [ArchivePatch(typeof(CarryItemPickup_Core.__c__DisplayClass30_0), nameof(CarryItemPickup_Core.__c__DisplayClass30_0._Setup_b__0))]
+    public static class CarryItemPickup_Core____c__DisplayClass30_0___Setup_b__0__Patch
+    {
+        public static void Postfix(CarryItemPickup_Core.__c__DisplayClass30_0 __instance, Il2CppSystem.Collections.Generic.List<string> __result)
+        {
+            ModifyTerminalDetailInfo(__instance.__4__this, __result);
+        }
+    }
+
+    /// <summary>
+    /// The vanilla imlementation for querying generic small items does not keep a reference to the item. So this func replaces it
+    /// </summary>
+    [InjectToIl2Cpp]
+    public class GenericSmallItemTerminalItemCallback : Il2CppSystem.Object
+    {
+        public GenericSmallItemTerminalItemCallback(IntPtr ptr) : base(ptr)
+        {
+            SmallItem = null!;
+            OriginalCallback = null!;
+        }
+
+        public GenericSmallItemTerminalItemCallback(GenericSmallPickupItem_Core item, GenericSmallPickupItem_Core.__c__DisplayClass22_0 original)
+            : base(ClassInjector.DerivedConstructorPointer<GenericSmallItemTerminalItemCallback>())
+        {
+            ClassInjector.DerivedConstructorBody(this);
+            SmallItem = item;
+            OriginalCallback = original;
+        }
+
+        public GenericSmallPickupItem_Core SmallItem { get; private init; }
+        public GenericSmallPickupItem_Core.__c__DisplayClass22_0 OriginalCallback { get; private init; }
+
+        public Il2CppSystem.Collections.Generic.List<string> OnWantDetailedInfo(Il2CppSystem.Collections.Generic.List<string> defaultDetails)
+        {
+            defaultDetails = OriginalCallback._SetupPersonnelId_b__0(defaultDetails);
+            ModifyTerminalDetailInfo(SmallItem, defaultDetails);
+            return defaultDetails;
+        }
+
+        public Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>> GetDelegate()
+        {
+            IntPtr ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                this.ObjectClass, false, nameof(OnWantDetailedInfo), typeof(Il2CppSystem.Collections.Generic.List<string>).FullName!, new string[] { typeof(Il2CppSystem.Collections.Generic.List<string>).FullName! }
+            );
+            return new Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>>(this, ptr);
+        }
+    }
+
+    /// <summary>
+    /// Modify the query callback used by IDs
+    /// </summary>
+    [ArchivePatch(typeof(GenericSmallPickupItem_Core), nameof(GenericSmallPickupItem_Core.SetupPersonnelId))]
+    public static class GenericSmallPickupItem_Core__SetupPersonnelId__Patch
+    {
+        public static void Postfix(GenericSmallPickupItem_Core __instance)
+        {
+            var test = __instance.m_terminalItem.OnWantDetailedInfo.Target?.TryCast<GenericSmallPickupItem_Core.__c__DisplayClass22_0>();
+            if (test != null)
+            {
+                var newCallback = new GenericSmallItemTerminalItemCallback(__instance, test);
+                __instance.m_terminalItem.OnWantDetailedInfo = newCallback.GetDelegate();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Modify the query callback used by generic small items
+    /// </summary>
+    [ArchivePatch(typeof(GenericSmallPickupItem_Core), nameof(GenericSmallPickupItem_Core._SetupGeneric_b__23_0))]
+    public static class GenericSmallPickupItem_Core__SetupGeneric__Patch
+    {
+        public static void Postfix(GenericSmallPickupItem_Core __instance, Il2CppSystem.Collections.Generic.List<string> __result)
+        {
+            ModifyTerminalDetailInfo(__instance, __result);
         }
     }
 }

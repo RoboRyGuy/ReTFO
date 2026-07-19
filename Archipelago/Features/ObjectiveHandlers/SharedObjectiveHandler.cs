@@ -57,7 +57,7 @@ public static class SharedObjectiveHandler_Tags
         public LocationID Location_PEClear_Instance
             => LocationID.From(data, $"{data.ExpeditionName} PE Clear Location", data => new("Location checked by obtaining PE for a particular expedition", data.Location_PEClears));
 
-        public ItemID Item_PEClears_Instance
+        public ItemID Item_PEClear_Instance
             => ItemID.From(
                 data, 
                 $"{data.ExpeditionName} PE Clear Item", 
@@ -266,7 +266,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             data.Location_PEClear_Instance,
             peRegion,
             new LocationData(),
-            data.Item_PEClears_Instance
+            data.Item_PEClear_Instance
         );
     }
 

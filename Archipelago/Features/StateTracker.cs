@@ -1283,6 +1283,7 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
+            RundownHandler.UpdateAllCounts();
             //Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
             //RegionID end = data.GetLayer(LayerType.Secondary).AllZones.First().Region_OnDoorOpenedEvents;
             //

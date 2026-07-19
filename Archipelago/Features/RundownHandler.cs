@@ -443,36 +443,29 @@ public class RundownHandler : ArchipelagoFeature
     {
         public static void Prefix(CM_ExpeditionIcon_New __instance, ref eExpeditionIconStatus status, ref string mainFinishCount, ref string secondFinishCount, ref string thirdFinishCount, ref string allFinishedCount)
         {
-            var func = (ref eExpeditionIconStatus status, ref string mainFinishCount, ref string secondFinishCount, ref string thirdFinishCount, ref string allFinishedCount) =>
+            StateTracker stateTracker = StateTracker.Get();
+            if (!Expedition.Data.TryGetFromExpedition(__instance.DataBlock, out Expedition.Data? data))
             {
-                StateTracker stateTracker = StateTracker.Get();
-                if (!Expedition.Data.TryGetFromExpedition(__instance.DataBlock, out Expedition.Data? data))
-                {
-                    FeatureLogger.Warning("Failed to overwrite expedition icon status: failed to find expedition");
-                    return;
-                }
+                FeatureLogger.Warning("Failed to overwrite expedition icon status: failed to find expedition");
+                return;
+            }
     
-                int mainCount = stateTracker.CollectedItemCounts.GetValueOrDefault(data.MainLayer.Item_SectorClear_Instance, 0);
-                int secondaryCount = !data.HasSecondary ? 0
-                    : stateTracker.CollectedItemCounts.GetValueOrDefault(data.GetLayer(LayerType.Secondary).Item_SectorClear_Instance, 0);
-                int overloadCount = !data.HasOverload ? 0
-                    : stateTracker.CollectedItemCounts.GetValueOrDefault(data.GetLayer(LayerType.Overload).Item_SectorClear_Instance, 0);
-                int peCount = !(data.HasSecondary && data.HasOverload) ? 0
-                    : stateTracker.CollectedItemCounts.GetValueOrDefault(data.Item_PEClears_Instance, 0);
-    
-                if (__instance.DataBlock.Accessibility == eExpeditionAccessibility.AlwaysAllow)
-                {
-                    if (mainCount > 0) status = eExpeditionIconStatus.PlayedAndFinished;
-                    else status = eExpeditionIconStatus.NotPlayed;
-                }
-                else status = eExpeditionIconStatus.TierLocked;
-    
-                mainFinishCount = mainCount == 0 ? "-" : mainCount.ToString();
-                secondFinishCount = secondaryCount == 0 ? "-" : secondaryCount.ToString();
-                thirdFinishCount = overloadCount == 0 ? "-" : overloadCount.ToString();
-                allFinishedCount = peCount == 0 ? "-" : peCount.ToString();
-            };
-            func(ref status, ref mainFinishCount, ref secondFinishCount, ref thirdFinishCount, ref allFinishedCount);
+            int mainCount = stateTracker.CollectedItemCounts.GetValueOrDefault(data.MainLayer.Item_SectorClear_Instance, 0);
+            mainFinishCount = mainCount.ToString();
+
+            if (__instance.DataBlock.Accessibility == eExpeditionAccessibility.AlwaysAllow)
+            {
+                if (mainCount > 0) status = eExpeditionIconStatus.PlayedAndFinished;
+                else status = eExpeditionIconStatus.NotPlayed;
+            }
+            else status = eExpeditionIconStatus.TierLocked;
+
+            if (data.HasSecondary)
+                secondFinishCount = stateTracker.CollectedItemCounts.GetValueOrDefault(data.GetLayer(LayerType.Secondary).Item_SectorClear_Instance, 0).ToString();
+            if (data.HasOverload)
+                thirdFinishCount = stateTracker.CollectedItemCounts.GetValueOrDefault(data.GetLayer(LayerType.Overload).Item_SectorClear_Instance, 0).ToString();
+            if (data.HasSecondary && data.HasOverload)
+                allFinishedCount = stateTracker.CollectedItemCounts.GetValueOrDefault(data.Item_PEClear_Instance, 0).ToString();
         }
     }
 
