@@ -11,10 +11,10 @@ namespace ReTFO.Archipelago.Patches;
 /// <summary>
 /// This class is a collection of patches to help support 'dynamic items', 
 ///  which are spawned mid-game.
-///  For all of these patches, it's worth noting that during a recall (ie loading a
-///   checkpoint) dynamic items are despawned and replaced... for some reason. The game
-///   doesn't handle it super well, so these patches catch some of the fauly calls
-///   and redirect them to the newly-spawned object
+/// For all of these patches, it's worth noting that during a recall (ie loading a
+///  checkpoint) dynamic items are despawned and replaced... for some reason. The game
+///  doesn't handle it super well, so these patches catch some of the faulty calls
+///  and redirects them to the newly-spawned object
 /// </summary>
 [HarmonyPatch]
 public static class DynamicItemPatches
@@ -161,6 +161,8 @@ public static class DynamicItemPatches
         if (!SNet.Capture.IsRecalling) return;
 
         var key = spawnData.itemData.replicatorRef;
+
+        // Check if this item was in a player inventory
         if (s_desiredInventory.TryGetValue(key, out var player))
         {
             var sync = replicator.Item.GetComponent<LG_PickupItem_Sync>();
@@ -172,13 +174,13 @@ public static class DynamicItemPatches
             s_desiredInventory.Remove(key);
         }
 
+        // Check if this item has a delayed state change update
         if (s_delayedUpdates.TryGetValue(key, out var updates))
         {
             // For some reason, we only want to apply the first state change.
             // I'm not really sure why this works, but it does!
             var sync = replicator.Item.Cast<ItemInLevel>().internalSync.Cast<LG_PickupItem_Sync>();
             sync.OnStateChange(sync.GetCurrentState(), updates.First(), true);
-            //foreach (var update in updates) sync.OnStateChange(sync.GetCurrentState(), update, true);
             s_delayedUpdates.Remove(key);
         }
     }
@@ -196,7 +198,6 @@ public static class DynamicItemPatches
         if (entry != -1 && SNet.IsMaster)
         {
             ItemReplicationManager.m_callBacks.entries[entry].value.Invoke(replicator.Item.Cast<ISyncedItem>(), null);
-            ItemReplicationManager.RemoveCallback(spawnData.callbackID);
         }
     }
 

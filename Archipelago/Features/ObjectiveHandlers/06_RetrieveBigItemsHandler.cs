@@ -12,13 +12,13 @@ using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
-using UnityEngine;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using PlayFab.ClientModels;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Runtime.InteropServices;
 
 public static class RetrieveBigItemsHandler_Tags
 { 
@@ -120,7 +120,7 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                 });
                 carryItem.m_isWardenObjective = true;
 
-                // Overwriting the originally-spawned item
+                // Replacing the item in the objective manager and in the extraction requirements
                 var items = WardenObjectiveManager.GetObjectiveItemCollection(data.LayerType, data.ObjectiveIndex);
                 ChainedPuzzles.CP_Bioscan_Core? core;
                 if (WardenObjectiveManager.m_customGeoExitWinConditionItem != null)
@@ -128,8 +128,8 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                 else
                     core = WardenObjectiveManager.m_elevatorExitWinConditionItem.Cast<ElevatorShaftLanding>().m_puzzle.m_chainedPuzzleCores[0].TryCast<ChainedPuzzles.CP_Bioscan_Core>();
 
-                // If the original item is registered as required for the exit scan (or if we can't check)
-                if (core == null || core.m_reqItems.Any(i => i.Pointer == items[ItemIndex].Pointer))
+                // If the original item is registered as required for the exit scan...
+                if (core != null && core.m_reqItems.Any(i => i.Pointer == items[ItemIndex].Pointer))
                 {   // Try to swap in our new item instead
                     Il2CppReferenceArray<iWardenObjectiveItem> originalItem = new(1);
                     originalItem[0] = items[ItemIndex];
@@ -140,6 +140,13 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                     WardenObjectiveManager.RemoveObjectiveItemAsRequiredForExitScan(originalItem);
                     WardenObjectiveManager.AddObjectiveItemAsRequiredForExitScan(true, newItem);
                 }
+
+                // Copy the existing item's objective properties - this is mostly to account for
+                // recalls, since in that case we'll be replacing an existing, possibly touched item
+                carryItem.IsRegistered = items[ItemIndex].IsRegistered;
+                carryItem.ObjectiveItemSolved = items[ItemIndex].ObjectiveItemSolved;
+                carryItem.ObjectiveItemSolvedHasBeenHandled = items[ItemIndex].ObjectiveItemSolvedHasBeenHandled;
+                carryItem.WardenObjectiveChainIndex = items[ItemIndex].WardenObjectiveChainIndex;
 
                 // Swap our new item into the objective item array
                 items[ItemIndex] = carryItem.Cast<iWardenObjectiveItem>();
@@ -210,7 +217,20 @@ public class RetrieveBigItemsHandler : ArchipelagoFeature
                 data.Location_BigRetrieval_Instance(__instance.i + 1)
             );
         }
+    }
 
+    /// <summary>
+    /// Prevents the exit scan from adding removed items on reload
+    /// </summary>
+    [ArchivePatch(typeof(WardenObjectiveManager), nameof(WardenObjectiveManager.OnStateChange))]
+    public static class WardenObjectiveManager__OnStateChange__Patch
+    {
+        public static void Prefix(ref pWardenObjectiveState newState, bool isRecall)
+        {
+            if (!isRecall) return;
+            for (int i = 0; i < newState.RequiredObjectiveItems.Length; i++)
+                newState.RequiredObjectiveItems[i] = 255; // Sentinel value to ignore this field
+        }
     }
 
 }

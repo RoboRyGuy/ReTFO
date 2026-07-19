@@ -389,10 +389,8 @@ public class PickupHelper : ArchipelagoFeature
             var location = stateTracker.NotifyFoundLocation(comp.StoredLocation, agent);
             if (location.RandData.IsTreatedAsRandom)
             {
-                interaction.pPlayer.SetPlayer(null);
-
-                // If it's a warden objective, we can also objective progress
-                CarryItemPickup_Core? carryItem = __instance.item.TryCast<CarryItemPickup_Core>();
+                // If it's a warden objective, we can also mutate objective progress
+                CarryItemPickup_Core? carryItem = __instance.item!.TryCast<CarryItemPickup_Core>();
                 GenericSmallPickupItem_Core? pickupItem = __instance.item.TryCast<GenericSmallPickupItem_Core>();
                 if (carryItem != null)
                     carryItem.m_isWardenObjective = false;
@@ -400,6 +398,7 @@ public class PickupHelper : ArchipelagoFeature
                     pickupItem.m_isWardenObjective = false;
 
                 // Try and despawn it
+                interaction.pPlayer.SetPlayer(null); // Fail the pickup (and hide the item)
                 __instance.gameObject.transform.position = new(0, -10000, 0); // Hides it in case despawning fails
                 __instance.item.ReplicationWrapper?.Replicator.Despawn();
                 __instance.GetReplicator().Cast<SNet_Replicator>().Despawn();
@@ -424,7 +423,7 @@ public class PickupHelper : ArchipelagoFeature
 
             var interact = __instance.item?.PickupInteraction.TryCast<Interact_Pickup_PickupItem>();
             if (interact == null) return;
-            
+
             Game.Data data = StateTracker.Get().MidManager.GetProcessedGameData();
             Location loc = data.Locations.LookUpValueChecked(comp.StoredLocation);
             if (!loc.RandData.IsRandomized) return;

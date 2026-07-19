@@ -1,6 +1,6 @@
 ﻿{
   "name": "BetaArchipelago",
-  "version_number": "0.0.4",
+  "version_number": "0.0.5",
   "website_url": "https://github.com/RoboRyGuy/ReTFO",
   "description": "Archipelago integration for GTFO",
   "dependencies": [

@@ -1,6 +1,4 @@
-﻿using CellMenu;
-using GameData;
-using Player;
+﻿using Player;
 using ReTFO.Archipelago.Features.FloatingItems;
 using ReTFO.Archipelago.Features.ObjectiveHandlers;
 using ReTFO.Archipelago.FeaturesAPI;

@@ -13,7 +13,7 @@ Issues and feedback can be submitted on the APWorld GitHub's issues page: https:
 ### MID Files and Modded Support
 
 *As of version 0.0.4, the AP World file for GTFO now contains the MID data needed for vanilla worlds.*
-If you wish to play a modded game, you will still need to follow the steps for exporting and a MID
+If you wish to play a modded game, you will still need to follow the steps for exporting a MID
 file. Those steps can be found below in the **Modded Support** section.
 
 ### Multiplayer Support
@@ -26,7 +26,7 @@ As of version 0.0.4, there is now official support for multiplayer. Multiplayer 
   connect to the Archipelago server and join the lobby.
 - **Proxy-Connected:** One player connects to Archipelago and hosts a GTFO lobby. One or more clients then connect
   to only the GTFO lobby. These players are automatically connected to the Archipelago server using the Host as a
-  proxy; they are able to send and receive checks normally, but have no ability to execute commands or requests hints.
+  proxy; they are able to send and receive checks normally, but have no ability to execute commands or request hints.
 
 *Proxy-Connected is currently unstable. I don't know the cause, but be aware you may have connectivity issues.*
 
@@ -67,8 +67,9 @@ Here are the steps required to get started with a vanilla world:
     There may be other levels I have no considered where this is more of a problem.
   - If you find logic errors, I'd appreciate if you report them on the GitHub issues page for the AP World: 
     https://github.com/RoboRyGuy/Archipelago-GTFO/issues
-- There is no difficulty balancing at this time - it is assumed the player is capable of soloing all alarms and 
-  other hazards with the worst possible gear. Keep this in mind as you pick levels and starting items.
+- There is no difficulty balancing at this time, nor is any difficulty balancing planned - GTFO is intentionally a
+  hard game, so set up your randomization with care to avoid, for example, needing to survive 8 reactor waves with no
+  gear or lobby slots.
 - Survival objectives, such as R8E1, have checks related to simply surviving (normally, these checks unlock doors). 
   This is technically possible to do even if all the doors are locked, and as such is currently allowed in the 
   logic. With that said, if you choose to add such a level to your requirements, be aware that this may be necessary; 
@@ -87,9 +88,10 @@ give you enough information to get started.
 
 A wide collection of items and locations are currently supported. You have the option
 to enable or disable randomization of each individual location and item in the game.
-The below describes the behaviour of locations and items when they are enabled.
+The below describes the behaviour of some locations and items when they are enabled.
 
 Locations:
+
 - Picking up progression pickups, such as keys or IDs, as well as most big pickups,
   including cells, fog turbines, the MWP, etc will check a location and despawn the item.
   Note that if events are tied to picking up an item, they will not trigger when you attempt
@@ -151,166 +153,11 @@ Random-like items exist to prevent logic errors. Archipelago has a hard time rea
 they are both consumable and can be used in multiple places. GTFO's nature as a game where the expeditions can be
 replayed means we give Archipelago much more breathing space by treating these items as "random-like".
 
-## Configuring your YAML
-
-### Tagging
-
-The key to the YAML is a tagging system. All items and locations each have a single, unique tag identifying them.
-Each tag has a parent, creating a tree which meets at the root tag "All". When using tags in the options,
-you can choose to either specify the leaf tags (which each correlate to a single item or location), or you can
-choose a common parent to affect groups of items and locations.
-
-As an example of tag hierarchy: The item "R1A1 ZONE_52 Colored Key" is the tag for the key required to unlock the door
-to Zone 52 in R1A1. This tag has the following hierarchy:
-
-"All" > "All Items" > "Pickup Items" > "Small Pickup Items" > "Colored Key Items" > "R1A1 ZONE_52 Colored Key"
-
-If you want to enable randomization of this key, you could whitelist any of these tags:
-- Whitelisting the "leaf" tag ("R1A1 ZONE_52 Colored Key") will randomize just this one key
-- Whitelisting "Colored Key Items" will randomize all colored keys
-- Whitelisting "Small Pickup Items" will randomize all small pickup items, including colored keys, bulkhead keys,
-  objective pickups such as IDs, and more.
-- So on and so forth.
-
-A full list of tags can be exported from the Network Settings menu. This will dump all tag names, IDs, descriptions, 
-and parents to either a JSON file or a CSV file for your purusal. Both of these are normal text files which can be
-opened in a text editor (such as Notepad), though you may prefer to open the JSON file in VS Code or an online viewer
-and the CSV file in Excel or Google Sheets. I personally believe the JSON file is easier to read.
-
-### Error Handling
-
-At this time, generating will do everything it can to force a successful generation and will log errors
-for any problems it encounters. These logs are easy to miss since the generation window closes itself
-when generation is successful. If you're encountering issues, check the generation logs.
-
-### Options
-
-At this time, the following options are supported:
-
-#### required_expeditions 
-
-A list of expedition names, for example "R1A1", "R8E2", and so forth.
-Each expedition name must be unique. Each name listed will be added as a playable level, and
-you will be required to clear its main (and potentially side) objectives to clear the goal.
-You are able to specify expeditions which are not normally playable, if you know their names :)
-For example, "T" would add the tutorial expedition as a required playable level.
-
-#### require_secondaries
-
-If true, clearing the goal will also require you clear all secondaries on any expedition you
-selected which has a secondary.
-
-#### require_overloads
-
-If true, clearing the goal will also require you clear all overload objectives on any expedition
-you selected which has an overload.
-
-Note that there is no support for requiring PE objectives at this time.
-
-#### whitelist
-
-This is a set of tags which enable items and locations for randomization. Items and locations
-which are either in the whitelist or which are children of tags in the whitelist will be 
-randomized (unless they are on the blacklist). *Randomization only occurs if both the item
-and its vanilla spawn location are randomized.* For simplicity, I recommend putting either at
-least one of either "All Items" or "All Locations" to help ensure one of the pair is randomized, 
-and then filtering the other half as desired.
-
-You may also use "All" to enable all items and locations for randomization.
-
-#### blacklist
-
-This is a set of tags which disables items and locations for randomization. This works exactly
-the same as the whitelist, except it disables items. The blacklist overrules the whitelist.
-
-#### start_inventory
-
-GTFO supports its own custom start_items option. This works slightly differently from normal start items;
-instead of creating new items, it instead pulls matching items out of the randomization pool to give them
-to the player. 
-
-This also supports the tagging system; if you specify a parent tag, the desired number of child items
-are randomly selected from all available items and moved to the starting inventory, removing them from the game.
-
-Each item removed in this manner is replaced with a filler item, "Empty", which does nothing.
-
-#### early_items
-
-This works exactly the same as start_items, but instead of moving items to the start inventory it marks
-them as early items for the fill system. This can cause fill errors if insufficient early spots are
-available, so use with caution.
-
-## Example YAML
-
-Below is a sample YAML file.
-
-```
-name: RoboRyGuy
-description: YAML generated by Archipelago 0.6.7.
-game: GTFO
-GTFO:
-  progression_balancing: normal
-  accessibility: full
-  required_expeditions:
-  - R1B1
-  - R6A1
-  - R3A3
-  - R6B1
-  - R8C2
-  - R4D2
-  - R8E1
-  require_secondaries: true
-  require_overloads: false
-  whitelist:
-  - "All"
-  blacklist: 
-  - "Scan Items"
-  - "Warp Items"
-  early_items: {
-    "Expedition Unlock Items": 1 
-  }
-  local_items: []
-  non_local_items: []
-  start_items: { 
-    "Expedition Unlock Items": 1,
-    "Unlock Lobby Slot Items": 1,
-    "Melee Gear Items": 1,
-    "Primary Gear Items": 1,
-    "Special Gear Items": 1,
-    "Tool Gear Items": 1
-  }
-  start_hints: []
-  start_location_hints: []
-  exclude_locations: []
-  priority_locations: []
-```
-
-This YAML selects 7 expeditions to clear, and requirs the player complete all secondaries (but not overloads) on
-those expeditions. Note that checks will still appear inside the overload of these expeditions, and that those
-checks may be necessary to clear the game.
-
-In the whitelist is "All", and in the blacklist is "Scan Items" and "Warp Items". The blacklist overrules the
-whitelist; therefore, all items and locations except items matching the "Scan Items" and "Warp Items" tags will
-be randomized. This also means locations which normally contain "Scan Items" and "Warp Items" will not be randomized,
-which results in them acting the same as they would in vanilla.
-
-Because all expedition unlocks are randomized, the player must specify at least one starting expedition. 
-In this case, they're having Archipelago randomly pick one of their expeditions and add it as a starting item. 
-If they fail to add a starting expedition, Archipelago will randomly choose any of the expeditions and add it.
-
-Because all gear items are randomized, the player must specify at least one starting gear item for each slot.
-In this case, they're having Archipelago randomly pick an item for each slot (melee, primary, special, and tool).
-If they fail to add staring gear, temporary gear will be added in-game, which will be lost as soon as gear is found.
-
-To aid the fill system, the player has added one additional expedition unlock to the early items. This helps ensure
-that they have options when it comes to exploration. Other items, such as gear, can be added to the early items
-list; however, if too much is added Archipelago will fail to generate due to lack of space in the early game.
-
 ## Death Link
 
-This integration supports Death Link, though it hasn't been tested. The settings
-for Death Link are not tied to the YAML config and can be changed at any time in the mod
-settings in-game. See there for more details on ways to punish yourself for others' mistakes.
+This integration supports Death Link, though it hasn't been tested. The settings for Death Link are not tied to the 
+YAML config and can be changed at any time in the mod settings in-game. Punishments range from spawning a tank
+to instantly killing the whole team, so you should be able to find a middleground that works for you.
 
 ## Energy Link
 
@@ -324,7 +171,7 @@ done to ensure it works.
 
 To create a modded game, you will need a file called the MID file. This is a file with the name "GTFO-abcdefhij.ini"
 which contains a list of everything Archipelago needs to generate a game for this world. To create this file,
-start the game with all your mods enabled and go to the Network Settings. There will be a button which allows
+start the game with all your mods enabled and go to the Server Settings. There will be a button which allows
 you to export the MID file; this outputs it to your Downloads folder.
 
 Take the MID file and place it in your Players folder, then restart the Archipelago client. This adds your modded
@@ -336,7 +183,7 @@ file with the same name, there is a 1/(2^60) chance that the games are incompati
 extremely likely they can share the file with no issues.
 
 It is also worth noting that the "Vanilla" MID file uses the reserved name "GTFO.ini". If your generated MID file
-has this name, you do not need a MID file.
+has this name, you do not need a MID file (though supplying it should cause no issues).
 
 ### More Details
 

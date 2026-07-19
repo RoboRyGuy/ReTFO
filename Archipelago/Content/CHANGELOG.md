@@ -45,5 +45,10 @@ Fourth Alpha Release of Beta-Archipelago.
 ## Version 0.0.5
 
 Fifth Alpha Release of Beta-Archipelago
-- Added patch which moves the terminal in R8D1 to somewhere it's reachable. 
-  Thanks @RandomBoy42069 for pointing out that this terminal does, in fact, exist.
+- Regions are now tagged and sorted hierachally, granting more control what is randomized
+- New options API and system to support the YAML, which adds in more user-friendly confiuration
+- Added custom implementations of most Archipelago options (Local items, hints, etc)
+- Added progressive expedition ordering, so expeditions can be completed in order
+- Internal-only items and locations are now "Event" locations in Archipelago, which should make UT and similar more useful.
+- Fixed a lot of bugs (but not all of them)
+- Probably some other things. I changed a lot, I did not make many notes.
