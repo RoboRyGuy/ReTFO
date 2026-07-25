@@ -524,19 +524,6 @@ public partial class StateTracker : ArchipelagoFeature
 
         try
         {
-            /*
-            root_seed
-            region_whitelist
-            region_blacklist
-            location_whitelist
-            location_blacklist
-            item_whitelist
-            item_blacklist
-            filled_empty_locations
-            goal_items
-            skippable_goal_count 
-             */
-
             RootSeed = (long)(
                 loginSuccessful.SlotData.GetValueOrDefault("root_seed", null)
                 ?? throw new NullReferenceException("Failed to retrieve root_seed from slot data")
@@ -608,6 +595,7 @@ public partial class StateTracker : ArchipelagoFeature
             LogForLobby("Encountered error while retrieving slot data; view log for exception details.", true);
             FeatureLogger.Error("Encountered error while retrieving slot data:");
             FeatureLogger.Exception(e);
+            FeatureLogger.Error($"Available slot data:\n  {string.Join("\n  ", loginSuccessful.SlotData.Keys)}");
             Reset();
             return;
         }
