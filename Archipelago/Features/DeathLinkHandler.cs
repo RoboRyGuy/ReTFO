@@ -99,7 +99,7 @@ public class DeathLinkHandler : ArchipelagoFeature
             if (!SNetwork.SNet.IsMaster)
                 StateTracker.LogForLobby("You cannot trigger a death link; you are not host!", true);
             else
-                TryTriggerDeathLink(new DeathLink(HostName, $"{PlayerManager.GetLocalPlayerAgent()?.Owner.NickName ?? "Someone"} hit the \"Test DeathLink\" button."));
+                s_deaths.Enqueue(new DeathLink(HostName, $"{PlayerManager.GetLocalPlayerAgent()?.Owner.NickName ?? "Someone"} hit the \"Test DeathLink\" button."));
         });
 
         [FSDisplayName("Show Messages")]
@@ -108,6 +108,7 @@ public class DeathLinkHandler : ArchipelagoFeature
     }
 
     private static DeathLinkService? s_service = null;
+    private static Queue<DeathLink> s_deaths = new();
     private static float LastTriggerTime = 0f;
     private static float LastSnatcherTime = -1000f;
 
@@ -123,7 +124,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         s_service = stateTracker.ApSession?.CreateDeathLinkService();
         if (s_service != null)
         {
-            s_service.OnDeathLinkReceived += TryTriggerDeathLink;
+            s_service.OnDeathLinkReceived += s_deaths.Enqueue;
             s_service?.EnableDeathLink();
         }
     }
@@ -153,7 +154,7 @@ public class DeathLinkHandler : ArchipelagoFeature
         s_service = stateTracker.ApSession?.CreateDeathLinkService();
         if (s_service != null)
         {
-            s_service.OnDeathLinkReceived += TryTriggerDeathLink;
+            s_service.OnDeathLinkReceived += s_deaths.Enqueue;
             s_service?.EnableDeathLink();
         }
     }
@@ -374,6 +375,15 @@ public class DeathLinkHandler : ArchipelagoFeature
             return;
 
         NotifyDied($"Team {HostName} suffering casualties. Objective success compromised.");
+    }
+
+    /// <summary>
+    /// Check for death link events and trigger them
+    /// </summary>
+    public override void Update()
+    {
+        if (s_deaths.TryDequeue(out DeathLink? death))
+            TryTriggerDeathLink(death);
     }
 
     /// <summary>
