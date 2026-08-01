@@ -206,6 +206,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         RegionID keyInsertedRegion = data.Region_PortalKeyInserted;
         data.AddPath(new Path()
         {
+            Name = $"{data.ZoneName} Inserted MWP to Portal",
             StartingRegion = data.Region_Zone,
             EndingRegion = keyInsertedRegion,
             Reqs = new(Path.eType.ItemConsumed, data.Item_BigPickup_MWP, 1u),
@@ -240,7 +241,7 @@ public class DimensionPortalHandler : ArchipelagoFeature
         {
             StartingRegion = scanCompletedRegion,
             EndingRegion = targetZone.Region_Zone,
-            Reqs = new(Path.eType.ItemConsumed, warpItem, 1u),
+            Reqs = new(Path.eType.Item, warpItem, 1u),
         });
     }
 

@@ -225,6 +225,7 @@ public class CentralGenClusterHandler : ArchipelagoFeature
             RegionID newRegion = data.Region_PoweredCentralGenerator(i);
             data.AddPath(new Path()
             {
+                Name = $"{data.ObjectiveName} Powered Gen #{i}",
                 StartingRegion = last,
                 EndingRegion = newRegion,
                 Reqs = new(Path.eType.ItemConsumed, cellItem, 1u),

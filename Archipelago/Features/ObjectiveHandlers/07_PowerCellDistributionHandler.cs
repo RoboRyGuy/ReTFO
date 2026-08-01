@@ -144,6 +144,7 @@ public class PowerCellDistributionHandler : ArchipelagoFeature
             RegionID genRegion = data.Region_PowercellDistributionGeneratorPowered(i);
             data.AddPath(new Path()
             {
+                Name = $"{data.ObjectiveName} Powered Gen #{i}",
                 StartingRegion = last,
                 EndingRegion = genRegion,
                 Reqs = new(

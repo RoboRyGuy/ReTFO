@@ -25,9 +25,15 @@ public static class SharedObjectiveHandler_Tags
 
         public LocationID Location_SectorClears
             => LocationID.From(data, "Sector Clear Locations", data => new("Locations checked by clearing a sector and successfully extracting (or equivalent)", data.Location_Never));
-        
+
         public ItemID Item_SectorClears
             => ItemID.From(data, "Sector Clear Items", data => new("Items awarded by successfully clearing sectors in a cateogry of a particular layer", data.Item_Never));
+
+        public LocationID Location_SectorClearReachables
+            => LocationID.From(data, "Sector Clear Reachable Locations", data => new("Locations used to ensure a sector clear is reachable", data.Location_Never));
+
+        public ItemID Item_SectorClearReachables
+            => ItemID.From(data, "Sector Clear Reachable Items", data => new("Items used to ensure a sector clear is reachable.", data.Item_Never));
 
         public LocationID Location_PEClears
             => LocationID.From(data, "PE Clear Locations", data => new("Locations checked by obtaining PE for expeditions", data.Location_Never));
@@ -90,10 +96,21 @@ public static class SharedObjectiveHandler_Tags
 
         public ItemID Item_SectorClear_Instance
             => ItemID.From(
-                data, 
-                $"{data.LayerName} Sector Clear Item", 
+                data,
+                $"{data.LayerName} Sector Clear Item",
                 data => new("The sector clear item for a particular layer in a particular expedition", data.Item_SectorClears, data.Item_SectorClears_LayerOnly(data.LayerType)),
                 new SharedObjectiveHandler.SectorClearedItem(data.Region_Layer)
+            );
+
+        public LocationID Location_SectorClearReachable_Instance
+            => LocationID.From(data, $"{data.LayerName} Sector Clear Reachable Location", data => new("A location used to ensure a particular sector clear is reachable", data.Location_SectorClearReachables));
+
+        public ItemID Item_SectorClearReachable_Instance
+            => ItemID.From(
+                data,
+                $"{data.LayerName} Sector Clear Reachable Item",
+                data => new("An item used to ensure a particular sector clear is reachable", data.Item_SectorClearReachables),
+                new Item(new ItemData() { IsProgression = true })
             );
     }
 
@@ -259,7 +276,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
         {
             StartingRegion = layers[2].Region_SectorCleared,
             EndingRegion = peRegion,
-            Reqs = new(Path.eType.Item, layers[1].Item_SectorClear_Instance, 1u),
+            Reqs = new(Path.eType.Item, layers[1].Item_SectorClearReachable_Instance, 1u),
         });
 
         data.Locations.CreateValue(
@@ -317,7 +334,7 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             {
                 StartingRegion = gotoWinRegion,
                 EndingRegion = sectorClearedRegion,
-                Reqs = new(Path.eType.Item, data.MainLayer.Item_SectorClear_Instance, 1u),
+                Reqs = new(Path.eType.Item, data.MainLayer.Item_SectorClearReachable_Instance, 1u),
             });
         }
 
@@ -335,6 +352,12 @@ public class SharedObjectiveHandler : ArchipelagoFeature
             sectorClearedRegion,
             new LocationData(),
             data.Item_SectorClear_Instance
+        );
+        data.Locations.CreateValue(
+            data.Location_SectorClearReachable_Instance,
+            sectorClearedRegion,
+            new LocationData(),
+            data.Item_SectorClearReachable_Instance
         );
     }
 

@@ -1213,11 +1213,19 @@ public class MidManager
 
         FeatureLogger.Debug("Checking if all win locations were reachable during traversal");
         HashSet<ItemID> winCats = [data.Item_SectorClears, data.Item_PEClears];
+        bool allFound = true;
         foreach (var pair in data.Locations.GetAllValuesNonNull())
         {
             if (data.Items.IsChild(pair.Value.ItemID, winCats) && !discoveredLocations.Contains(pair.Key))
+            {
                 FeatureLogger.Error($"Failed to find win location {data.Locations.LookUpName(pair.Key)} during traversal");
+                allFound = false;
+            }
         }
+        if (allFound)
+            FeatureLogger.Success("All sector clears found!");
+        else
+            FeatureLogger.Error("Failed to find at least one sector clear");
 
         //{
         //    PathID[][] keys = states.Select(s => s.Choice.ToArray()).ToArray();

@@ -178,6 +178,7 @@ public class SecDoorHandler : ArchipelagoFeature
             // Chain it to the last region
             data.AddPath(new Path()
             {
+                Name = req.Type != Path.eType.None ? $"Unlocked {data.ZoneName}" : null,
                 StartingRegion = lastRegion,
                 EndingRegion = eventRegion,
                 Reqs = new(req),
