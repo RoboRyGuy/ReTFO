@@ -17,7 +17,6 @@ namespace ReTFO.Archipelago.ModdedInstanceData;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using static DebugDraw3D;
 
 /// <summary>
 /// Wraps modded instance data; creates it and manages its lifetime.
@@ -155,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; init; } = new() 
     { 
-        { "xddj0OpT14z2lmo9dBfHD-BSASJtIvF7kAXMww7F0pM=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "LQFM-W7lYJ7qOVawH_3gRsuAwSsnfRsXNzq4huJgNxg=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -402,14 +401,16 @@ public class MidManager
             paths = gameData.GetAllPaths().Select(MakeJsonKeyValue),
             floating_items = gameData.GetAllFloatingItems().Select(FloatingItem.Make),
             options = gameData.GetAllOptions().Select(MakeJsonKeyValue),
+            choices = gameData.Choices,
         };
 
         JsonSerializerSettings settings = new() { Formatting = Formatting.Indented };
         settings.Converters.Add(new Clonesoft.Json.Converters.StringEnumConverter());
-        settings.Converters.Add(new SimplifiedListConverter<uint>(20));   // Compress long lists of uints (unpacked IDs) for readability
-        settings.Converters.Add(new SimplifiedListConverter<long>(15));   // Compress long lists of longs (option values) for readability
-        settings.Converters.Add(new SimplifiedListConverter<string>(15)); // Compress long lists of strings (Expedition Names) for readability
-        settings.Converters.Add(new IdConverter());                       // Convert IDs to longs
+        settings.Converters.Add(new SimplifiedListConverter<uint>(20));      // Compress long lists of uints (unpacked IDs) for readability
+        settings.Converters.Add(new SimplifiedListConverter<long>(15));      // Compress long lists of longs (option values) for readability
+        settings.Converters.Add(new SimplifiedListConverter<string>(15));    // Compress long lists of strings (Expedition Names) for readability
+        settings.Converters.Add(new IdConverter());                          // Convert IDs to uints
+        settings.Converters.Add(new CustomTupleToListConverter<RegionID>()); // Change tuples to lists (for simplicity)
         Type[] containerTypes = [
             typeof(JsonKeyValue<RegionID, TagStorage<RegionID, Region>.TagEntry>),
             typeof(JsonKeyValue<LocationID, TagStorage<LocationID, Location>.TagEntry>),
