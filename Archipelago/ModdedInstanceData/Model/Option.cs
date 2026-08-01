@@ -185,7 +185,7 @@ public static class Option
 ///  for looking up an OptionID instance in GameData.
 /// </summary>
 [DataContract]
-public struct OptionID : ITagID, IEquatable<OptionID>, IComparable<OptionID>
+public readonly struct OptionID : ITagID, IEquatable<OptionID>, IComparable<OptionID>
 {
     [DataMember(Name = "id")]
     public uint ID { get; init; }
@@ -194,7 +194,17 @@ public struct OptionID : ITagID, IEquatable<OptionID>, IComparable<OptionID>
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
     public bool Equals(OptionID other) => ID == other.ID;
     public int CompareTo(OptionID other) => ID.CompareTo(other.ID);
+
+    public override int GetHashCode() => ID.GetHashCode();
+    public override bool Equals(object? obj) => obj is OptionID && Equals((OptionID)obj);
     public override string ToString() => $"OptionID {ID}";
+
+    public static bool operator ==(OptionID left, OptionID right) => left.Equals(right);
+    public static bool operator !=(OptionID left, OptionID right) => !left.Equals(right);
+    public static bool operator <(OptionID left, OptionID right) => left.CompareTo(right) < 0;
+    public static bool operator <=(OptionID left, OptionID right) => left.CompareTo(right) <= 0;
+    public static bool operator >(OptionID left, OptionID right) => left.CompareTo(right) > 0;
+    public static bool operator >=(OptionID left, OptionID right) => left.CompareTo(right) >= 0;
 }
 
 /// <summary>

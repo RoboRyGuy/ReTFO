@@ -27,6 +27,7 @@ public static class Game
         public List<Path> Paths { get; init; } = new();
         public List<(RegionID, ItemID)> FloatingItems { get; init; } = new();
         public List<OptionBase> Options { get; init; } = new();
+        public ChoiceState[]? Choices { get; set; } = null;
     }
 
     /// <summary>
@@ -623,7 +624,6 @@ public static class Game
                 () => new("An item used to balance randomization during fill.", new()),
                 () => new Item(new() { IsFiller = true })
             );
-
         }
 
         /// <summary>
@@ -683,6 +683,17 @@ public static class Game
         /// Options stored by this game data
         /// </summary>
         private List<OptionBase> Options => GameScopeData.Options;
+
+        /// <summary>
+        /// Choice states stored by this game data.
+        /// Generally not populated as they're not needed for gameplay.
+        /// Choice states can be created <see cref="MidManager.TryComputeChoices(Data)"/>
+        /// </summary>
+        public ChoiceState[]? Choices
+        {
+            get => GameScopeData.Choices;
+            set => GameScopeData.Choices = value;
+        }
 
         /// <summary>
         /// Set a particular region's reachable status

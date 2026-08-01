@@ -156,7 +156,7 @@ public abstract class TerminalItem : ExpeditionItem
 /// Simple wrapper used to identify an ID for specifically an item
 /// </summary>
 [StructLayout(LayoutKind.Explicit, Size = sizeof(uint)), DataContract]
-public struct ItemID : ITagID, IEquatable<ItemID>, IComparable<ItemID>
+public readonly struct ItemID : ITagID, IEquatable<ItemID>, IComparable<ItemID>
 {
     [FieldOffset(0), DataMember(Name = "id")]
     private readonly uint m_ID;
@@ -168,9 +168,20 @@ public struct ItemID : ITagID, IEquatable<ItemID>, IComparable<ItemID>
 
     public bool IsNull => ID == 0;
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+
     public bool Equals(ItemID other) => ID == other.ID;
     public int CompareTo(ItemID other) => ID.CompareTo(other.ID);
+
+    public override int GetHashCode() => ID.GetHashCode();
+    public override bool Equals(object? obj) => obj is ItemID && Equals((ItemID)obj);
     public override string ToString() => $"ItemID {ID}";
+
+    public static bool operator ==(ItemID left, ItemID right) => left.Equals(right);
+    public static bool operator !=(ItemID left, ItemID right) => !left.Equals(right);
+    public static bool operator <(ItemID left, ItemID right) => left.CompareTo(right) < 0;
+    public static bool operator <=(ItemID left, ItemID right) => left.CompareTo(right) <= 0;
+    public static bool operator >(ItemID left, ItemID right) => left.CompareTo(right) > 0;
+    public static bool operator >=(ItemID left, ItemID right) => left.CompareTo(right) >= 0;
 
     public static ItemID From(Game.Data data, string name, Func<TagDefinition<ItemID>> definitionFactory, Item? item = null)
         => data.Items.LookUpOrCreate(name, definitionFactory, item);

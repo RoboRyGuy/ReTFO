@@ -118,14 +118,20 @@ public class DeathLinkHandler : ArchipelagoFeature
     public override void OnEnable()
     {
         base.OnEnable();
-        StateTracker stateTracker = StateTracker.Get();
-        stateTracker.OnStateChange += OnStateTrackerStateChange;
         s_service?.DisableDeathLink(); // Just in case
-        s_service = stateTracker.ApSession?.CreateDeathLinkService();
-        if (s_service != null)
+
+        StateTracker stateTracker = StateTracker.Get();
+        if (stateTracker == null)
+            Plugin.Get().LateSetup += _ => StateTracker.Get().OnStateChange += OnStateTrackerStateChange;
+        else
         {
-            s_service.OnDeathLinkReceived += s_deaths.Enqueue;
-            s_service?.EnableDeathLink();
+            stateTracker.OnStateChange += OnStateTrackerStateChange;
+            s_service = stateTracker.ApSession?.CreateDeathLinkService();
+            if (s_service != null)
+            {
+                s_service.OnDeathLinkReceived += s_deaths.Enqueue;
+                s_service?.EnableDeathLink();
+            }
         }
     }
 

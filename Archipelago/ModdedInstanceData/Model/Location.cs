@@ -141,16 +141,27 @@ public class Location
 /// Simple declaration to help identify IDs for tags
 /// </summary>
 [DataContract]
-public struct LocationID : ITagID, IEquatable<LocationID>, IComparable<LocationID>
+public readonly struct LocationID : ITagID, IEquatable<LocationID>, IComparable<LocationID>
 {
     [DataMember(Name = "id")]
     public uint ID { get; init; }
 
     public bool IsNull => ID == 0;
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+
     public bool Equals(LocationID other) => ID == other.ID;
     public int CompareTo(LocationID other) => ID.CompareTo(other.ID);
+
+    public override int GetHashCode() => ID.GetHashCode();
+    public override bool Equals(object? obj) => obj is LocationID && Equals((LocationID)obj);
     public override string ToString() => $"LocationID {ID}";
+
+    public static bool operator ==(LocationID left, LocationID right) => left.Equals(right);
+    public static bool operator !=(LocationID left, LocationID right) => !left.Equals(right);
+    public static bool operator <(LocationID left, LocationID right) => left.CompareTo(right) < 0;
+    public static bool operator <=(LocationID left, LocationID right) => left.CompareTo(right) <= 0;
+    public static bool operator >(LocationID left, LocationID right) => left.CompareTo(right) > 0;
+    public static bool operator >=(LocationID left, LocationID right) => left.CompareTo(right) >= 0;
 
     public static LocationID From(Game.Data data, string name, Func<TagDefinition<LocationID>> definitionFactory, Location? item = null)
         => data.Locations.LookUpOrCreate(name, definitionFactory, item);

@@ -1,7 +1,9 @@
-﻿using ReTFO.Archipelago.Utilities;
+﻿using MS.Internal.Xml.XPath;
+using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.Serialization;
 
 namespace ReTFO.Archipelago.ModdedInstanceData.Model;
@@ -26,43 +28,65 @@ public readonly struct Path : INullable
     public enum eType
     {
         /// <summary>
-        /// No required item; not assigned. Default value
+        /// Default value; no requirement
         /// </summary>
-        None,
+        None = 0,
+
+        /// <summary>
+        /// Used to indicate the req is not None
+        /// </summary>
+        SingleReq = 1 << 0,
+
+        /// <summary>
+        /// Bit representing a path which requires a category tag (as opposed to an item tag)
+        /// </summary>
+        IsCategory = 1 << 1,
+
+        /// <summary>
+        /// Bit indicating the requirements are consumed when the path is traversed.
+        /// Incompatiable with IsCategory
+        /// </summary>
+        IsConsumed = 1 << 2,
+
+        /// <summary>
+        /// Bit indicating the requirements for this path are the sum of all previously-encountered paths 
+        /// with the same requirement. Used to calculate progressive-style pathing server-side
+        /// </summary>
+        IsGrowing = 1 << 3,
 
         /// <summary>
         /// Requires a certain number of a specific item, specified exactly by ID
         /// </summary>
-        Item,
+        Item = SingleReq,
 
         /// <summary>
         /// Requires a certain number of a specific item, specified exactly by ID.
         /// Passing through the path consumes the specified item, preventing its reuse.
         /// </summary>
-        ItemConsumed,
+        ItemConsumed = SingleReq | IsConsumed,
 
         /// <summary>
         /// Requires a specific type of item. During the server-side generation, the requirements for this
         /// path type are increased by the sum of all previously-encountered RequiredItems with the same target.
         /// </summary>
-        ItemGrowing,
+        ItemGrowing = SingleReq | IsGrowing,
 
         /// <summary>
         /// Requires a certain number of items which are all children of one shared category ID.
         /// This includes items in the provided category.
         /// </summary>
-        Category,
+        Category = SingleReq | IsCategory,
 
         /// <summary>
         /// Requires a specific category of item. During the server-side generation, the requirements for this
         /// path type are increased by the sum of all previously-encountered growing RequiredItems with the same target.
         /// </summary>
-        CategoryGrowing,
+        CategoryGrowing = SingleReq | IsCategory | IsGrowing,
 
         /// <summary>
         /// Used by <see cref="MultiPathReq"/> to indicate that it contains an array of values.
         /// </summary>
-        MultiReq,
+        MultiReq = 128,
     }
 
     /// <summary>
@@ -127,7 +151,7 @@ public readonly struct Path : INullable
     /// A variation of PathReq which acts as a union of PathReq and PathReq[].
     /// Unfortuantely, implementing an actual union is too much of a pain, so this is the best we get.
     /// </summary>
-    public readonly struct MultiPathReq : IEnumerable<PathReq>
+    public readonly struct MultiPathReq : ICollection<PathReq>
     {
         /// <summary>
         /// Creates a path with no requirements
@@ -206,6 +230,27 @@ public readonly struct Path : INullable
                 eType.MultiReq => m_reqs,
                 _ => [new PathReq(Type, m_target, m_count)]
             };
+
+        /// <summary>
+        /// If true, at least one requirement on this path is a consume requirement
+        /// </summary>
+        public bool IsConsume
+            => Type switch
+            {
+                eType.None => false,
+                eType.MultiReq => m_reqs.Any(r => (r.Type & eType.IsConsumed) != eType.None),
+                _ => (Type & eType.IsConsumed) != eType.None,
+            };
+
+        public int Count
+            => Type switch
+            {
+                eType.None => 0,
+                eType.MultiReq => m_reqs.Length,
+                _ => 1
+            };
+
+        public bool IsReadOnly => true;
 
         private class Enumerator : IEnumerator<PathReq>
         {
@@ -335,6 +380,33 @@ public readonly struct Path : INullable
                 return new MultiPathReq(arr);
             }
         }
+
+        /// <summary>
+        /// Ensures the contained item requirements are sorted.
+        /// </summary>
+        public void Sort()
+        {
+            if (Type != eType.MultiReq) return;
+            var keys = new ItemID[m_reqs.Length];
+            for (int i = 0; i < m_reqs.Length; i++)
+                keys[i] = m_reqs[i].Target;
+            Array.Sort(keys, m_reqs);
+        }
+
+        public void Add(PathReq item)
+            => throw new NotSupportedException();
+
+        public void Clear()
+            => throw new NotSupportedException();
+
+        public bool Contains(PathReq item)
+            => Reqs.Any(r => r.Equals(item));
+
+        public void CopyTo(PathReq[] array, int arrayIndex)
+            => Reqs.CopyTo(array, arrayIndex);
+
+        public bool Remove(PathReq item)
+            => throw new NotSupportedException();
     }
 
     /// <summary>
@@ -403,14 +475,25 @@ public readonly struct Path : INullable
 ///  for looking up a Path instance in GameData.
 /// </summary>
 [DataContract]
-public struct PathID : ITagID, IEquatable<PathID>, IComparable<PathID>
+public readonly struct PathID : ITagID, IEquatable<PathID>, IComparable<PathID>
 {
     [DataMember(Name = "id")]
     public uint ID { get; init; }
 
     public bool IsNull => ID == 0;
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+
     public bool Equals(PathID other) => ID == other.ID;
     public int CompareTo(PathID other) => ID.CompareTo(other.ID);
+
+    public override int GetHashCode() => ID.GetHashCode();
+    public override bool Equals(object? obj) => obj is PathID && Equals((PathID)obj);
     public override string ToString() => $"PathID {ID}";
+
+    public static bool operator ==(PathID left, PathID right) => left.Equals(right);
+    public static bool operator !=(PathID left, PathID right) => !left.Equals(right);
+    public static bool operator <(PathID left, PathID right) => left.CompareTo(right) < 0;
+    public static bool operator <=(PathID left, PathID right) => left.CompareTo(right) <= 0;
+    public static bool operator >(PathID left, PathID right) => left.CompareTo(right) > 0;
+    public static bool operator >=(PathID left, PathID right) => left.CompareTo(right) >= 0;
 }

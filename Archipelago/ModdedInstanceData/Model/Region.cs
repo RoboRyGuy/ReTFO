@@ -174,16 +174,27 @@ public readonly struct Region
 ///  for looking up a Region instance in GameData.
 /// </summary>
 [DataContract]
-public struct RegionID : ITagID, IEquatable<RegionID>, IComparable<RegionID>
+public readonly struct RegionID : ITagID, IEquatable<RegionID>, IComparable<RegionID>
 {
     [DataMember(Name = "id")]
     public uint ID { get; init; }
 
     public bool IsNull => ID == 0;
     public int AsIndex { get => checked((int)ID - 1); init => ID = unchecked((uint)value + 1u); }
+
     public bool Equals(RegionID other) => ID == other.ID;
     public int CompareTo(RegionID other) => ID.CompareTo(other.ID);
+
+    public override int GetHashCode() => ID.GetHashCode();
+    public override bool Equals(object? obj) => obj is RegionID && Equals((RegionID)obj);
     public override string ToString() => $"RegionID {ID}";
+
+    public static bool operator ==(RegionID left, RegionID right) => left.Equals(right);
+    public static bool operator !=(RegionID left, RegionID right) => !left.Equals(right);
+    public static bool operator <(RegionID left, RegionID right) => left.CompareTo(right) < 0;
+    public static bool operator <=(RegionID left, RegionID right) => left.CompareTo(right) <= 0;
+    public static bool operator >(RegionID left, RegionID right) => left.CompareTo(right) > 0;
+    public static bool operator >=(RegionID left, RegionID right) => left.CompareTo(right) >= 0;
 
     public static RegionID From(Game.Data data, string name, Func<TagDefinition<RegionID>> definitionFactory, Region item = default)
         => data.Regions.LookUpOrCreate(name, definitionFactory, item);

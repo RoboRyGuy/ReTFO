@@ -98,7 +98,7 @@ public class TriggerEventsHandler : ArchipelagoFeature
                 Path.MultiPathReq reqs = new();
                 if (PathReqsOverride.TryGetValue(trigger, out var itemGetter))
                 {
-                    reqs = new(Path.eType.ItemConsumed, itemGetter.Invoke(data), 1u);
+                    reqs = new(Path.eType.Item, itemGetter.Invoke(data), 1u);
                 }
 
                 // Process the events

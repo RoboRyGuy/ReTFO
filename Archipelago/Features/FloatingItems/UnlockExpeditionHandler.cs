@@ -339,7 +339,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// Get the sort key used to order expeditions in "progressive" order
     /// </summary>
     public static string GetProgressiveSortKey(Expedition.Data data)
-        => $"{(int)data.ExpeditionTier}-{data.ExpeditionIndex}-{data.Rundown.name}";
+        => $"{Enum.GetName(data.ExpeditionTier) ?? "unknown"}-{data.ExpeditionIndex}-{data.ExpeditionName}";
 
     /// <summary>
     /// Gets all enabled expedition in the order they're unlocked in a progressive-style playthrough
