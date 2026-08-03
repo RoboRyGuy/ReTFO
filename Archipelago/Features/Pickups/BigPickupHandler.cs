@@ -77,7 +77,7 @@ public class BigPickupHandler : ArchipelagoFeature
             ItemDataBlock = item;
         }
 
-        public static ItemData MakeRandData(ItemDataBlock? item) => new ItemData() { IsProgression = true, IsRandomLike = ((item?.persistentID ?? 0) == CellItemID) };
+        public static ItemData MakeRandData(ItemDataBlock? item) => new ItemData() { IsProgression = true };
 
         /// <summary>
         /// The expedition this item was created for

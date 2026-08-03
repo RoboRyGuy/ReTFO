@@ -88,7 +88,7 @@ public class BulkheadKeyHandler : ArchipelagoFeature
     public class BulkheadKeyItem : TerminalItem
     {
         public BulkheadKeyItem(RegionID expedition)
-            : base(new ItemData() { IsProgression = true, IsRandomLike = true })
+            : base(new ItemData() { IsProgression = true })
         {
             ExpeditionRegion = expedition;
         }
@@ -121,10 +121,10 @@ public class BulkheadKeyHandler : ArchipelagoFeature
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player = null, ItemID itemId = new())
         {
-            // If the bulkhead key is not randomized, we want to try and give it directly to the player who found it
+            // If possible, give the key directly to who found it
             if (CheckExpedition(stateTracker))
             {
-                if (RandData.IsRandomLike && player != null)
+                if (player != null)
                 {
                     var wrapper = SpawnItemAsync();
                     wrapper.AddSpawnCallback(item => 
