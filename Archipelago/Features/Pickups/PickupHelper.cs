@@ -3,6 +3,7 @@ using Il2CppInterop.Runtime.Injection;
 using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.FeaturesAPI;
+using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.Utilities;
 using SNetwork;
 using System;
@@ -441,19 +442,13 @@ public class PickupHelper : ArchipelagoFeature
     /// <param name="scout">If true, also scouts the location, providing the player with a hint of what it contains</param>
     public static void ModifyTerminalDetailInfo(ItemInLevel item, Il2CppSystem.Collections.Generic.List<string> detailedData, bool scout = true)
     {
-        int index = 1;
-        while (index < detailedData.Count && !detailedData[index].StartsWith("----")) ++index;
-
-        ContainsLocationPickupComp comp = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>();
-        if (comp == null)
-            detailedData.Insert(index++, "MULTIWORLD ITEM: -- NONE --");
-        else
-        {
-            StateTracker st = StateTracker.Get();
-            Location loc = st.GameData.Locations.LookUpValueChecked(comp.StoredLocation);
-            detailedData.Insert(index++, $"MULTIWORLD ITEM: ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
-            if (scout) st.ScoutLocation(comp.StoredLocation);
-        }
+        var id = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>()?.StoredLocation;
+        APCommandHandler.InsertLocationDataToDetailedInfo(
+            StateTracker.Get(),
+            detailedData,
+            "MULTIWORLD ITEM",
+            id is null ? Enumerable.Empty<LocationID>() : new LocationID[1] { id.Value }
+        );
     }
 
     /// <summary>

@@ -3,12 +3,15 @@ using LevelGeneration;
 using Localization;
 using ReTFO.Archipelago.FeaturesAPI;
 using System.Collections.Generic;
+using System.Linq;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.Terminals;
+
+using ReTFO.Archipelago.ModdedInstanceData.Model;
 
 [EnableFeatureByDefault, AutomatedFeature]
 public class APCommandHandler : ArchipelagoFeature
@@ -71,19 +74,72 @@ public class APCommandHandler : ArchipelagoFeature
             terminal.TrySyncSetCommandHidden(CommandSlot);
     }
 
-    private static Dictionary<string, SubCommand> m_subCommands = new();
+    private static SortedList<string, SubCommand> m_subCommands = new();
     public static IReadOnlyDictionary<string, SubCommand> SubCommands => m_subCommands;
 
+    /// <summary>
+    /// Registers a subcommand with the ap command
+    /// </summary>
+    /// <param name="command">The subcommand handler</param>
     public static void RegisterCommand(SubCommand command)
     {
         if (!m_subCommands.TryAdd(command.SubCommandName.ToUpper(), command))
             FeatureLogger.Error($"Failed to add duplicate command with name \"{command.SubCommandName}\"");
     }
 
+    /// <summary>
+    /// Unregisters a subcommand with the ap command.
+    /// Logs a warning if the subcommand is not found, but otherwise has no errors
+    /// </summary>
+    /// <param name="command">The subcommand handler</param>
     public static void UnregisterCommand(SubCommand command)
     {
         if (!m_subCommands.Remove(command.SubCommandName.ToUpper()))
             FeatureLogger.Warning($"Could not to remove subcommand \"{command.SubCommandName}\" because it was not registered");
+    }
+
+    /// <summary>
+    /// Adds formatted scouting info about locations to detailed terminal info.
+    /// This helps keep formatting consistent between location sources.
+    /// </summary>
+    /// <param name="st">The state tracker to use when performing this operation</param>
+    /// <param name="detailedInfo">The detailed info to insert location data into</param>
+    /// <param name="locationGroupName">The group name for the locations (ie how they're obtained)</param>
+    /// <param name="locations">The locations to insert data for</param>
+    /// <param name="scout">If true, also scouts the locations</param>
+    public static void InsertLocationDataToDetailedInfo(StateTracker st, Il2CppSystem.Collections.Generic.List<string> detailedInfo, string locationGroupName, IEnumerable<LocationID> locations, bool scout = true)
+    {
+        int index = 1;
+        while (index < detailedInfo.Count && !detailedInfo[index].StartsWith("----")) ++index;
+
+        List<Location> actualLocations = locations
+            .Select(st.GameData.Locations.LookUpValueChecked)
+            .Where(l => l.RandData.IsTreatedAsRandom)
+            .Where(l => l.ScoutedItemName != null)
+            .ToList();
+
+        if (locations.Any() && !locations.Skip(1).Any()) // If exactly one element
+        {
+            if (actualLocations.Any())
+            {
+                var loc = actualLocations[0];
+                detailedInfo.Insert(index++, $"{locationGroupName}: ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
+            }
+            else
+            {
+                detailedInfo.Insert(index++, $"{locationGroupName}: -- EMPTY --");
+            }
+            st.ScoutLocation(locations.First());
+        }
+        else
+        {
+            detailedInfo.Insert(index++, $"{locationGroupName}:");
+            foreach (var loc in actualLocations)
+                detailedInfo.Insert(index++, $"  ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
+            detailedInfo.Insert(index++, "   -- END OF LIST --");
+        }
+
+        if (scout && locations.Any()) st.ScoutLocations(locations);
     }
 
     /// <summary>

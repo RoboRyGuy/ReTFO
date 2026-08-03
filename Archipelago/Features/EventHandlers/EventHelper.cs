@@ -1,8 +1,11 @@
-﻿using GameData;
+﻿using AIGraph;
+using GameData;
+using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
 using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
@@ -115,7 +118,7 @@ public class EventHelper : ArchipelagoFeature
         };
         e.FogSetting = 0u;
         e.FogTransitionDuration = 0f;
-        e.Layer = LevelGeneration.LG_LayerType.MainLayer;
+        e.Layer = LG_LayerType.MainLayer;
         e.LocalIndex = 0u;
         e.Position = UnityEngine.Vector3.zero;
         e.SoundID = 0u;
@@ -124,8 +127,8 @@ public class EventHelper : ArchipelagoFeature
         e.SustainedEventSlotIndex = 0;
         e.SustainedEventStateCount = 0;
         e.SustainedEventStateDuration = 0f;
-        e.TerminalCommand = LevelGeneration.TERM_Command.None;
-        e.TerminalCommandRule = LevelGeneration.TERM_CommandRule.Normal;
+        e.TerminalCommand = TERM_Command.None;
+        e.TerminalCommandRule = TERM_CommandRule.Normal;
         e.Trigger = eWardenObjectiveEventTrigger.None;
         e.Type = eWardenObjectiveEventType.None;
         e.UseStaticBioscanPoints = false;
@@ -210,6 +213,76 @@ public class EventHelper : ArchipelagoFeature
 
         return id;
     }
+
+    /// <summary>
+    /// Attempts to get location data from the provided event
+    /// </summary>
+    /// <param name="eventData">The event to get location data from</param>
+    /// <param name="loc">The ID of the location, if found. Null otherwise</param>
+    /// <returns>True if succcessful, false otherwise</returns>
+    public static bool TryExtractLocation(WardenObjectiveEventData eventData, out LocationID loc)
+        => (eventData.Type == CheckLocationEventType ? (loc = new() { ID = eventData.EnemyID }, true) : (loc = new(), false)).Item2;
+
+    /// <summary>
+    /// Extracts location data from the provided event. Returns a null id if it fails
+    /// </summary>
+    /// <param name="eventData">The event to extract location data from</param>
+    /// <returns>The location ID, or a null ID on fail</returns>
+    public static LocationID ExtractLocation(WardenObjectiveEventData eventData)
+        => eventData.Type == CheckLocationEventType ? new() { ID = eventData.EnemyID } : new();
+
+    /// <summary>
+    /// Helper class for iterating through event datas to get location IDs
+    /// </summary>
+    private class ExtractLocationsEnumerable : IEnumerable<LocationID>
+    {
+        public ExtractLocationsEnumerable(IEnumerable<WardenObjectiveEventData> source)
+            => Source = source;
+
+        public readonly IEnumerable<WardenObjectiveEventData> Source;
+
+        public IEnumerator<LocationID> GetEnumerator()
+            => new ExtractLocationsEnumerator(Source.GetEnumerator());
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private class ExtractLocationsEnumerator : IEnumerator<LocationID>
+        {
+            public ExtractLocationsEnumerator(IEnumerator<WardenObjectiveEventData> source)
+                => Source = source;
+
+            public readonly IEnumerator<WardenObjectiveEventData> Source;
+
+            private LocationID m_current;
+            public LocationID Current => m_current;
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                while (Source.MoveNext())
+                {
+                    if (TryExtractLocation(Source.Current, out m_current))
+                        return true;
+                }
+                return false;
+            }
+
+            public void Dispose() { }
+
+            public void Reset()
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Extract location IDs from the provided events. Does not return null IDs
+    /// </summary>
+    /// <param name="datas">The event datas to extract location IDs from</param>
+    /// <returns>The non-null location IDs</returns>
+    public static IEnumerable<LocationID> ExtractLocations(IEnumerable<WardenObjectiveEventData> datas)
+        => new ExtractLocationsEnumerable(datas);
 
     /// <summary>
     /// Add options relating to events and event tagging
@@ -346,4 +419,71 @@ public class EventHelper : ArchipelagoFeature
             return true;
         }
     }
+
+    /// <summary>
+    /// Custom terminal item implementation which uses a chained event to process the detailed info.
+    /// This makes it more convenient to add location data and such to the detailed info.
+    /// </summary>
+    [InjectToIl2Cpp]
+    public class LG_ArchipelagoTerminalItem : LG_GenericTerminalItem
+    {
+        [Obsolete("Do not use. Only exists for il2cpp integration. Instead use GameObject.AddComponent")]
+        public LG_ArchipelagoTerminalItem(IntPtr ptr) : base(ptr) { }
+
+        /// <summary>
+        /// Invoked when processing detailed info to allow processing of detailed info
+        /// </summary>
+        public ChainedEvent<Il2CppSystem.Collections.Generic.List<string>> DetailedInfoProcessors { get; private init; } = new();
+
+        /// <summary>
+        /// Implementation for the OnWantDetailedInfo event for this terminal item
+        /// </summary>
+        private Il2CppSystem.Collections.Generic.List<string> OnWantDetailedInfo_Implementation(Il2CppSystem.Collections.Generic.List<string> defaultList)
+            => DetailedInfoProcessors.Invoke(defaultList);
+
+        public override void Setup(string key, AIG_CourseNode? spawnNode = null)
+        {
+            base.Setup(key, spawnNode);
+            string typeName = typeof(Il2CppSystem.Collections.Generic.List<string>).FullName!;
+            IntPtr methodPtr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                this.ObjectClass,
+                false,
+                nameof(OnWantDetailedInfo_Implementation),
+                typeName,
+                [ typeName ]
+            );
+            OnWantDetailedInfo = new Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>>(this, methodPtr);
+        }
+    }
+
+    /// <summary>
+    /// Registers world event objects as terminal items
+    /// </summary>
+    [ArchivePatch(typeof(LG_WorldEventObject), nameof(LG_WorldEventObject.Setup))]
+    public static class LG_WorldEventObject__Setup__Patch
+    {
+        public static void Prefix(LG_WorldEventObject __instance, LG_Area parentArea)
+        {
+            var test = () =>
+            {
+                // Just initialize everything for simplicity's sake
+                LG_ArchipelagoTerminalItem ti = __instance.gameObject.AddComponent<LG_ArchipelagoTerminalItem>();
+                ti.FloorItemLocation = "World Event Object"; // Not sure where this is seen in-game
+                ti.FloorItemStatus = eFloorInventoryObjectStatus.Normal;
+                ti.FloorItemType = eFloorInventoryObjectType.Unknown;
+                ti.LocatorBeaconPosition = __instance.gameObject.transform.position;
+                //ti.OnGotListedCallback;
+                //ti.OnWantDetailedInfo;
+                //ti.OnWantDetailedInfoCallback;
+                //ti.OverrideCode;
+                ti.ShowInFloorInventory = true;
+                ti.SpawnNode = parentArea.m_courseNode;
+                ti.TerminalItemId = 1;
+                ti.TerminalItemKey = __instance.WorldEventObjectKey;
+                ti.Setup(__instance.WorldEventObjectKey, parentArea.m_courseNode);
+            };
+            test();
+        }
+    }
+
 }

@@ -309,28 +309,15 @@ public class APCommandExtractHandler : ArchipelagoFeature
     {
         public static void Postfix(LG_ComputerTerminal __instance, Il2CppSystem.Collections.Generic.List<string> __result)
         {
-            __result.Add(string.Empty);
-
-            int i = 1;
-            while (i < __result.Count && !__result[i].StartsWith("---------")) ++i;
-
-            StateTracker stateTracker = StateTracker.Get();
-            var codes = MakeItemCodes(stateTracker, __instance)
-                .Where(pair => !IsEmpty(stateTracker, pair.Item2));
-
-            __result.Insert(i++, "AVAILABLE EXTRACTIONS:");
-            if (!codes.Any())
-                __result.Insert(i++, $"  -- NO EXTRACTIONS FOUND --");
-            else
-            {
-                foreach (var code in codes)
-                {
-                    Location loc = stateTracker.GameData.Locations.LookUpValueChecked(code.Item2);
-                    __result.Insert(i++, $"  ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
-                }
-                __result.Insert(i++, "   -- END OF LIST --");
-                stateTracker.ScoutLocations(codes.Select(pair => pair.Item2));
-            }
+            StateTracker st = StateTracker.Get();
+            APCommandHandler.InsertLocationDataToDetailedInfo(
+                st,
+                __result,
+                "AVAILABLE EXTRACTION(S)",
+                MakeItemCodes(st, __instance)
+                  .Where(pair => !IsEmpty(st, pair.Item2))
+                  .Select(pair => pair.Item2)
+            );
         }
     }
 
