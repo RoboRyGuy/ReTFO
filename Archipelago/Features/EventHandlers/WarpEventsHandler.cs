@@ -1,9 +1,12 @@
 ﻿using GameData;
 using LevelGeneration;
+using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.FeaturesAPI;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -56,6 +59,21 @@ public class WarpEventsHandler : ArchipelagoFeature
     {
         get => m_featureLogger ?? Plugin.Get().Logger;
         set => m_featureLogger = value;
+    }
+
+    private JumpCommand? m_warpCommand = null;
+    private static ulong s_seenDimensions = 0x1;
+
+    public override void OnEnable()
+    {
+        base.OnEnable();
+        APCommandHandler.RegisterCommand(m_warpCommand ??= new());
+    }
+
+    public override void OnDisable()
+    {
+        base.OnDisable();
+        APCommandHandler.UnregisterCommand(m_warpCommand ??= new());
     }
 
     /// <summary>
@@ -150,6 +168,106 @@ public class WarpEventsHandler : ArchipelagoFeature
                 Reqs = new(Path.eType.Category, targetZone.Item_WarpEvent_ByZone, 1u),
             });
         }
+    }
+
+    /// <summary>
+    /// Notify the handler that a dimension has been seen and its warp should become available
+    /// in the jump terminal command.
+    /// </summary>
+    /// <param name="dimension">The dimension which has been seen</param>
+    public static void NotifySeenDimension(eDimensionIndex dimension)
+        => s_seenDimensions |= 1UL << ((int)dimension);
+
+    /// <summary>
+    /// Handles the jump command
+    /// </summary>
+    private class JumpCommand : APCommandHandler.SubCommand
+    {
+        public JumpCommand()
+        {
+            SubCommandName = "JUMP";
+        }
+
+        public override string HelpText => 
+            "Allows players to jump to any dimension they've already been to."
+            + "\nYou must fully warp to a dimension to unlock it, not a temporary warp.";
+
+        public override void Execute(LG_ComputerTerminal terminal, string fullLine, string subCommand, string param2)
+        {
+            eDimensionIndex? target = null;
+
+            const int MAX_DIMENSIONS = sizeof(ulong) * 8;
+
+            if (param2?.Length > 0)
+            {
+                if (int.TryParse(param2, out int index))
+                    target = (eDimensionIndex)index;
+                else if (Enum.TryParse<eDimensionIndex>(param2, out eDimensionIndex dimIndex))
+                    target = dimIndex;
+                if (!target.HasValue)
+                    terminal.AddLine("Failed to parse desired dimension index. Please use a whole number from 0-63.");
+            }
+
+            if (target.HasValue && ((int)target.Value) >= MAX_DIMENSIONS)
+            {
+                terminal.AddLine($"<#F00><i>Cannot jump to dimension <#F80>{param2}</color>; no such dimension exists!</i></color>");
+                target = null;
+            }
+
+            if (target.HasValue && (s_seenDimensions & (1UL << ((int)target))) == 0)
+            {
+                terminal.AddLine($"<#F00><i>Cannot warp to <#F80>{Enum.GetName(target.Value)}</color>; not yet seen!</i></color>");
+                target = null;
+            }
+
+            if (target.HasValue && target.Value == terminal.SpawnNode.m_dimension.DimensionIndex)
+            {
+                terminal.AddLine($"<#F00><i>Cannot warp to <#F80>{Enum.GetName(target.Value)}</color>; you are already in this dimension!</i></color>");
+                target = null;
+            }
+
+            if (target.HasValue)
+            {
+                terminal.AddLine($"Initiating dimension warp to <#F80>{Enum.GetName(target.Value) ?? ((int)target).ToString()}</color>");
+                WorldEventManager.ExecuteEvent(new WardenObjectiveEventData
+                {
+                    Type = eWardenObjectiveEventType.DimensionWarpTeam,
+                    DimensionIndex = target.Value,
+                    Delay = 3f,
+                });
+            }
+            else
+            {
+                var available = Enumerable.Range(0, MAX_DIMENSIONS)
+                    .Where(i => ((1UL << i) & s_seenDimensions) != 0UL)
+                    .Select(i => $"{i} - <#F80>{Enum.GetName((eDimensionIndex)i)}</color>{((eDimensionIndex)i == terminal.SpawnNode.m_dimension.DimensionIndex ? " <i>(Current Dimension)</i>" : string.Empty)}");
+                terminal.AddLine($"Available dimension warps:\n  {string.Join("\n  ", available)}");
+            }
+
+        }
+    }
+
+    /// <summary>
+    /// Check when players warp to a dimension
+    /// </summary>
+    [ArchivePatch(typeof(WorldEventManager), nameof(WorldEventManager.ExecuteEvent_Internal))]
+    public static class WorldEventManager__ExecuteEvent_Internal__Patch
+    {
+        public static void Postfix(WardenObjectiveEventData eData, bool __runOriginal)
+        {
+            if (__runOriginal && eData.Type == eWardenObjectiveEventType.DimensionWarpTeam)
+                NotifySeenDimension(eData.DimensionIndex);
+        }
+    }
+
+    /// <summary>
+    /// When starting an expedition, clear seen dimensions lists
+    /// </summary>
+    [ArchivePatch(typeof(WardenObjectiveManager), nameof(WardenObjectiveManager.OnLocalPlayerStartExpedition))]
+    public static class WardenObjectiveManager__OnLocalPlayerStartExpedition__Patch
+    {
+        public static void Postfix()
+            => s_seenDimensions = 0x1;
     }
 
 }
