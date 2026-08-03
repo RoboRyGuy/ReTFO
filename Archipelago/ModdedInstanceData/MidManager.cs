@@ -1069,6 +1069,7 @@ public class MidManager
                 if (!state.Regions.Any())
                 {
                     state.Regions.Add(data.Region_Menu);
+                    globalReachedRegion[data.Region_Menu.AsIndex] = true;
                     Region region = data.Regions.LookUpValue(data.Region_Menu);
                     state.Paths.AddRange(region.ConnectedPaths);
 

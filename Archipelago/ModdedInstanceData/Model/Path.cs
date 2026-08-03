@@ -109,17 +109,20 @@ public readonly struct Path : INullable
     /// Simple requires need to traverse a path
     /// </summary>
     [DataContract]
-    public readonly struct PathReq : INullable
+    public readonly struct PathReq
     {
         /// <summary>
         /// Constructs a path requirements struct using the given target
         /// </summary>
         public PathReq(eType type, ItemID target, uint count)
         {
+            const eType BAD_TYPE = eType.IsCategory | eType.IsConsumed;
             if (type == eType.MultiReq)
                 throw new InvalidOperationException($"Cannot assign a target of type {nameof(eType.MultiReq)} to a PathReq!");
             else if (type == eType.None)
                 throw new InvalidOperationException($"A target of type {nameof(eType.None)} is pointless for a PathReq!");
+            else if ((type & BAD_TYPE) == BAD_TYPE)
+                throw new InvalidOperationException($"Consume paths cannot be category paths!");
 
             Type = type;
             Target = target;
@@ -129,7 +132,6 @@ public readonly struct Path : INullable
         /// <summary>
         /// The type of requirement this represents
         /// </summary>
-        [DataMember(Name = "type")]
         public readonly eType Type = eType.None;
 
         /// <summary>
@@ -144,7 +146,23 @@ public readonly struct Path : INullable
         [DataMember(Name = "count")]
         public readonly uint Count = 1u;
 
-        public bool IsNull => Type == eType.None;
+        /// <summary>
+        /// If true, this req accepts children of the target as well as the target
+        /// </summary>
+        [DataMember(Name = "is_category")]
+        public bool IsCategory => (Type & eType.IsCategory) != eType.None;
+
+        /// <summary>
+        /// If true, this req consumes the item upon traversal
+        /// </summary>
+        [DataMember(Name = "is_consume")]
+        public bool IsConsume => (Type & eType.IsConsumed) != eType.None;
+
+        /// <summary>
+        /// If true, this path's requirements grow each time a path with the same target is traversed
+        /// </summary>
+        [DataMember(Name = "is_growing")]
+        public bool IsGrowing => (Type & eType.IsGrowing) != eType.None;
     }
 
     /// <summary>
@@ -238,7 +256,7 @@ public readonly struct Path : INullable
             => Type switch
             {
                 eType.None => false,
-                eType.MultiReq => m_reqs.Any(r => (r.Type & eType.IsConsumed) != eType.None),
+                eType.MultiReq => m_reqs.Any(r => r.IsConsume),
                 _ => (Type & eType.IsConsumed) != eType.None,
             };
 
