@@ -1,10 +1,13 @@
 ﻿using GameData;
 using LevelGeneration;
+using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TheArchive.Core.Attributes.Feature;
+using TheArchive.Core.Attributes.Feature.Patches;
 using TheArchive.Core.FeaturesAPI;
 using TheArchive.Interfaces;
 
@@ -152,6 +155,53 @@ public class CustomScanHandler : ArchipelagoFeature
 
                 eventWrapper.Process(scanRegion);
             }
+        }
+    }
+
+    [ArchivePatch(typeof(WorldEventManager), nameof(WorldEventManager.OnLevelGenDone))]
+    public static class WorldEventManager__OnLevelGenDone__Patch
+    {
+        public static void Postfix(WorldEventManager __instance)
+        {
+            Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
+
+            var layouts = Enumerable.Empty<uint>().Append(data.Expedition.LevelLayoutData);
+            if (data.HasSecondary)
+                layouts = layouts.Append(data.Expedition.SecondaryLayout);
+            if (data.HasOverload)
+                layouts = layouts.Append(data.Expedition.ThirdLayout);
+            layouts = layouts.Concat(
+                data.Expedition.DimensionDatas.Select(d => DimensionDataBlock.GetBlock(d.DimensionData).DimensionData.LevelLayoutData)
+            );
+
+            var scanDatas = layouts
+                .Select(LevelLayoutDataBlock.GetBlock)
+                .SelectMany(l => l.Zones.Iter())
+                .SelectMany(z => z.WorldEventChainedPuzzleDatas.Iter());
+
+            foreach (var scan in scanDatas)
+            {
+                int entry = __instance.m_uniqueWorldEventObjectMap.FindEntry(scan.WorldEventObjectFilter);
+                if (entry == -1)
+                {
+                    FeatureLogger.Warning($"Failed to register scouting data for scan: {scan.WorldEventObjectFilter}");
+                    continue;
+                }
+                LG_WorldEventObject obj = __instance.m_uniqueWorldEventObjectMap.entries[entry].value;
+                EventHelper.LG_ArchipelagoTerminalItem terminalItem = obj.GetComponent<EventHelper.LG_ArchipelagoTerminalItem>();
+
+                terminalItem.DetailedInfoProcessors.Add((data) =>
+                {
+                    APCommandHandler.InsertLocationDataToDetailedInfo(
+                        StateTracker.Get(),
+                        data,
+                        "SCAN ITEMS",
+                        EventHelper.ExtractLocations(scan.EventsOnScanDone.Iter())
+                    );
+                    return data;
+                });
+            }
+
         }
     }
 }
