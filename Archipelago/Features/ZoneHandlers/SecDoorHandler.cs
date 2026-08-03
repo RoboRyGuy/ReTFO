@@ -1,8 +1,10 @@
 ﻿
 using GameData;
+using LevelGeneration;
 using Player;
 using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.Features.Pickups;
+using ReTFO.Archipelago.Features.Terminals;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using TheArchive.Core.Attributes.Feature;
@@ -226,6 +228,33 @@ public class SecDoorHandler : ArchipelagoFeature
         {
             Zone.Data zoneData = Zone.Data.GetFromZone(__instance.CourseNode.m_zone);
             StateTracker.Get().NotifyFoundRegion(zoneData.Region_Zone, __instance);
+        }
+    }
+
+    [ArchivePatch(typeof(LG_SecurityDoor), nameof(LG_SecurityDoor._Setup_b__60_0))]
+    public static class LG_SecurityDoor___Setup_b__60_0__Patch
+    {
+        public static void Postfix(LG_SecurityDoor __instance, Il2CppSystem.Collections.Generic.List<string> __result)
+        {
+            (string, EventList)[] events = [
+                ("ON APPROACH", __instance.LinkedToZoneData.EventsOnApproachDoor),
+                ("ON UNLOCK", __instance.LinkedToZoneData.EventsOnUnlockDoor),
+                ("ON SCAN STARTED", __instance.LinkedToZoneData.EventsOnDoorScanStart),
+                ("ON SCAN COMPLETED", __instance.LinkedToZoneData.EventsOnDoorScanDone),
+                ("ON DOOR OPENED", __instance.LinkedToZoneData.EventsOnOpenDoor),
+            ];
+
+            StateTracker st = StateTracker.Get();
+            foreach (var pair in events)
+            {
+                if (pair.Item2.Count <= 0) continue;
+                APCommandHandler.InsertLocationDataToDetailedInfo(
+                    st,
+                    __result,
+                    pair.Item1,
+                    EventHelper.ExtractLocations(pair.Item2.Iter())
+                );
+            }
         }
     }
 }
