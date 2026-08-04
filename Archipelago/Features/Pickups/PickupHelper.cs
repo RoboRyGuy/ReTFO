@@ -477,8 +477,13 @@ public class PickupHelper : ArchipelagoFeature
 
         public Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>> GetDelegate()
         {
+            const string typeName = "System.Collections.Generic.List<System.String>";
             IntPtr ptr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
-                this.ObjectClass, false, nameof(OnWantDetailedInfo), typeof(Il2CppSystem.Collections.Generic.List<string>).FullName!, new string[] { typeof(Il2CppSystem.Collections.Generic.List<string>).FullName! }
+                this.ObjectClass, 
+                false, 
+                nameof(OnWantDetailedInfo), 
+                typeName, 
+                new string[] { typeName }
             );
             return new Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>>(this, ptr);
         }
