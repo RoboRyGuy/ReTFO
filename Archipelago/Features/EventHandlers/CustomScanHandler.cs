@@ -25,6 +25,12 @@ public static class CustomScanHandler_Tags
         /// </summary>
         public ItemID Item_EventScans
             => ItemID.From(gameData, "Event Scan Items", data => new("Scans triggered by starting a custom event", data.Item_Scans));
+
+        public LocationID Location_EventScanReachables
+            => LocationID.From(gameData, "Event Scan Reachable Locations", data => new("Used to ensure event scans are reachable", data.Location_Never));
+
+        public ItemID Item_EventScanReachbles
+            => ItemID.From(gameData, "Event Scan Reachable Items", data => new("Used to ensure event scans are reachable", data.Item_Never));
     }
 
     extension (Expedition.Data data)
@@ -38,6 +44,12 @@ public static class CustomScanHandler_Tags
                 data => new("A particular event-triggered scan", data.Item_Scans),
                 new CustomScanHandler.StartCustomScanItem(data.Region_Expedition, worldEventObjectFilter)
             );
+
+        public LocationID Location_EventScanReachable_Instance(string worldEventObjectFilter)
+            => LocationID.From(data, $"{data.ExpeditionName} Event Scan {worldEventObjectFilter} Reachable", data => new("Used to ensure event scans are reachable", data.Location_Never));
+
+        public ItemID Item_EventScanReachble_Instance(string worldEventObjectFilter)
+            => ItemID.From(data, $"{data.ExpeditionName} Event Scan {worldEventObjectFilter} Reachable", data => new("Used to ensure event scans are reachable", data.Item_Never), new Item(new() { IsProgression = true }));
     }
 }
 
@@ -138,6 +150,14 @@ public class CustomScanHandler : ArchipelagoFeature
             var eventWrapper = data.WrapEvents(scan.EventsOnScanDone ??= new(1));
             ItemID item = data.Item_EventScan_Instance(scan.WorldEventObjectFilter!);
 
+            ItemID scanReachable = data.Item_EventScanReachble_Instance(scan.WorldEventObjectFilter);
+            data.Locations.CreateValue(
+                data.Location_EventScanReachable_Instance(scan.WorldEventObjectFilter),
+                data.Region_Zone,
+                new(),
+                scanReachable
+            );
+
             uint count = 0;
             while (!eventWrapper.IsDone)
             {
@@ -150,7 +170,10 @@ public class CustomScanHandler : ArchipelagoFeature
                 {
                     StartingRegion = data.Region_Zone,
                     EndingRegion = scanRegion,
-                    Reqs = new(Path.eType.Item, item, count),
+                    Reqs = new(
+                        new(Path.eType.Item, item, count),
+                        new(Path.eType.Item, scanReachable, count)
+                    )
                 });
 
                 eventWrapper.Process(scanRegion);
@@ -158,6 +181,9 @@ public class CustomScanHandler : ArchipelagoFeature
         }
     }
 
+    /// <summary>
+    /// Associates custom scan event items so that they can be queried for locations
+    /// </summary>
     [ArchivePatch(typeof(WorldEventManager), nameof(WorldEventManager.OnLevelGenDone))]
     public static class WorldEventManager__OnLevelGenDone__Patch
     {

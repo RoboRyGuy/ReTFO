@@ -19,6 +19,12 @@ public static class CollectHSUHandler_Tags
 {
     extension (Game.Data data)
     {
+        public LocationID Location_HSUScanReachables
+            => LocationID.From(data, "HSU Scan Reachble Locations", data => new("Locations used to ensure the HSU scan is reachable", data.Location_Never));
+
+        public ItemID Item_HSUScanReachables
+            => ItemID.From(data, "HSU Scan Reachable Items", data => new("Items used to ensure the HSU scan is reachable", data.Item_Never));
+
         public LocationID Location_HSUScans
             => LocationID.From(data, "HSU Scan Locations", data => new("Locations checked by starting HSU scans", data.Location_All));
 
@@ -41,6 +47,12 @@ public static class CollectHSUHandler_Tags
 
         public RegionID Region_HSUScanCompleted
             => RegionID.From(Checked(data), $"{data.ObjectiveName} HSU Scan Completed", data => new("Region entered when the HSU scan is completed", data.Region_Objective));
+
+        public LocationID Location_HSUScanReachable_Instance
+            => LocationID.From(data, $"{data.ObjectiveName} HSU Scan Reachble Location", data => new("Location used to ensure the HSU scan is reachable", data.Location_HSUScanReachables));
+
+        public ItemID Item_HSUScanReachable_Instance
+            => ItemID.From(data, $"{data.ObjectiveName} HSU Scan Reachable Item", data => new("Item used to ensure the HSU scan is reachable", data.Item_HSUScanReachables), new Item(new() { IsProgression = true }));
 
         public LocationID Location_HSUScan_Instance
             => LocationID.From(Checked(data), $"{data.ObjectiveName} HSU Scan Location", data => new("Location checked by starting a particular HSU scan", data.Location_HSUScans));
@@ -106,10 +118,20 @@ public class CollectHSUHandler : ArchipelagoFeature
         if (data.Objective.Type != eWardenObjectiveType.HSU_FindTakeSample) return;
 
         // Starting and completing the HSU scan
+        var placement = data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas[0]).Select(info => info.Region).ToList();
+
+        ItemID scanReachable = data.Item_HSUScanReachable_Instance;
+        data.Locations.CreateValue(
+            data.Location_HSUScanReachable_Instance,
+            placement,
+            new LocationData(),
+            scanReachable
+        );
+
         ItemID scanItem = data.Item_HSUScan_Instance;
         data.Locations.CreateValue(
             data.Location_HSUScan_Instance,
-            data.PlacementsToZoneRegions(data.ObjectiveData.ZonePlacementDatas[0]).Select(info => info.Region).ToList(),
+            placement,
             new LocationData(),
             scanItem
         );
@@ -120,7 +142,10 @@ public class CollectHSUHandler : ArchipelagoFeature
         {
             StartingRegion = data.Region_Objective,
             EndingRegion = scanStartedRegion,
-            Reqs = new(Path.eType.Item, scanItem, 1u),
+            Reqs = new(
+                new(Path.eType.Item, scanItem, 1u),
+                new(Path.eType.Item, scanReachable, 1u)
+            )
         });
 
         // Events triggered by starting the scan
