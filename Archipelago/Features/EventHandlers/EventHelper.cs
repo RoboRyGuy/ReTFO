@@ -1,5 +1,6 @@
 ﻿using AIGraph;
 using GameData;
+using Il2CppInterop.Runtime.Attributes;
 using LevelGeneration;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -421,69 +422,59 @@ public class EventHelper : ArchipelagoFeature
     }
 
     /// <summary>
-    /// Custom terminal item implementation which uses a chained event to process the detailed info.
-    /// This makes it more convenient to add location data and such to the detailed info.
+    /// Get a world event object's detailed info processor.
+    /// The detailed info processor controls what detailed info gets shown when the object is queried.
+    /// </summary>
+    /// <param name="obj">The object to add the comp to</param>
+    public static WEODetailsProcessor GetWorldEventObjectDetailsProcessor(LG_WorldEventObject obj)
+    {
+        WEODetailsProcessor? result = obj.gameObject.GetComponent<WEODetailsProcessor>();
+        if (result == null)
+        {
+            result = obj.gameObject.AddComponent<WEODetailsProcessor>();
+
+            LG_GenericTerminalItem? ti = obj.gameObject.GetComponent<LG_GenericTerminalItem>();
+            if (ti == null)
+            {
+                ti = obj.gameObject.AddComponent<LG_GenericTerminalItem>();
+                ti.Setup(obj.WorldEventObjectKey, obj.ParentArea.m_courseNode);
+                ti.ShowInFloorInventory = true;
+            }
+            else if (ti.OnWantDetailedInfo != null)
+            {
+                result.DetailedInfoProcessors.Add(data => ti.OnWantDetailedInfo.Invoke(data));
+            }
+
+            const string typeName = "System.Collections.Generic.List<System.String>"; // Not sure why, but it needs to be exactly this
+            IntPtr methodPtr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                result.ObjectClass,
+                false,
+                nameof(WEODetailsProcessor.GetDetailedInfo),
+                typeName,
+                new string[] { typeName }
+            );
+            ti.OnWantDetailedInfo = new(result, methodPtr);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Component which stores terminal detail callbacks for world event objects
     /// </summary>
     [InjectToIl2Cpp]
-    public class LG_ArchipelagoTerminalItem : LG_GenericTerminalItem
+    public class WEODetailsProcessor : UnityEngine.MonoBehaviour
     {
         [Obsolete("Do not use. Only exists for il2cpp integration. Instead use GameObject.AddComponent")]
-        public LG_ArchipelagoTerminalItem(IntPtr ptr) : base(ptr) { }
+        public WEODetailsProcessor(IntPtr ptr) : base(ptr) { }
 
         /// <summary>
         /// Invoked when processing detailed info to allow processing of detailed info
         /// </summary>
+        [HideFromIl2Cpp]
         public ChainedEvent<Il2CppSystem.Collections.Generic.List<string>> DetailedInfoProcessors { get; private init; } = new();
 
-        /// <summary>
-        /// Implementation for the OnWantDetailedInfo event for this terminal item
-        /// </summary>
-        private Il2CppSystem.Collections.Generic.List<string> OnWantDetailedInfo_Implementation(Il2CppSystem.Collections.Generic.List<string> defaultList)
-            => DetailedInfoProcessors.Invoke(defaultList);
-
-        public override void Setup(string key, AIG_CourseNode? spawnNode = null)
-        {
-            base.Setup(key, spawnNode);
-            string typeName = typeof(Il2CppSystem.Collections.Generic.List<string>).FullName!;
-            IntPtr methodPtr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
-                this.ObjectClass,
-                false,
-                nameof(OnWantDetailedInfo_Implementation),
-                typeName,
-                [ typeName ]
-            );
-            OnWantDetailedInfo = new Il2CppSystem.Func<Il2CppSystem.Collections.Generic.List<string>, Il2CppSystem.Collections.Generic.List<string>>(this, methodPtr);
-        }
-    }
-
-    /// <summary>
-    /// Registers world event objects as terminal items
-    /// </summary>
-    [ArchivePatch(typeof(LG_WorldEventObject), nameof(LG_WorldEventObject.Setup))]
-    public static class LG_WorldEventObject__Setup__Patch
-    {
-        public static void Prefix(LG_WorldEventObject __instance, LG_Area parentArea)
-        {
-            var test = () =>
-            {
-                // Just initialize everything for simplicity's sake
-                LG_ArchipelagoTerminalItem ti = __instance.gameObject.AddComponent<LG_ArchipelagoTerminalItem>();
-                ti.FloorItemLocation = "World Event Object"; // Not sure where this is seen in-game
-                ti.FloorItemStatus = eFloorInventoryObjectStatus.Normal;
-                ti.FloorItemType = eFloorInventoryObjectType.Unknown;
-                ti.LocatorBeaconPosition = __instance.gameObject.transform.position;
-                //ti.OnGotListedCallback;
-                //ti.OnWantDetailedInfo;
-                //ti.OnWantDetailedInfoCallback;
-                //ti.OverrideCode;
-                ti.ShowInFloorInventory = true;
-                ti.SpawnNode = parentArea.m_courseNode;
-                ti.TerminalItemId = 1;
-                ti.TerminalItemKey = __instance.WorldEventObjectKey;
-                ti.Setup(__instance.WorldEventObjectKey, parentArea.m_courseNode);
-            };
-            test();
-        }
+        public Il2CppSystem.Collections.Generic.List<string> GetDetailedInfo(Il2CppSystem.Collections.Generic.List<string> defaultDetails)
+            => DetailedInfoProcessors.Invoke(defaultDetails);
     }
 
 }

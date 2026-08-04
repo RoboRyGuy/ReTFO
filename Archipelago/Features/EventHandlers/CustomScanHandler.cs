@@ -164,21 +164,23 @@ public class CustomScanHandler : ArchipelagoFeature
         public static void Postfix(WorldEventManager __instance)
         {
             Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
-
+    
             var layouts = Enumerable.Empty<uint>().Append(data.Expedition.LevelLayoutData);
             if (data.HasSecondary)
                 layouts = layouts.Append(data.Expedition.SecondaryLayout);
             if (data.HasOverload)
                 layouts = layouts.Append(data.Expedition.ThirdLayout);
             layouts = layouts.Concat(
-                data.Expedition.DimensionDatas.Select(d => DimensionDataBlock.GetBlock(d.DimensionData).DimensionData.LevelLayoutData)
+                data.Expedition.DimensionDatas
+                  .Select(d => DimensionDataBlock.GetBlock(d.DimensionData).DimensionData.LevelLayoutData)
+                  .Where(id => id != 0)
             );
-
+    
             var scanDatas = layouts
                 .Select(LevelLayoutDataBlock.GetBlock)
                 .SelectMany(l => l.Zones.Iter())
                 .SelectMany(z => z.WorldEventChainedPuzzleDatas.Iter());
-
+    
             foreach (var scan in scanDatas)
             {
                 int entry = __instance.m_uniqueWorldEventObjectMap.FindEntry(scan.WorldEventObjectFilter);
@@ -188,9 +190,7 @@ public class CustomScanHandler : ArchipelagoFeature
                     continue;
                 }
                 LG_WorldEventObject obj = __instance.m_uniqueWorldEventObjectMap.entries[entry].value;
-                EventHelper.LG_ArchipelagoTerminalItem terminalItem = obj.GetComponent<EventHelper.LG_ArchipelagoTerminalItem>();
-
-                terminalItem.DetailedInfoProcessors.Add((data) =>
+                EventHelper.GetWorldEventObjectDetailsProcessor(obj).DetailedInfoProcessors.Add((data) =>
                 {
                     APCommandHandler.InsertLocationDataToDetailedInfo(
                         StateTracker.Get(),
@@ -201,7 +201,6 @@ public class CustomScanHandler : ArchipelagoFeature
                     return data;
                 });
             }
-
         }
     }
 }
