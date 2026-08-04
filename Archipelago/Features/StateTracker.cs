@@ -571,7 +571,7 @@ public partial class StateTracker : ArchipelagoFeature
                     ?? throw new NullReferenceException("Failed to retrieve filled_empty_locations from slot data");
 
             IEnumerable<(ItemID, long)> rawGoalItems = 
-                (loginSuccessful.SlotData.GetValueOrDefault("goal_items", null) as Newtonsoft.Json.Linq.JArray)?
+                (loginSuccessful.SlotData.GetValueOrDefault("goal_item_results", null) as Newtonsoft.Json.Linq.JArray)?
                     .ToObject<List<List<long>>>()?.Select(l => (new ItemID() { ID = checked((uint)l[0]) }, l[1]))
                     ?? throw new NullReferenceException("Failed to retrieve goal_items from slot data");
 
@@ -680,14 +680,9 @@ public partial class StateTracker : ArchipelagoFeature
         }
         reachableRegions.RemoveWhere(r => !data.Regions.LookUpValue(r).Reachable);
 
-
-        HashSet<RegionID> reachableRegionIDs = data.Regions.GetAllValues()
-            .Where(p => p.Value.Reachable && data.Regions.IsChild(p.Key, m_regionWhitelist) && !data.Regions.IsChild(p.Key, m_regionBlacklist))
-            .Select(p => p.Key).ToHashSet();
-
         // List of reachable locations
         List<KeyValuePair<LocationID, Location>> reachableLocations = data.Locations.GetAllValuesNonNull()
-            .Where(l => l.Value.OwningRegionIDs.All(id => reachableRegionIDs.Contains(id))).ToList();
+            .Where(l => l.Value.OwningRegionIDs.All(id => reachableRegions.Contains(id))).ToList();
 
         // Set whitelist/blacklist for items
         foreach (var pair in data.Items.GetAllValuesNonNull())
@@ -700,7 +695,8 @@ public partial class StateTracker : ArchipelagoFeature
 
         // Clean up empty locations and set whitelist/blacklist
         foreach (var entry in data.Locations.GetAllValuesNonNull())
-        {   // Clear empty locations of their
+        {   
+            // Clear empty locations of their items
             if (entry.Value.RandData.IsEmpty) entry.Value.SetItem(new());
             else if (entry.Value.ItemID.IsNull) FeatureLogger.Error($"Found non-empty location with null item: [{entry.Key}] {data.Locations.LookUpName(entry.Key)}");
 
@@ -935,7 +931,7 @@ public partial class StateTracker : ArchipelagoFeature
             LogForLobby($"Collected item {gameData.Items.LookUpName(location.ItemID)} from FakeConnect", false);
             RundownHandler.UpdateAllCounts();
         }
-        else if (player != null && location.RandData.IsRandomlike)
+        else if (player != null)
         {
             m_locationCheckContinuity.Add(id, player);
         }
@@ -1346,6 +1342,8 @@ public partial class StateTracker : ArchipelagoFeature
     /// <param name="localOnly">If true, do not sync this message. Otherwise, sends to all players</param>
     public static void LogForLobby(string message, bool localOnly)
     {
+        FeatureLogger.Notice(message);
+
         var logs = Enumerable.Empty<PUI_GameEventLog>()
             .Append(MainMenuGuiLayer.Current.PageLoadout?.m_gameEventLog)
             .Append(MainMenuGuiLayer.Current.PageMap?.m_gameEventLog)
