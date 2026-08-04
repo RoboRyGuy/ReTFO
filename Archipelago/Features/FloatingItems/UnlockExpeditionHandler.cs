@@ -617,6 +617,9 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                 expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
             }
         }
+
+        ItemID progressiveUnlockId = data.Item_ProgressiveExpeditionUnlock;
+        data.Items.LookUpValueChecked(progressiveUnlockId).OnItemObtained(stateTracker, new(), null, progressiveUnlockId);
     }
 
     /// <summary>
