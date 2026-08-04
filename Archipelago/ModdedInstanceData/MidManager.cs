@@ -154,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; init; } = new() 
     { 
-        { "LQFM-W7lYJ7qOVawH_3gRsuAwSsnfRsXNzq4huJgNxg=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "5s5luiT4SiONTCYoORHsIgIfJQ3kZfJMNUuHVGINj7Y=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
@@ -281,6 +281,10 @@ public class MidManager
         Event.Processor processor = gameData.EventProcessor;
         m_gameProcessor.Process(gameData);
         gameData.CleanUp(); // Trims lists
+
+        // Manually setting all regions as reachable by default
+        foreach (RegionID key in gameData.Regions.GetAllIDs())
+            gameData.SetRegionReachable(key, true);
 
         // Creating the game's name
         using SHA256 sha = SHA256.Create();

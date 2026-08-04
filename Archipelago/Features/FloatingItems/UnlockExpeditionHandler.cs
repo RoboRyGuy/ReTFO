@@ -24,16 +24,22 @@ public static class UnlockExpeditionHandler_Tags
     extension (Game.Data data)
     {
         /// <summary>
-        /// Parent region of regions containing progressive expedition unlocks
+        /// Parent region of regions containing floating expedition unlock items
         /// </summary>
         public RegionID Region_FloatingExpeditionPaths
             => RegionID.From(data, "Floating Expedition Paths", data => new("Region with paths connecting expeditions to the menu region via the ITEM requirements.", new()));
 
         /// <summary>
-        /// Parent region of regions containing progressive expedition unlocks
+        /// Parent region of regions containing progressive expedition unlock paths
         /// </summary>
         public RegionID Region_ProgressiveExpeditionPaths
             => RegionID.From(data, "Progressive Expedition Paths", data => new("Region with paths connecting expeditions to the menu region via the PROGRESSIVE requirements.", new()));
+
+        /// <summary>
+        /// Parent region of regions containing progressive expedition unlocks
+        /// </summary>
+        public RegionID Region_ProgressiveExpeditionLocations
+            => RegionID.From(data, "Progressive Expedition Locations", data => new("Region with standard progressive locations/item rewards for clearing expeditions.", new()));
 
         /// <summary>
         /// Parent location of progressive expedition unlock locations
@@ -76,7 +82,7 @@ public static class UnlockExpeditionHandler_Tags
         /// Region containing the progressive expedition unlock reward for a particular expedition
         /// </summary>
         public RegionID Region_ProgressiveExpeditionUnlock_ByExpedition
-            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containg the progressive expedition unlock reward for a particular expedition", data.Region_Expedition));
+            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containg the progressive expedition unlock reward for a particular expedition", data.Region_Expedition, data.Region_ProgressiveExpeditionLocations));
 
         /// <summary>
         /// Location containing the progressive expedition unlock for a particular expedition
@@ -253,6 +259,12 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             ),
             target: Option.eSetTarget.RegionWhitelist,
             tag: data.Region_FloatingExpeditionPaths
+        ));
+
+        data.AddOption(new OptionAddToSet(
+            condition: data.AddOption(new OptionNotOperation(isProgressiveItems)),
+            target: Option.eSetTarget.RegionBlacklist,
+            tag: data.Region_ProgressiveExpeditionLocations
         ));
 
         data.AddOption(new OptionAddToSet(
@@ -626,6 +638,11 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                     stateTracker.NotifyFoundRegion(data.Region_ProgressiveExpeditionUnlock_ByExpedition, null);
                     stateTracker.NotifyFoundLocation(data.Location_ProgressiveExpeditionUnlock_Instance, null);
                 }
+            }
+            else
+            {
+                stateTracker.NotifyFoundRegion(data.Region_ProgressiveExpeditionUnlock_ByExpedition, null);
+                stateTracker.NotifyFoundLocation(data.Location_ProgressiveExpeditionUnlock_Instance, null);
             }
         }
     }
