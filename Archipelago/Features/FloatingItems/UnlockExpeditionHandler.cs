@@ -380,7 +380,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             ++count;
         }
 
-        Array.Sort(s_expeditionProgressivelyOrderered, keys);
+        Array.Sort(keys, s_expeditionProgressivelyOrderered);
         return s_expeditionProgressivelyOrderered;
     }
 
