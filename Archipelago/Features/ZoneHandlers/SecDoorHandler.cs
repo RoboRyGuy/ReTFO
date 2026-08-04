@@ -16,6 +16,7 @@ namespace ReTFO.Archipelago.Features.ZoneHandlers;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
+using System.Linq;
 using EventList = Il2CppSystem.Collections.Generic.List<GameData.WardenObjectiveEventData>;
 
 public static class SecDoorHandler_Tags
@@ -247,13 +248,9 @@ public class SecDoorHandler : ArchipelagoFeature
             StateTracker st = StateTracker.Get();
             foreach (var pair in events)
             {
-                if (pair.Item2.Count <= 0) continue;
-                APCommandHandler.InsertLocationDataToDetailedInfo(
-                    st,
-                    __result,
-                    pair.Item1,
-                    EventHelper.ExtractLocations(pair.Item2.Iter())
-                );
+                var locs = EventHelper.ExtractLocations(pair.Item2.Iter());
+                if (locs.Any())
+                    APCommandHandler.InsertLocationDataInDetailedInfo(st, __result, pair.Item1, locs);
             }
         }
     }

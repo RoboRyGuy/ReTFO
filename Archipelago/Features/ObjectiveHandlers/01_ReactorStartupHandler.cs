@@ -1,8 +1,8 @@
 ﻿using Il2CppInterop.Runtime;
 using LevelGeneration;
 using Player;
-using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Features.Terminals;
+using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
 using System;
 using System.Collections;
@@ -15,6 +15,8 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
+using Dissonance;
+using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -510,6 +512,53 @@ public class ReactorStartupHandler : ArchipelagoFeature
             if (!__instance.ConnectedReactor.m_isWardenObjective) return;
 
             ProgressionObjective_ReactorStartup.Update(__instance.ConnectedReactor);
+        }
+    }
+
+    /// <summary>
+    /// Add location info to the reactor's query result
+    /// </summary>
+    [ArchivePatch(typeof(LG_WardenObjective_Reactor), nameof(LG_WardenObjective_Reactor._GenericObjectiveSetup_b__57_0))]
+    public static class LG_WardenObjective_Reactor___GenericObjectiveSetup_b__57_0__Patch
+    {
+        public static void Postfix(LG_WardenObjective_Reactor __instance, Il2CppSystem.Collections.Generic.List<string> __result)
+        {
+            Objective.Data data = Layer.Data.GetFromLayer(__instance.SpawnNode.m_zone.Layer)
+                .GetObjectiveDatas()
+                .ElementAt(__instance.WardenObjectiveChainIndex);
+
+            if (data.Objective.Type != eWardenObjectiveType.Reactor_Startup) return;
+
+            StateTracker st = StateTracker.Get();
+            int count = 0;
+            foreach (var wave in data.Objective.ReactorWaves)
+            {
+                ++count;
+                var locs = EventHelper.ExtractLocations(wave.Events.Iter());
+                if (!wave.VerifyInOtherZone)
+                    locs = locs.Prepend(data.Location_ReactorStartupCode_Instance(count));
+                APCommandHandler.InsertLocationDataInDetailedInfo(st, __result, $"WAVE {count}", locs);
+            }
+
+            count = 0;
+            if (data.Objective.EventsOnActivate.Any())
+            {
+                ++count;
+                int last = 0;
+                while (last < data.Objective.EventsOnActivate.Count)
+                {
+                    int next;
+                    for (next = last; next < data.Objective.EventsOnActivate.Count; next++)
+                        if (data.Objective.EventsOnActivate[next].Type == GameData.eWardenObjectiveEventType.EventBreak) break;
+                    APCommandHandler.InsertLocationDataInDetailedInfo(
+                        st,
+                        __result,
+                        $"COMPLETED STARTUP #{count}",
+                        EventHelper.ExtractLocations(Enumerable.Range(last, next - last).Select(i => data.Objective.EventsOnActivate[i]))
+                    );
+                    last = next + 1;
+                }
+            }
         }
     }
 

@@ -310,7 +310,7 @@ public class APCommandExtractHandler : ArchipelagoFeature
         public static void Postfix(LG_ComputerTerminal __instance, Il2CppSystem.Collections.Generic.List<string> __result)
         {
             StateTracker st = StateTracker.Get();
-            APCommandHandler.InsertLocationDataToDetailedInfo(
+            APCommandHandler.InsertLocationDataInDetailedInfo(
                 st,
                 __result,
                 "AVAILABLE EXTRACTION(S)",

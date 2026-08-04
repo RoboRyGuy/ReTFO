@@ -99,6 +99,35 @@ public class APCommandHandler : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Adds formatted scouting info about a location to detailed terminal info.
+    /// This helps keep formatting consistent between location sources.
+    /// </summary>
+    /// <param name="st">The state tracker to use when performing this operation</param>
+    /// <param name="detailedInfo">The detailed info to insert location data into</param>
+    /// <param name="locationGroupName">The group name for the locations (ie how they're obtained)</param>
+    /// <param name="location">The location to insert data for. Can be null</param>
+    /// <param name="scout">If true, also scouts the locations</param>
+    public static void InsertLocationDataInDetailedInfo(StateTracker st, Il2CppSystem.Collections.Generic.List<string> detailedInfo, string locationGroupName, LocationID location, bool scout = true)
+    {
+        int index = 1;
+        while (index < detailedInfo.Count && !detailedInfo[index].StartsWith("----")) ++index;
+
+        Location? actualLocation = location.IsNull ? null : st.GameData.Locations.LookUpValueChecked(location);
+
+        if (actualLocation?.RandData.IsTreatedAsRandom ?? false)
+        {
+            string name = actualLocation.ScoutedPlayerName ?? "DEBUG";
+            string item = actualLocation.ScoutedItemName ?? (actualLocation.ItemID.IsNull ? "null" : st.GameData.Items.LookUpName(actualLocation.ItemID));
+            detailedInfo.Insert(index++, $"{locationGroupName}: ({name}) {item}");
+        }
+        else
+        {
+            detailedInfo.Insert(index++, $"{locationGroupName}: -- EMPTY --");
+        }
+        if (scout) st.ScoutLocation(location);
+    }
+
+    /// <summary>
     /// Adds formatted scouting info about locations to detailed terminal info.
     /// This helps keep formatting consistent between location sources.
     /// </summary>
@@ -107,7 +136,7 @@ public class APCommandHandler : ArchipelagoFeature
     /// <param name="locationGroupName">The group name for the locations (ie how they're obtained)</param>
     /// <param name="locations">The locations to insert data for</param>
     /// <param name="scout">If true, also scouts the locations</param>
-    public static void InsertLocationDataToDetailedInfo(StateTracker st, Il2CppSystem.Collections.Generic.List<string> detailedInfo, string locationGroupName, IEnumerable<LocationID> locations, bool scout = true)
+    public static void InsertLocationDataInDetailedInfo(StateTracker st, Il2CppSystem.Collections.Generic.List<string> detailedInfo, string locationGroupName, IEnumerable<LocationID> locations, bool scout = true)
     {
         int index = 1;
         while (index < detailedInfo.Count && !detailedInfo[index].StartsWith("----")) ++index;
@@ -118,26 +147,14 @@ public class APCommandHandler : ArchipelagoFeature
             .Where(l => l.ScoutedItemName != null)
             .ToList();
 
-        if (locations.Any() && !locations.Skip(1).Any()) // If exactly one element
+        detailedInfo.Insert(index++, $"{locationGroupName}:");
+        foreach (var loc in actualLocations)
         {
-            if (actualLocations.Any())
-            {
-                var loc = actualLocations[0];
-                detailedInfo.Insert(index++, $"{locationGroupName}: ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
-            }
-            else
-            {
-                detailedInfo.Insert(index++, $"{locationGroupName}: -- EMPTY --");
-            }
-            st.ScoutLocation(locations.First());
+            string name = loc.ScoutedPlayerName ?? "DEBUG";
+            string item = loc.ScoutedItemName ?? (loc.ItemID.IsNull ? "null" : st.GameData.Items.LookUpName(loc.ItemID));
+            detailedInfo.Insert(index++, $"  ({name}) {item}");
         }
-        else
-        {
-            detailedInfo.Insert(index++, $"{locationGroupName}:");
-            foreach (var loc in actualLocations)
-                detailedInfo.Insert(index++, $"  ({loc.ScoutedPlayerName}) {loc.ScoutedItemName}");
-            detailedInfo.Insert(index++, "   -- END OF LIST --");
-        }
+        detailedInfo.Insert(index++, "   -- END OF LIST --");
 
         if (scout && locations.Any()) st.ScoutLocations(locations);
     }

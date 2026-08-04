@@ -192,7 +192,7 @@ public class CustomScanHandler : ArchipelagoFeature
                 LG_WorldEventObject obj = __instance.m_uniqueWorldEventObjectMap.entries[entry].value;
                 EventHelper.GetWorldEventObjectDetailsProcessor(obj).DetailedInfoProcessors.Add((data) =>
                 {
-                    APCommandHandler.InsertLocationDataToDetailedInfo(
+                    APCommandHandler.InsertLocationDataInDetailedInfo(
                         StateTracker.Get(),
                         data,
                         "SCAN ITEMS",

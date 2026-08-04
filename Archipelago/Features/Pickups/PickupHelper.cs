@@ -442,12 +442,12 @@ public class PickupHelper : ArchipelagoFeature
     /// <param name="scout">If true, also scouts the location, providing the player with a hint of what it contains</param>
     public static void ModifyTerminalDetailInfo(ItemInLevel item, Il2CppSystem.Collections.Generic.List<string> detailedData, bool scout = true)
     {
-        var id = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>()?.StoredLocation;
-        APCommandHandler.InsertLocationDataToDetailedInfo(
+        var id = item.PickupInteraction.GetComponent<ContainsLocationPickupComp>()?.StoredLocation ?? new();
+        APCommandHandler.InsertLocationDataInDetailedInfo(
             StateTracker.Get(),
             detailedData,
             "MULTIWORLD ITEM",
-            id is null ? Enumerable.Empty<LocationID>() : new LocationID[1] { id.Value }
+            id
         );
     }
 
