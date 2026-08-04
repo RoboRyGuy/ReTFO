@@ -173,8 +173,8 @@ public class MidManager
         {
             Processor existingProcessor = m_processorLookup[typeof(TData)];
             FeatureLogger.Warning(
-                $"Cannot add new processor of type: {processor.GetType().Name}; "
-                + $"an existing processor of type {existingProcessor.GetType().Name} is already registered for that data type!"
+                $"Cannot add new processor of type: {processor.GetType().Name}; an existing processor"
+                + $" of type {existingProcessor.GetType().Name} is already registered for that data type!"
             );
         }
     }

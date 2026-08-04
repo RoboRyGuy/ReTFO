@@ -118,6 +118,21 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         set => m_featureLogger = value;
     }
 
+    private static void ClearProgressiveExpeditions(StateTracker st)
+        => s_expeditionProgressivelyOrderered = null;
+
+    public override void OnEnable()
+    {
+        base.OnEnable();
+        StateTracker.Get().OnStateChange += ClearProgressiveExpeditions;
+    }
+
+    public override void OnDisable()
+    {
+        base.OnDisable();
+        StateTracker.Get().OnStateChange -= ClearProgressiveExpeditions;
+    }
+
     [FeatureConfig]
     public static int Config { get; set; }
 
@@ -355,7 +370,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// <summary>
     /// Gets all enabled expedition in the order they're unlocked in a progressive-style playthrough
     /// </summary>
-    public IEnumerable<RegionID> GetExpeditionsProgressiveOrdering(StateTracker stateTracker)
+    public static IEnumerable<RegionID> GetExpeditionsProgressiveOrdering(StateTracker stateTracker)
     {
         if (s_expeditionProgressivelyOrderered != null) 
             return s_expeditionProgressivelyOrderered;
@@ -387,7 +402,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// <summary>
     /// Cache of the result of <see cref="GetExpeditionsProgressiveOrdering(StateTracker)"/>
     /// </summary>
-    private RegionID[]? s_expeditionProgressivelyOrderered = null;
+    private static RegionID[]? s_expeditionProgressivelyOrderered = null;
 
     /// <summary>
     /// Enumerates all expeditions from a rundown datablock 
@@ -441,8 +456,11 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         {
             if (!ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled) return;
 
-            foreach (var e in FindExpeditions(stateTracker.GameData)) 
+            foreach (var e in FindExpeditions(stateTracker.GameData))
+            {
+                FeatureLogger.Debug($"Unlocked expedition {stateTracker.GameData.Regions.LookUpName(ExpeditionRegion)}");
                 e.Accessibility = eExpeditionAccessibility.AlwaysAllow;
+            }
             RundownHandler.UpdateAllCounts(); // Since a new icon is now visible
         }
 
@@ -451,8 +469,11 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
             if (!ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>().Enabled) return;
             if (stateTracker.CollectedItemCounts.GetValueOrDefault(itemId, 0) > 0) return;
 
-            foreach (var e in FindExpeditions(stateTracker.GameData)) 
+            foreach (var e in FindExpeditions(stateTracker.GameData))
+            {
+                FeatureLogger.Debug($"Locked expedition {stateTracker.GameData.Regions.LookUpName(ExpeditionRegion)}");
                 e.Accessibility = eExpeditionAccessibility.AlwayBlock;
+            }
             RundownHandler.UpdateAllCounts(); // Since a new icon is now hidden
         }
     }
@@ -467,15 +488,16 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
 
         public override void OnItemObtained(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
         {
-            var feature = ArchipelagoFeatureHelper.GetFeature<UnlockExpeditionHandler>();
-            if (!feature.Enabled) return;
-            var expeditions = feature.GetExpeditionsProgressiveOrdering(stateTracker);
+            var expeditions = GetExpeditionsProgressiveOrdering(stateTracker);
             int count = stateTracker.CollectedItemCounts.GetValueOrDefault(stateTracker.GameData.Item_ProgressiveExpeditionUnlock);
             HashSet<RegionID> regions = expeditions.Take(count).ToHashSet();
             foreach (var exp in GetExpeditions())
             {
                 if (Expedition.Data.TryGetFromExpedition(exp, out var result) && regions.Contains(result.Region_Expedition))
+                {
+                    FeatureLogger.Debug($"Unlocked expedition {result.ExpeditionName}");
                     exp.Accessibility = eExpeditionAccessibility.AlwaysAllow;
+                }
             }
             RundownHandler.UpdateAllCounts(); // Since a new icon is now shown
         }
@@ -567,6 +589,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     /// </summary>
     public static void UnlockAll()
     {
+        FeatureLogger.Debug("Unlocking all expeditions");
         foreach (var expedition in GetExpeditions())
             expedition.Accessibility = eExpeditionAccessibility.AlwaysAllow;
     }
@@ -578,6 +601,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
     {
         StateTracker stateTracker = StateTracker.Get();
         Game.Data data = stateTracker.MidManager.GetProcessedGameData();
+        FeatureLogger.Debug("Resetting expedition locks");
         foreach (var expedition in GetExpeditions())
         {
             if (!data.TryGetExpeditionData(expedition, out var eData))
@@ -588,7 +612,10 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
 
             ItemID reqItem = eData.Item_FloatingExpedtionUnlock_Instance;
             if (stateTracker.IsItemRandomized(eData.Region_Expedition, reqItem) && stateTracker.CollectedItemCounts.GetValueOrDefault(reqItem, 0) <= 0)
+            {
+                FeatureLogger.Debug($"Locked expedition {eData.ExpeditionName}");
                 expedition.Accessibility = eExpeditionAccessibility.AlwayBlock;
+            }
         }
     }
 
