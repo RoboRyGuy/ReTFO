@@ -156,7 +156,6 @@ public class DeathLinkHandler : ArchipelagoFeature
             return;
         LastTriggerTime = UnityEngine.Time.realtimeSinceStartup;
 
-        s_service?.DisableDeathLink(); // In case we still have a valid one somehow
         s_service = stateTracker.ApSession?.CreateDeathLinkService();
         if (s_service != null)
         {
