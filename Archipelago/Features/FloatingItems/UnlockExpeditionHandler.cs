@@ -206,7 +206,6 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                 + "\n PROGRESSIVE  - Each main sector cleared unlocks a new expedition."
                 + "\n FULLPROG     - Each full clear unlocks a new expedition."
                 + "\n                This means PE, secondary and overload are required."
-                + "\n                *Note that the logic for this is currently broken.*"
                 + "\n DUAL         - Enables both ITEM and PROGRESSIVE styles."
                 + "\n FULLDUAL     - Enables both ITEM and FULLPROG styles."
                 + "\n SEMIPROG     - Both ITEM and PROGRESSIVE. Archipelago will ignore"
