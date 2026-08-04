@@ -17,7 +17,6 @@ namespace ReTFO.Archipelago.Features.FloatingItems;
 
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
-using static FluffyUnderware.DevTools.ConditionalAttribute;
 
 public static class LockGearHandler_Tags
 { 
@@ -534,7 +533,6 @@ public class LockGearHandler : ArchipelagoFeature
             && weapon.AmmoType != AmmoType.Special
             && weapon.AmmoType != AmmoType.Class
         ) return;
-
 
         float desiredAmmo = .5f * (weapon.AmmoType switch { AmmoType.Standard => 460f, AmmoType.Special => 230f, AmmoType.Class => 150f, _ => throw new ArgumentException() });
         if (pack.AmmoStorage.GetAmmoInPack(weapon.AmmoType) < desiredAmmo)
