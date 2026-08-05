@@ -52,3 +52,22 @@ Fifth Alpha Release of Beta-Archipelago
 - Internal-only items and locations are now "Event" locations in Archipelago, which should make UT and similar more useful.
 - Fixed a lot of bugs (but not all of them)
 - Probably some other things. I changed a lot, I did not make many notes.
+
+## Version 0.0.6
+
+Sixth Alpha Release of Beta-Archipelago
+- Added "Choice" processing, which dramatically improves logic regarding bulkhead keys and cells
+  - The logic can much more readily predict PE clears and similar; before, it only guaranteed all sectors could be cleared
+  - Bulkhead keys and cells are no longer "randomlike"
+- Fixed DeathLink so it actually works now. Fixed some issues related to DeathLink as well
+- Added more queries:
+  - sec_doors for the various door-related events (On approach, unlock, scan started, scan ended, and opened)
+  - Reactors for reactor waves and such
+  - World Event Objects for event scans
+- Added world event objects as terminal items which can be pinged and queried
+  - Only relevant world event objects are added to the terminal system. At this time, that is ones related to custom scans
+- Added the JUMP command to a terminal, which allows you to return to any dimension you have seen since dropping into an expedition
+- Progressive expedition unlocks no longer appear in ITEM progression mode
+- Universal Tracker now reports locations which *can* be reached, even if it might require lucky generation
+- MID generation is now language-independent (forced to be English where possible, even if game is set to another language)
+- Other misc bug fixes

@@ -38,7 +38,7 @@ public class Plugin : BasePlugin
     public const string Name = "BetaArchipelago";   // Plugin name
     public const string Author = "RoboRyGuy";       // Plugin author
     public const string GUID = $"{Author}.{Name}";  // Plugin GUID, unique identifier used by BepInEx
-    public const string Version = "0.0.5";          // Plugin version, can be used by System.Version
+    public const string Version = "0.0.6";          // Plugin version, can be used by System.Version
 
     // Reference to plugin instance that is loaded by BepInEx
     private static Plugin? _plugin = null;
