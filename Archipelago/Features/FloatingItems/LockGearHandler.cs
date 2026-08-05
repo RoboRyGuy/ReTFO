@@ -15,6 +15,7 @@ using TheArchive.Interfaces;
 
 namespace ReTFO.Archipelago.Features.FloatingItems;
 
+using Dissonance;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
 
@@ -334,7 +335,9 @@ public class LockGearHandler : ArchipelagoFeature
         GearCategoryDataBlock category = GearCategoryDataBlock.GetBlock(idRange.GetCompID(eGearComponent.Category));
         if (category != null)
         {
-            name = category.PublicName.ToString();
+            name = category.PublicName.UntranslatedText 
+                ?? TextDataBlock.GetBlock(category.PublicName.Id)?.English
+                ?? category.PublicName.ToString();
 
             ArchetypeDataBlock archetype = ArchetypeDataBlock.GetBlock(
                 idRange.GetCompID(eGearComponent.FireMode) switch
@@ -355,7 +358,12 @@ public class LockGearHandler : ArchipelagoFeature
                 }
             );
             if (archetype != null)
-                name = archetype.PublicName.ToString();
+            {
+                name = archetype.PublicName.UntranslatedText 
+                    ?? TextDataBlock.GetBlock(archetype.PublicName.Id)?.English
+                    ?? archetype.PublicName.ToString();
+
+            }
         }
 
         return $"{name} ({idRange.PublicGearName})";
