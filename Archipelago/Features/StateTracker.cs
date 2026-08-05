@@ -992,9 +992,10 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="id">The location to scout</param>
     /// <param name="hintType">The hint creation policy for scouting this location</param>
-    public void ScoutLocation(LocationID id, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce)
+    public void ScoutLocation(LocationID id, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce, bool skipInteraction = false)
     {
-        SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.ID);
+        if (!skipInteraction)
+            SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.ID);
         ApSession?.Locations.ScoutLocationsAsync(hintType, id.ID);
     }
 
@@ -1005,10 +1006,11 @@ public partial class StateTracker : ArchipelagoFeature
     /// </summary>
     /// <param name="ids">IDs of the locations to scout</param>
     /// <param name="hintType">The hint creation policy for scouting these locations</param>
-    public void ScoutLocations(IEnumerable<LocationID> ids, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce)
+    public void ScoutLocations(IEnumerable<LocationID> ids, AP.Enums.HintCreationPolicy hintType = AP.Enums.HintCreationPolicy.CreateAndAnnounceOnce, bool skipInteraction = false)
     {
-        foreach (var id in ids)
-            SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.ID);
+        if (!skipInteraction)
+            foreach (var id in ids)
+                SendInteraction(pArchipelagoInteraction.eType.ScoutLocation, value: id.ID);
         ApSession?.Locations.ScoutLocationsAsync(hintType, ids.Select(id => (long)id.ID).ToArray());
     }
 

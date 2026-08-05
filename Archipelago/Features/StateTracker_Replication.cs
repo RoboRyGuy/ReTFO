@@ -960,7 +960,7 @@ public partial class StateTracker : ArchipelagoFeature
 
             case pArchipelagoInteraction.eType.ScoutLocation:
                 LocationID scoutId = new() { ID = interaction.Value };
-                ScoutLocations(Enumerable.Repeat(scoutId, 1));
+                ScoutLocation(scoutId, skipInteraction: true);
                 break;
 
             case pArchipelagoInteraction.eType.MarkTrash:
