@@ -339,14 +339,30 @@ public class EnergyLinkHandler : ArchipelagoFeature
 
     private EnergyReplicator? m_replicator = null;
 
+    public override void Init()
+    {
+        base.Init();
+        Plugin.Get().LateSetup
+            += (replicator) => ArchipelagoFeatureHelper.GetFeature<EnergyLinkHandler>().m_replicator ??= new(replicator);
+    }
+
+    private void InitSession(StateTracker st)
+        => st.ApSession?.DataStorage[$"EnergyLink{st.ApSession.Players.ActivePlayer.Team}"].Initialize(0);
+
     public override void OnEnable()
     {
         base.OnEnable();
-        Plugin.Get().LateSetup += (replicator) =>
-        {
-            m_replicator = new(replicator);
-            StateTracker.Get().OnStateChange += (st) => st.ApSession?.DataStorage[$"EnergyLink{st.ApSession.Players.ActivePlayer.Team}"].Initialize(0);
-        };
+        var st = StateTracker.Get();
+        if (st == null)
+            Plugin.Get().LateSetup += _ => StateTracker.Get().OnStateChange += InitSession;
+        else
+            st.OnStateChange += InitSession;
+    }
+
+    public override void OnDisable()
+    {
+        base.OnDisable();
+        StateTracker.Get()?.OnStateChange -= InitSession;
     }
 
     /// <summary>
@@ -382,6 +398,9 @@ public class EnergyLinkHandler : ArchipelagoFeature
     public static async Task<BigInteger> GetCurrentEnergy()
     {
         StateTracker stateTracker = StateTracker.Get();
+        if (!ArchipelagoFeatureHelper.GetFeature<EnergyLinkHandler>().Enabled) 
+            return 0;
+
         if (stateTracker.ApSession != null)
         {
             return Multiply(stateTracker.ApSession.DataStorage[$"EnergyLink{stateTracker.ApSession.Players.ActivePlayer.Team}"] + Operation.Max(0), 1f / Config.InputConsumptionRate);
@@ -410,6 +429,9 @@ public class EnergyLinkHandler : ArchipelagoFeature
     {
         FeatureLogger.Notice($"Processing energy request for amount: {amount}");
         StateTracker stateTracker = StateTracker.Get();
+        if (!ArchipelagoFeatureHelper.GetFeature<EnergyLinkHandler>().Enabled) 
+            throw new TaskCanceledException();
+
         if (stateTracker.ApSession != null)
         {
             if (amount.Sign < 0)
@@ -450,6 +472,9 @@ public class EnergyLinkHandler : ArchipelagoFeature
     {
         FeatureLogger.Notice($"Adding energy: {amount}");
         StateTracker stateTracker = StateTracker.Get();
+        if (!ArchipelagoFeatureHelper.GetFeature<EnergyLinkHandler>().Enabled)
+            return;
+
         if (stateTracker.ApSession != null)
         {
             if (amount.Sign < 0)
