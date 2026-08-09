@@ -166,12 +166,12 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
         ProgressivePaths  = 1 << BIT_EnableProgressivePaths,
         AllowMainOnly     = 1 << BIT_AllowMainOnlyProgression,
 
-        FREE         = FloatingPaths | StartWithFloating,
+        FREE         = FloatingPaths | FloatingItems | StartWithFloating,
         ITEM         = FloatingPaths | FloatingItems,
         PROGRESSIVE  = ProgressivePaths | ProgressiveItems | AllowMainOnly,
         FULLPROG     = ProgressivePaths | ProgressiveItems,
-        DUAL         = ITEM | PROGRESSIVE,
-        FULLDUAL     = ITEM | FULLPROG,
+        DUAL         = PROGRESSIVE | ITEM,
+        FULLDUAL     = FULLPROG | ITEM,
         SEMIPROG     = PROGRESSIVE | FloatingItems,
         SEMIFULLPROG = FULLPROG | FloatingItems,
     }
