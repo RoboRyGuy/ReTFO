@@ -570,14 +570,17 @@ public partial class StateTracker : ArchipelagoFeature
                     .ToList()
                     ?? throw new NullReferenceException("Failed to retrieve filled_empty_locations from slot data");
 
-            IEnumerable<(ItemID, long)> rawGoalItems = 
-                (loginSuccessful.SlotData.GetValueOrDefault("goal_item_results", null) as Newtonsoft.Json.Linq.JArray)?
-                    .ToObject<List<List<long>>>()?.Select(l => (new ItemID() { ID = checked((uint)l[0]) }, l[1]))
-                    ?? throw new NullReferenceException("Failed to retrieve goal_items from slot data");
+            if (CurrentState != eState.HostReconnecting)
+            {
+                IEnumerable<(ItemID, long)> rawGoalItems = 
+                    (loginSuccessful.SlotData.GetValueOrDefault("goal_item_results", null) as Newtonsoft.Json.Linq.JArray)?
+                        .ToObject<List<List<long>>>()?.Select(l => (new ItemID() { ID = checked((uint)l[0]) }, l[1]))
+                        ?? throw new NullReferenceException("Failed to retrieve goal_items from slot data");
 
-            m_goalItemCounts = new();
-            foreach (var pair in rawGoalItems)
-                m_goalItemCounts[pair.Item1] = checked((int)pair.Item2);
+                m_goalItemCounts = new();
+                foreach (var pair in rawGoalItems)
+                    m_goalItemCounts[pair.Item1] = checked((int)pair.Item2);
+            }
 
             SkippableGoalCount = (int)(long)(
                 loginSuccessful.SlotData.GetValueOrDefault("skippable_goal_count", null)
@@ -1180,7 +1183,7 @@ public partial class StateTracker : ArchipelagoFeature
         }
 
         // Check if we've satisifed our win condition
-        if (SNetwork.SNet.IsMaster && m_goalItemCounts.ContainsKey(id))
+        if ((ApSession != null) && m_goalItemCounts.ContainsKey(id))
         {
             m_goalItemCounts[id] -= 1;
             if (m_goalItemCounts.Sum(pair => pair.Value) <= SkippableGoalCount)
@@ -1267,7 +1270,8 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            RundownHandler.UpdateAllCounts();
+            var test = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => pair.Value);
+            var test2 = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => m_sessionItemCounts.GetValueOrDefault(pair.Key, 0));
             //Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
             //RegionID end = data.GetLayer(LayerType.Secondary).AllZones.First().Region_OnDoorOpenedEvents;
             //
