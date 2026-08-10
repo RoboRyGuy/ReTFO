@@ -95,18 +95,12 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
 
         public override RegionID TargetRegion => ObjectiveRegion;
 
-        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
-        {
-            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
-            uint numEmpty = CalcEmptySpots(data, out _);
-            if (Count > numEmpty) 
-                base.OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
-        }
-
-        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
+        /// <summary>
+        /// Attempt to asynchronously spawn the objective item
+        /// </summary>
+        protected AsyncItemSpawnWrapper TrySpawnItem(Objective.Data data)
         {
             AsyncItemSpawnWrapper? wrapper = new();
-            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
             pItemData itemData = new()
             {
                 itemID_gearCRC = data.Objective.Gather_ItemId,
@@ -115,7 +109,7 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
             };
             itemData.originCourseNode.Set(data.GetLG_Layer()!.m_zones[0].m_courseNodes[0]);
             if (SNetwork.SNet.IsMaster)
-            { 
+            {
                 ItemReplicationManager.SpawnItem(
                     itemData,
                     new Action<ISyncedItem, PlayerAgent>(wrapper.OnSpawn),
@@ -125,7 +119,38 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                     null,
                     null
                 );
+                wrapper.AddSpawnCallback(item =>
+                {
+                    GenericSmallPickupItem_Core keyItem = item.Cast<GenericSmallPickupItem_Core>();
+                    keyItem.SetupFromLevelgen(0, true);
+                    keyItem._SpawnNode_k__BackingField = data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
+                });
             }
+            return wrapper;
+        }
+
+        public override void OnEnteredExpedition(StateTracker stateTracker, LocationID sourceLocationId, PlayerAgent? player, ItemID itemId)
+        {
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
+            uint numEmpty = CalcEmptySpots(data, out _);
+            if (Count > numEmpty)
+            {
+                if (player != null)
+                {
+                    AsyncItemSpawnWrapper wrapper = TrySpawnItem(data);
+                    wrapper.AddSpawnCallback(
+                        item => item.Cast<GenericSmallPickupItem_Core>().m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player.Owner)
+                    );
+                }
+                else
+                    base.OnEnteredExpedition(stateTracker, sourceLocationId, player, itemId);
+            }
+        }
+
+        public override IEnumerable<Action> OnRetrieveFromTerminalSystem(StateTracker stateTracker, LG_ComputerTerminal terminal, ItemID itemId)
+        {
+            Objective.Data data = new(stateTracker.GameData, ObjectiveRegion);
+            AsyncItemSpawnWrapper wrapper = TrySpawnItem(data);
             var player = terminal.m_syncedInteractionSource.Owner;
 
             yield return () =>
@@ -147,9 +172,6 @@ public class GatherSmallItemsHandler : ArchipelagoFeature
                     }
                     return;
                 }
-
-                keyItem.SetupFromLevelgen(0, true);
-                keyItem._SpawnNode_k__BackingField = data.GetLG_Layer()!.m_zones[0].m_courseNodes[0];
                 keyItem.m_sync.AttemptPickupInteraction(ePickupItemInteractionType.Pickup, player);
 
                 terminal.AddLine($"Pickup \"{keyItem.PublicName}\" has been given to {player.NickName}");
