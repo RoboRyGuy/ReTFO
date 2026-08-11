@@ -16,6 +16,8 @@ using TheArchive.Interfaces;
 namespace ReTFO.Archipelago.Features.ObjectiveHandlers;
 
 using Dissonance;
+using GameData;
+using Localization;
 using ReTFO.Archipelago.Features.EventHandlers;
 using ReTFO.Archipelago.ModdedInstanceData.Model;
 using ReTFO.Archipelago.ModdedInstanceData.Processors;
@@ -235,7 +237,10 @@ public class ReactorStartupHandler : ArchipelagoFeature
             {
                 terminal.AddLine(TerminalLineType.SpinningWaitDone, $"Retrieving {StateTracker.Get().GameData.Items.LookUpName(itemId)}", 2f);
                 if (reactor != null)
-                    terminal.AddLine(string.Format(ArchipelagoFeatureHelper.GetFeature<ReactorStartupHandler>().Localization.Get(182408469), reactor.GetOverrideCodes()[Index]));
+                {
+                    LocalizedText text = 182408469;
+                    terminal.AddLine(string.Format(text.ToString(), reactor.GetOverrideCodes()[Index]));
+                }
                 else
                     terminal.AddLine($"<#F00>Failed to find any reactors to pull codes from!</color>");
             };
