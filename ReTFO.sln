@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36915.13 d17.14
+# Visual Studio Version 18
+VisualStudioVersion = 18.6.11828.311 oobstable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThermalOverlay", "ThermalOverlay\ThermalOverlay.csproj", "{166D1A95-CD37-75E6-7283-820B088772D9}"
 EndProject
@@ -14,6 +14,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DamageOverhaulCore", "DamageOverhaulCore\DamageOverhaulCore.csproj", "{E424A2D8-FD40-126C-60AB-03707B14C93E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Archipelago", "Archipelago\Archipelago.csproj", "{F65FD8C9-C87B-41B9-AACC-857A8C39BDF5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FriendlyFireMessages", "FriendlyFireMessages\FriendlyFireMessages.csproj", "{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -97,6 +99,18 @@ Global
 		{F65FD8C9-C87B-41B9-AACC-857A8C39BDF5}.Release|x64.Build.0 = Release|Any CPU
 		{F65FD8C9-C87B-41B9-AACC-857A8C39BDF5}.Release|x86.ActiveCfg = Release|Any CPU
 		{F65FD8C9-C87B-41B9-AACC-857A8C39BDF5}.Release|x86.Build.0 = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|x64.Build.0 = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Debug|x86.Build.0 = Debug|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|x64.ActiveCfg = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|x64.Build.0 = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|x86.ActiveCfg = Release|Any CPU
+		{B0712C2B-49DF-441C-9F83-FD449F9CF0DF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

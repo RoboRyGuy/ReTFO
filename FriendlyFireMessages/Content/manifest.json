@@ -1,0 +1,9 @@
+﻿{
+  "name": "FriendlyFireMessages",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/RoboRyGuy/ReTFO",
+  "description": "Simple friendly fire messages",
+  "dependencies": [
+    "BepInEx-BepInExPack_GTFO-3.2.2"
+  ]
+}
