@@ -327,6 +327,14 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Helper class which allows an archipelago general state to live on the heap.
+    /// </summary>
+    private class BoxedArchipelagoGeneralState
+    {
+        public pArchipelagoGeneralState State { get; init; }
+    }
+
+    /// <summary>
     /// Struct used to send/receive interactions, IE locations being checked or items being received.
     /// Intentionally the same size as pArtifactInventoryState
     /// </summary>
@@ -697,9 +705,50 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Small closure for responding to the OnRecallComplete SNet Event
+    /// </summary>
+    [InjectToIl2Cpp]
+    private class PostRecallCompleteDelegate : Il2CppSystem.Object
+    {
+        public PostRecallCompleteDelegate(IntPtr ptr) : base(ptr) { }
+        public PostRecallCompleteDelegate(StateTracker st) 
+            : base(ClassInjector.DerivedConstructorPointer<PostRecallCompleteDelegate>())
+        {
+            ClassInjector.DerivedConstructorBody(this);
+            m_stateTracker = st;
+        }
+
+        private StateTracker m_stateTracker = null!;
+
+        public void PostRecallComplete(eBufferType bufferType)
+            => m_stateTracker.PostRecallComplete(bufferType);
+
+        public static implicit operator Il2CppSystem.Action<eBufferType>(PostRecallCompleteDelegate self)
+        {
+            IntPtr methodPtr = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethod(
+                self.ObjectClass,
+                false,
+                nameof(PostRecallComplete),
+                typeof(void).FullName!,
+                [ typeof(eBufferType).FullName ]
+            );
+            return new Il2CppSystem.Action<eBufferType>(self, methodPtr);
+        }
+    }
+
+    /// <summary>
     /// The state replicator for this StateTracker
     /// </summary>
     ArchipelagoStateReplicator? m_stateReplicator = null;
+
+    /// <summary>
+    /// The recall state to unpack and load when a recall is completed.
+    /// This is obtained from the State Replicator during the recall, boxed, and 
+    ///  left waiting until the recall is complete so that we can apply it to a 
+    ///  consistent game state - ie, we apply it after GTFO finishes making
+    ///  recall-related changes.
+    /// </summary>
+    BoxedArchipelagoGeneralState? m_queuedRecallState = null;
 
     /// <summary>
     /// Simple update enumerator which will be used as a coroutine
@@ -733,6 +782,7 @@ public partial class StateTracker : ArchipelagoFeature
         if (m_stateReplicator != null) return;
 
         m_stateReplicator ??= new(this);
+        SNet_Events.OnRecallComplete += new PostRecallCompleteDelegate(this);
         Plugin.InvokeLateSetup(m_stateReplicator.ConcreteReplicator);
 
         // Seems fitting to put this on SNet, though it probably doesn't matter
@@ -875,12 +925,34 @@ public partial class StateTracker : ArchipelagoFeature
     }
 
     /// <summary>
+    /// Delegate assigned to SNetwork.SNet_Events.OnRecallComplete
+    /// </summary>
+    public void PostRecallComplete(eBufferType bufferType)
+    {
+        if (m_queuedRecallState == null)
+            FeatureLogger.Error("StateTracker failed to act post recall; no queued state is available!");
+        else
+            ReceiveGeneralState(m_queuedRecallState.State, true, true);
+    }
+
+    /// <summary>
     /// Receive a general state, expected periodically to ensure good sync
     /// </summary>
     /// <param name="state">The state being received</param>
     /// <param name="isRecall">If the state is the result of a recall</param>
-    public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall)
+    /// <param name="isPostRecall">If true, this is being called a second time after a recall is completed</param>
+    public void ReceiveGeneralState(pArchipelagoGeneralState state, bool isRecall, bool isPostRecall = false)
     {
+        if (isRecall && !isPostRecall)
+        {
+            m_queuedRecallState = new() { State = state };
+            return;
+        }
+        else
+        {
+            m_queuedRecallState = null; // Release memory
+        }
+
         if (!isRecall)
         {
             if (ApSession != null)
