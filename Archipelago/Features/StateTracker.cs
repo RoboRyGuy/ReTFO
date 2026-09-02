@@ -668,20 +668,23 @@ public partial class StateTracker : ArchipelagoFeature
         foreach (var id in m_regionWhitelist)
         {
             if (!data.Regions.IsChild(id, m_regionBlacklist))
-            {
                 reachableRegions.Add(id);
-                data.SetRegionRandomized(id, true);
-            }
         }
         foreach (var id in data.Regions.GetAllIDs())
         {
-            if (data.Regions.LookUpDefinition(id).AllParents.Any(reachableRegions.Contains) && !m_regionBlacklist.Contains(id))
-            {
-                reachableRegions.Add(id);
-                data.SetRegionRandomized(id, true);
+            var def = data.Regions.LookUpDefinition(id);
+            if (def.OtherParents == null)
+            {   // This version is more optimized, but only works if there is exactly one parent
+                if (reachableRegions.Contains(def.Parent) && !m_regionBlacklist.Contains(id))
+                    reachableRegions.Add(id);
+            }
+            else
+            {   // This check is much more thorough and can probably be optimized
+                if (def.AllParents.Any(reachableRegions.Contains) && !data.Regions.IsChild(id, m_regionBlacklist))
+                    reachableRegions.Add(id);
             }
         }
-        reachableRegions.RemoveWhere(r => !data.Regions.LookUpValue(r).Reachable);
+        foreach (var id in reachableRegions) data.SetRegionRandomized(id, true);
 
         // List of reachable locations
         List<KeyValuePair<LocationID, Location>> reachableLocations = data.Locations.GetAllValuesNonNull()
@@ -1270,8 +1273,8 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            var test = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => pair.Value);
-            var test2 = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => m_sessionItemCounts.GetValueOrDefault(pair.Key, 0));
+            var test = RegionWhitelist.Where(r => !r.IsNull).Select(GameData.Regions.LookUpName).ToList();
+            var test2 = RegionBlacklist.Where(r => !r.IsNull).Select(GameData.Regions.LookUpName).ToList();
             //Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
             //RegionID end = data.GetLayer(LayerType.Secondary).AllZones.First().Region_OnDoorOpenedEvents;
             //

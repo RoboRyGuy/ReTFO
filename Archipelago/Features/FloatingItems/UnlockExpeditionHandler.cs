@@ -82,7 +82,7 @@ public static class UnlockExpeditionHandler_Tags
         /// Region containing the progressive expedition unlock reward for a particular expedition
         /// </summary>
         public RegionID Region_ProgressiveExpeditionUnlock_ByExpedition
-            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containg the progressive expedition unlock reward for a particular expedition", data.Region_Expedition, data.Region_ProgressiveExpeditionLocations));
+            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containing the progressive expedition unlock reward for a particular expedition", data.Region_Expedition, data.Region_ProgressiveExpeditionLocations));
 
         /// <summary>
         /// Location containing the progressive expedition unlock for a particular expedition
