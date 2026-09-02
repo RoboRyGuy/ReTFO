@@ -154,7 +154,7 @@ public class MidManager
     protected Game.Processor m_gameProcessor { get; set; } = new();
     protected Dictionary<string, string?> m_namedHashes { get; init; } = new() 
     { 
-        { "oL3jHh5d6uXLtWlo5jJ4qWnOO4Xolvt_ZDga6xAU64E=", null } // Vanilla game hash. Null is reserved for vanilla
+        { "j6QgbfKCuL495OP1S5yuR2G5Xsgv4y6MiZkZnQgtmic=", null } // Vanilla game hash. Null is reserved for vanilla
     };
 
     public MidManager()
