@@ -1273,13 +1273,6 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            var test = RegionWhitelist.Where(r => !r.IsNull).Select(GameData.Regions.LookUpName).ToList();
-            var test2 = RegionBlacklist.Where(r => !r.IsNull).Select(GameData.Regions.LookUpName).ToList();
-            //Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
-            //RegionID end = data.GetLayer(LayerType.Secondary).AllZones.First().Region_OnDoorOpenedEvents;
-            //
-            //var paths = data.GetAllPaths().Where(p => p.Value.EndingRegion.Equals(end)).ToList();
-            //var sourceRegions = paths.Select(p => data.Regions.LookUpName(p.Value.StartingRegion));
         }
 
         if (ConnectTask?.IsCompleted ?? false)
@@ -1430,6 +1423,19 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 FeatureLogger.Error(" -> Items not added to terminal system!");
             }
+        }
+    }
+
+    /// <summary>
+    /// Overwrite the MODDED text with ARCHIPELAGO
+    /// </summary>
+    [ArchivePatch(typeof(PUI_Watermark), nameof(PUI_Watermark.UpdateWatermark))]
+    static class Patch_WatermarkUpdateWatermark
+    {
+        public static void Postfix(PUI_Watermark __instance)
+        {
+            var data = StateTracker.Get().GameData;
+            __instance.m_watermarkText.SetText($"<#F0F>AP ({(data.Name == null ? "Vanilla" : data.Name)}) </color> <#F80>{Plugin.Version}</color>");
         }
     }
 
