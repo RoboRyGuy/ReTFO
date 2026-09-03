@@ -72,9 +72,9 @@ public class ZoneEventsHandler : ArchipelagoFeature
             // Note: Using a delegate* to delay ID creation, preventing unecessary regions from being created
             RegionEventPair[] pairs =
             {
-                new(&ZoneEventsHandler_Tags.get_Region_OnBossDeathEvents,               data.Zone.EventsOnBossDeath),
-                new(&ZoneEventsHandler_Tags.get_Region_OnPortalWarpEvents,              data.Zone.EventsOnPortalWarp),
-                new(&ZoneEventsHandler_Tags.get_Region_OnTerminalDeactivateAlarmEvents, data.Zone.EventsOnTerminalDeactivateAlarm),
+                new(&ZoneEventsHandler_Tags.get_Region_OnBossDeathEvents,               data.Zone.EventsOnBossDeath), // Just have to assume a boss is there :)
+                new(&ZoneEventsHandler_Tags.get_Region_OnPortalWarpEvents,              data.Zone.CustomGeomorph?.Contains("portal") ?? false ? data.Zone.EventsOnPortalWarp : null),
+                new(&ZoneEventsHandler_Tags.get_Region_OnTerminalDeactivateAlarmEvents, data.Zone.TurnOffAlarmOnTerminal ? data.Zone.EventsOnTerminalDeactivateAlarm : null),
             };
             foreach (var pair in pairs)
             {

@@ -1,5 +1,4 @@
-﻿using GameData;
-using LevelGeneration;
+﻿using LevelGeneration;
 using ReTFO.Archipelago.Features.Pickups;
 using ReTFO.Archipelago.FeaturesAPI;
 using ReTFO.Archipelago.Utilities;
@@ -44,15 +43,15 @@ public static class ProcessItemHandler_Tags
 
 
         public LocationID Location_ProcessItemCage_Instance
-            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Cage Locations", data => new("A particular Process Item objective cage spawn location.", data.Location_ProcessItemCages));
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Location (Elevator Cage)", data => new("A particular Process Item objective cage spawn location.", data.Location_ProcessItemCages));
 
         public LocationID Location_ProcessItemProcessor_Instance
-            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Processor Locations", data => new("A particular Process Item processor location", data.Location_ProcessItemProcessors));
+            => LocationID.From(Checked(data), $"{data.ObjectiveName} Process Item Processor Location", data => new("A particular Process Item processor location", data.Location_ProcessItemProcessors));
 
         public ItemID Item_ProcessItemProcessor_Instance
             => ItemID.From(
                 Checked(data), 
-                $"{data.ObjectiveName} Process Item Processor Items", 
+                $"{data.ObjectiveName} Process Item Processor Item", 
                 data => new("A particular Process Item processor", data.Item_ProcessItemProcessors),
                 new ProcessItemHandler.ProcessItem_ProcessorItem(data.Region_Objective)
             );

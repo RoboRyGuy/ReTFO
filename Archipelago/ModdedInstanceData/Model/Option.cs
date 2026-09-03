@@ -452,7 +452,10 @@ public class OptionRange : OptionInput
 }
 
 /// <summary>
-/// An option input allowing users to select one or more values from a set of values
+/// An option input allowing users to select one or more values from a set of values.
+/// The default value for this choice is a bitfield for the first 64 entries in the list;
+///  every set bit will be added as a default enabled choice if it exists. If the default
+///  value is 0, all options are enabled with `random: 1`.
 /// </summary>
 [DataContract]
 public class OptionMultiChoice : OptionInput

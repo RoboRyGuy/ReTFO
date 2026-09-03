@@ -668,20 +668,23 @@ public partial class StateTracker : ArchipelagoFeature
         foreach (var id in m_regionWhitelist)
         {
             if (!data.Regions.IsChild(id, m_regionBlacklist))
-            {
                 reachableRegions.Add(id);
-                data.SetRegionRandomized(id, true);
-            }
         }
         foreach (var id in data.Regions.GetAllIDs())
         {
-            if (data.Regions.LookUpDefinition(id).AllParents.Any(reachableRegions.Contains) && !m_regionBlacklist.Contains(id))
-            {
-                reachableRegions.Add(id);
-                data.SetRegionRandomized(id, true);
+            var def = data.Regions.LookUpDefinition(id);
+            if (def.OtherParents == null)
+            {   // This version is more optimized, but only works if there is exactly one parent
+                if (reachableRegions.Contains(def.Parent) && !m_regionBlacklist.Contains(id))
+                    reachableRegions.Add(id);
+            }
+            else
+            {   // This check is much more thorough and can probably be optimized
+                if (def.AllParents.Any(reachableRegions.Contains) && !data.Regions.IsChild(id, m_regionBlacklist))
+                    reachableRegions.Add(id);
             }
         }
-        reachableRegions.RemoveWhere(r => !data.Regions.LookUpValue(r).Reachable);
+        foreach (var id in reachableRegions) data.SetRegionRandomized(id, true);
 
         // List of reachable locations
         List<KeyValuePair<LocationID, Location>> reachableLocations = data.Locations.GetAllValuesNonNull()
@@ -1270,13 +1273,6 @@ public partial class StateTracker : ArchipelagoFeature
     {
         if (Input.GetKeyDown(KeyCode.J))
         {
-            var test = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => pair.Value);
-            var test2 = m_goalItemCounts.ToDictionary(pair => GameData.Items.LookUpName(pair.Key), pair => m_sessionItemCounts.GetValueOrDefault(pair.Key, 0));
-            //Expedition.Data data = Expedition.Data.GetFromCurrentExpedition();
-            //RegionID end = data.GetLayer(LayerType.Secondary).AllZones.First().Region_OnDoorOpenedEvents;
-            //
-            //var paths = data.GetAllPaths().Where(p => p.Value.EndingRegion.Equals(end)).ToList();
-            //var sourceRegions = paths.Select(p => data.Regions.LookUpName(p.Value.StartingRegion));
         }
 
         if (ConnectTask?.IsCompleted ?? false)
@@ -1427,6 +1423,19 @@ public partial class StateTracker : ArchipelagoFeature
             {
                 FeatureLogger.Error(" -> Items not added to terminal system!");
             }
+        }
+    }
+
+    /// <summary>
+    /// Overwrite the MODDED text with ARCHIPELAGO
+    /// </summary>
+    [ArchivePatch(typeof(PUI_Watermark), nameof(PUI_Watermark.UpdateWatermark))]
+    static class Patch_WatermarkUpdateWatermark
+    {
+        public static void Postfix(PUI_Watermark __instance)
+        {
+            var data = StateTracker.Get().GameData;
+            __instance.m_watermarkText.SetText($"<#F0F>AP ({(data.Name == null ? "Vanilla" : data.Name)}) </color> <#F80>{Plugin.Version}</color>");
         }
     }
 

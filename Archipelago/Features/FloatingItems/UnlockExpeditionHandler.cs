@@ -82,7 +82,7 @@ public static class UnlockExpeditionHandler_Tags
         /// Region containing the progressive expedition unlock reward for a particular expedition
         /// </summary>
         public RegionID Region_ProgressiveExpeditionUnlock_ByExpedition
-            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containg the progressive expedition unlock reward for a particular expedition", data.Region_Expedition, data.Region_ProgressiveExpeditionLocations));
+            => RegionID.From(data, $"{data.ExpeditionName} Unlock Expedition Region", data => new("Region containing the progressive expedition unlock reward for a particular expedition", data.Region_Expedition, data.Region_ProgressiveExpeditionLocations));
 
         /// <summary>
         /// Location containing the progressive expedition unlock for a particular expedition
@@ -200,7 +200,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                 + " Optionally, choose \"All Expeditions\" to enable everything (including normally hidden expeditions, at your own risk)",
             category: EXPEDITION_OPTION_CATEGORY,
             categorySort: Array.Empty<uint>(),
-            defaultValue: new RegionID().ID,
+            defaultValue: 0x0E, // Second, third, and fourth entries in list (skipping All Expeditions)
             condition: new(),
             choiceNames: new() { "All Expeditions" },
             choiceValues: new() { data.Region_AllExpeditions.ID }
@@ -302,7 +302,7 @@ public class UnlockExpeditionHandler : ArchipelagoFeature
                 + " otherwise this option has no effect.",
             category: EXPEDITION_OPTION_CATEGORY,
             categorySort: floatingSort,
-            defaultValue: new ItemID().ID,
+            defaultValue: 0x01, // First entry in list
             condition: isFloatingPaths,
             choiceNames: new(),
             choiceValues: new()

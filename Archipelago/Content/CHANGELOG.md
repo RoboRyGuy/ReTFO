@@ -59,15 +59,18 @@ Sixth Alpha Release of Beta-Archipelago
 - Added "Choice" processing, which dramatically improves logic regarding bulkhead keys and cells
   - The logic can much more readily predict PE clears and similar; before, it only guaranteed all sectors could be cleared
   - Bulkhead keys and cells are no longer "randomlike"
+  - Generation may slow down significantly, especially when choosing many or large expeditions with many cells
 - Fixed DeathLink so it actually works now. Fixed some issues related to DeathLink as well
 - Added more queries:
   - sec_doors for the various door-related events (On approach, unlock, scan started, scan ended, and opened)
   - Reactors for reactor waves and such
   - World Event Objects for event scans
 - Added world event objects as terminal items which can be pinged and queried
-  - Only relevant world event objects are added to the terminal system. At this time, that is ones related to custom scans
+  - Only relevant world event objects are added to the terminal system. At this time, these are only ones related to custom scans
 - Added the JUMP command to a terminal, which allows you to return to any dimension you have seen since dropping into an expedition
+  - This was added as the best fix for logic issues, as it ensures you can return to any zone you've already been to
 - Progressive expedition unlocks no longer appear in ITEM progression mode
 - Universal Tracker now reports locations which *can* be reached, even if it might require lucky generation
-- MID generation is now language-independent (forced to be English where possible, even if game is set to another language)
+- MID generation is now language-independent (forced to be English where possible, even if GTFO is set to another language)
+  - This should fix some issues where the game reported itself as being modded when it was not
 - Other misc bug fixes
